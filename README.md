@@ -78,7 +78,7 @@ Detalle en [docs/architecture.md](docs/architecture.md). Los límites entre capa
 - [Multi-idioma](docs/i18n.md) — capas, URLs por idioma y contratos de presupuesto y panel
 - [Definition of Done](docs/definition-of-done.md) — nadie da algo por terminado sin cumplirla
 - [Convenciones de código](docs/coding-conventions.md)
-- [Estrategia de pruebas](docs/testing-strategy.md)
+- [Estrategia de pruebas](docs/testing-strategy.md) · [Playbook E2E](docs/e2e-playbook.md)
 - [Despliegue, release y rollback](docs/despliegue.md)
 - [Variables de entorno y secretos](docs/variables-entorno.md)
 - [Base de datos, backups y monitorización](docs/operacion.md)
@@ -89,4 +89,6 @@ Detalle en [docs/architecture.md](docs/architecture.md). Los límites entre capa
 
 Nada se considera terminado sin (1) test automático que lo cubra, (2) E2E de los flujos afectados en
 verde y (3) revisión de otro agente. El CI (`.github/workflows/ci.yml`) ejecuta los jobs `calidad` y
-`e2e`, que son checks requeridos en `main`.
+`e2e`, que son checks requeridos en `main`. `calidad` levanta un PostgreSQL 17 efímero para los tests
+de integración; ante un fallo, `e2e` sube informe, capturas, trazas y vídeo ([playbook
+E2E](docs/e2e-playbook.md)).
