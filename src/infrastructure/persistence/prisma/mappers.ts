@@ -427,6 +427,7 @@ export interface PriceTableRow {
     readonly label: Prisma.JsonValue | null
     readonly kind: $Enums.ModifierKind
     readonly target: $Enums.ModifierTarget
+    readonly discountCode: string | null
     readonly finishId: string | null
     readonly colorId: string | null
     readonly accessoryId: string | null
@@ -472,8 +473,9 @@ export function toPriceTable(
         label: localizedTextFromJson(modifier.label),
         kind: MODIFIER_KIND[modifier.kind],
         target: MODIFIER_TARGET[modifier.target],
-        // El descuento guarda su código en `code`; el resto, la referencia del catálogo.
-        targetId: modifier.target === 'DISCOUNT' ? modifier.code : targetId(modifier),
+        // El descuento guarda su referencia en `discount_code` (`null` = automático, CIF-74); el
+        // resto de objetivos, la referencia del catálogo.
+        targetId: modifier.target === 'DISCOUNT' ? modifier.discountCode : targetId(modifier),
         amount: modifier.amountCents === null ? null : Money.fromCents(modifier.amountCents),
         percentage: modifier.percentage === null ? null : modifier.percentage.toFixed(2),
       }),

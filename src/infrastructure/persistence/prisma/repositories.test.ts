@@ -37,16 +37,18 @@ const IDS = {
   color: '33333333-3333-7333-8333-333333333333',
   accessory: '44444444-4444-7444-8444-444444444444',
   tariff: '55555555-5555-7555-8555-555555555555',
+  tariffAuto: '55555555-5555-7555-8555-555555555556',
   band: '66666666-6666-7666-8666-666666666666',
   modifier: '77777777-7777-7777-8777-777777777777',
   modifierDiscount: '88888888-8888-7888-8888-888888888888',
+  modifierAutoDiscount: '99999999-9999-7999-8999-999999999999',
 } as const
 
 async function clean(prisma: PrismaClient): Promise<void> {
   await prisma.quoteLine.deleteMany({})
   await prisma.quote.deleteMany({})
   await prisma.manualQuoteRequest.deleteMany({})
-  await prisma.tariffVersion.deleteMany({ where: { id: IDS.tariff } })
+  await prisma.tariffVersion.deleteMany({ where: { id: { in: [IDS.tariff, IDS.tariffAuto] } } })
   await prisma.doorSeries.deleteMany({ where: { id: IDS.series } })
   await prisma.catalogText.deleteMany({})
   await prisma.finish.deleteMany({ where: { id: IDS.finish } })
@@ -165,12 +167,48 @@ async function seed(prisma: PrismaClient): Promise<void> {
                 sortOrder: 1,
               },
               {
+                // El código del modificador difiere del código de descuento: el motor debe leer
+                // `discount_code`, no `code` (CIF-74, B2).
                 id: IDS.modifierDiscount,
-                code: 'PROMO10',
+                code: 'PROMO10-10PCT',
                 kind: 'PERCENTAGE',
                 target: 'DISCOUNT',
+                discountCode: 'PROMO10',
                 percentage: '10',
                 sortOrder: 2,
+              },
+            ],
+          },
+        },
+      },
+    },
+  })
+
+  // Tarifa futura (fuera de vigencia) con un descuento automático: su código de descuento es nulo.
+  await prisma.tariffVersion.create({
+    data: {
+      id: IDS.tariffAuto,
+      seriesId: IDS.series,
+      versionNumber: 2,
+      status: 'PUBLISHED',
+      strategy: 'PER_SQUARE_METRE',
+      validFrom: new Date('2027-01-01T00:00:00.000Z'),
+      taxRatePercent: '21',
+      currency: 'EUR',
+      publishedAt: new Date('2027-01-01T00:00:00.000Z'),
+      priceTable: {
+        create: {
+          perSquareMetreCents: 42_000n,
+          modifiers: {
+            create: [
+              {
+                id: IDS.modifierAutoDiscount,
+                code: 'PROMO-AUTO',
+                kind: 'PERCENTAGE',
+                target: 'DISCOUNT',
+                discountCode: null,
+                percentage: '5',
+                sortOrder: 1,
               },
             ],
           },
@@ -236,9 +274,29 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
       expect(pricing?.priceTable.perSquareMetre?.toString()).toBe('400.00')
       expect(pricing?.priceTable.modifiers.map((modifier) => modifier.code)).toEqual([
         'INSTALACION',
-        'PROMO10',
+        'PROMO10-10PCT',
       ])
       expect(pricing?.priceTable.modifiers[1]?.percentage).toBe('10.00')
+      expect(pricing?.priceTable.modifiers[1]?.isDiscount).toBe(true)
+      expect(pricing?.priceTable.modifiers[1]?.targetId).toBe('PROMO10')
+    })
+
+    it('hace round-trip del descuento por código y del descuento automático', async () => {
+      const versions = await tariffPricingRepository.listBySeriesId(IDS.series)
+
+      const withCode = versions.find((pricing) => pricing.tariff.id === IDS.tariff)
+      const automatic = versions.find((pricing) => pricing.tariff.id === IDS.tariffAuto)
+
+      const codeDiscount = withCode?.priceTable.modifiers.find(
+        (modifier) => modifier.code === 'PROMO10-10PCT',
+      )
+      const automaticDiscount = automatic?.priceTable.modifiers.find(
+        (modifier) => modifier.code === 'PROMO-AUTO',
+      )
+
+      expect(codeDiscount?.targetId).toBe('PROMO10')
+      expect(automaticDiscount?.isDiscount).toBe(true)
+      expect(automaticDiscount?.targetId).toBeNull()
     })
 
     it('no da tarifa vigente fuera de la vigencia', async () => {
@@ -303,7 +361,11 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
 
       const stored = await quoteRepository.findByReference(issued.quote.reference)
 
-      expect(stored?.lines.map((line) => line.code)).toEqual(['base', 'INSTALACION', 'PROMO10'])
+      expect(stored?.lines.map((line) => line.code)).toEqual([
+        'base',
+        'INSTALACION',
+        'PROMO10-10PCT',
+      ])
       expect(stored?.configurationSnapshot.extras).toEqual(['installation'])
       expect(stored?.tariffVersionId).toBe(IDS.tariff)
     })

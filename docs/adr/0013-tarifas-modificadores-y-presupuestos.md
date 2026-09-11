@@ -30,7 +30,11 @@ reversibles y una API estable para el configurador (CIF-7) y el panel (CIF-9).
 2. **El dominio modela la tabla como objeto de valor validado** (`PriceTable`, `SizeBand`,
    `PriceModifier` en `src/domain/pricing`): coherencia estrategia↔precio, bandas sin solapes,
    modificadores con importe o porcentaje (nunca los dos) y `targetId` obligatorio solo para
-   acabado, color y accesorios.
+   acabado, color y accesorios. En un modificador `discount`, `targetId` es el **código de
+   descuento** y `null` significa **descuento automático**; el esquema lo representa con la columna
+   `tariff_modifier.discount_code` (`NULL` = automático), de modo que el round-trip dominio↔base de
+   datos es simétrico y un descuento automático no se confunde con uno por código (CIF-74,
+   hallazgo B2).
 3. **Orden de cálculo determinista y documentado** (`calculateQuotePrice`): precio base → adiciones
    (acabado, color, accesorios, instalación, portes, urgencia) → descuentos en orden, sin dejar el
    subtotal por debajo de cero → IVA sobre el subtotal. Los porcentuales se aplican sobre el precio
@@ -45,9 +49,10 @@ reversibles y una API estable para el configurador (CIF-7) y el panel (CIF-9).
 6. **La etiqueta se resuelve en el idioma guardado en el presupuesto**, no en el del que consulta:
    el documento se emitió en un idioma y se renderiza igual siempre (ADR-0005).
 7. **Migración propia y reversible**
-   (`20260911130000_tarifas_precios_y_presupuestos`), con `down.sql` y con las restricciones `CHECK`
-   como última red (importes no negativos, IVA 0-100, coherencia tipo/porcentaje de modificador,
-   coherencia objetivo ↔ referencia, `total = subtotal + IVA`).
+   (`20260911130000_tarifas_precios_y_presupuestos` y
+   `20260911140000_descuento_automatico_en_modificadores`), con `down.sql` y con las restricciones
+   `CHECK` como última red (importes no negativos, IVA 0-100, coherencia tipo/porcentaje de
+   modificador, coherencia objetivo ↔ referencia, `total = subtotal + IVA`).
 8. **Modo demostración:** sin `DATABASE_URL` (o con `CATALOG_DEMO_MODE=true`) el contenedor usa
    adaptadores en memoria con un catálogo inventado, para que el configurador, la API y el E2E
    funcionen sin PostgreSQL. En producción `DATABASE_URL` es obligatoria.
@@ -71,5 +76,8 @@ reversibles y una API estable para el configurador (CIF-7) y el panel (CIF-9).
   así que vive en la tarifa (ADR-0003). Descartado.
 - **Referencia con secuencia global de PostgreSQL:** más simple, pero mezcla años y agota los seis
   dígitos antes; el contador por año es explícito y testeable. Descartado.
+- **Dejar el descuento automático fuera del MVP** (opción b de la revisión de CIF-71): habría
+  exigido eliminar la rama `targetId === null` del dominio y del motor, que el panel (CIF-9)
+  necesita. Descartado.
 - **Recalcular el precio del presupuesto al consultarlo:** rompe la promesa de precio congelado.
   Descartado.

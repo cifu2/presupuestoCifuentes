@@ -10,6 +10,8 @@ apartado _Seguridad_).
 | ---------------------- | ------------------------------ | -------------------------------- | --------------------------- | -------------------------------------------- |
 | `DATABASE_URL`         | Neon, rama `production`        | Neon, base `presupuesto_preview` | PostgreSQL local o rama dev | Vercel (Production / Preview) y `.env.local` |
 | `NEXT_PUBLIC_SITE_URL` | `https://<dominio-produccion>` | URL del deployment de preview    | `http://localhost:3000`     | Vercel (Production / Preview) y `.env.local` |
+| `CATALOG_DEMO_MODE`    | `false`                        | `false`                          | `false`                     | Vercel (opcional) y `.env.local`             |
+| `QUOTE_VALIDITY_DAYS`  | `30`                           | `30`                             | `30`                        | Vercel (opcional) y `.env.local`             |
 | `NODE_ENV`             | lo fija Vercel (`production`)  | lo fija Vercel (`production`)    | lo fija Next.js             | No se configura a mano                       |
 | `VERCEL_ENV`           | lo fija Vercel (`production`)  | lo fija Vercel (`preview`)       | no definida                 | No se configura a mano                       |
 
@@ -20,6 +22,10 @@ apartado _Seguridad_).
 - `/api/health` informa `environment` con `VERCEL_ENV ?? NODE_ENV`: en Vercel distingue `production`
   de `preview` (dentro de Vercel, `NODE_ENV` es `production` en ambos), y fuera de Vercel cae en
   `NODE_ENV`.
+- `CATALOG_DEMO_MODE` se interpreta como booleano **textual** (`"true"`/`"false"`, y sus
+  variantes `1`/`0`, `yes`/`no`, `on`/`off`); un valor ambiguo falla al arrancar en lugar de
+  activar el modo demo en silencio. `z.coerce.boolean()` no vale porque `Boolean("false")` es
+  `true` (CIF-74).
 - `NEXT_PUBLIC_SITE_URL` es pública por diseño (viaja al navegador). `DATABASE_URL` es un secreto: se
   marca como _Sensitive_ en Vercel y no se lee nunca desde el cliente.
 - `.env.example` solo contiene valores de ejemplo sin credenciales y sirve de plantilla local.

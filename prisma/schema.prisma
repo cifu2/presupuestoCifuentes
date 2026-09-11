@@ -358,6 +358,9 @@ model TariffModifier {
   label           Json?
   kind            ModifierKind
   target          ModifierTarget
+  /// Código de descuento al que aplica un modificador `discount`. `null` = descuento automático
+  /// (CIF-74); el código del descuento no se deriva de `code`.
+  discountCode    String?        @map("discount_code") @db.VarChar(32)
   finishId        String?        @map("finish_id") @db.Uuid
   finish          Finish?        @relation(fields: [finishId], references: [id], onDelete: SetNull)
   colorId         String?        @map("color_id") @db.Uuid
