@@ -62,6 +62,10 @@ jobs:
         run: ./scripts/secret-scan.sh
       - name: Test del contrato de redacción del barrido
         run: ./scripts/secret-scan.test.sh
+      - name: Guardia de la identidad de aprobación (ADR-0015)
+        run: ./scripts/approval-guard.sh --static-only
+      - name: Test de la guardia de la identidad de aprobación
+        run: ./scripts/approval-guard.test.sh
       - run: pnpm lint
       - run: pnpm typecheck
       - name: migraciones en la base de datos de test

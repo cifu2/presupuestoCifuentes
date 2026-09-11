@@ -73,6 +73,7 @@ Estas credenciales **no van a Vercel**: son de operación y las aporta el propie
 | Token de GitHub (`repo` + `workflow`) | Crear el repositorio y proteger `main`   | Secreto `github/devops-token`          |
 | Token de Vercel                       | Enlazar el proyecto e inyectar variables | Secreto `vercel/devops-token`          |
 | Cadena de conexión de Neon            | Migraciones y restauración               | Secreto `neon/production-database-url` |
+| Token del revisor (`public_repo`)     | Aprobar PRs con identidad no autora      | Secreto `github/review-bot-token`      |
 
 Se usan como variables de entorno del proceso (`GITHUB_DEVOPS_TOKEN`, `VERCEL_DEVOPS_TOKEN`,
 `NEON_PRODUCTION_DATABASE_URL`) y **nunca** se pasan como argumento en claro ni se imprimen. Los
@@ -94,6 +95,7 @@ propietario escribe el valor una sola vez en la interfaz, queda cifrado y el age
 | Secreto en Paperclip           | `configPath` del binding           | Variable de proceso            |
 | ------------------------------ | ---------------------------------- | ------------------------------ |
 | `github/devops-token`          | `env.GITHUB_DEVOPS_TOKEN`          | `GITHUB_DEVOPS_TOKEN`          |
+| `github/review-bot-token`      | `env.GITHUB_REVIEW_BOT_TOKEN`      | `GITHUB_REVIEW_BOT_TOKEN`      |
 | `vercel/devops-token`          | `env.VERCEL_DEVOPS_TOKEN`          | `VERCEL_DEVOPS_TOKEN`          |
 | `neon/production-database-url` | `env.NEON_PRODUCTION_DATABASE_URL` | `NEON_PRODUCTION_DATABASE_URL` |
 
@@ -162,8 +164,16 @@ Los `PAPERCLIP_API_KEY` son JWT **por run**: caducan con el run y no se rotan a 
 
 ```bash
 scripts/despliegue-preflight.sh
+GH_TOKEN=... scripts/approval-guard.sh --require-api   # puerta de aprobación (ADR-0015)
 ```
 
 Informe de solo lectura (usuario del token, alcances, repositorio, protección de `main`, proyecto de
 Vercel, variables por entorno y accesibilidad de la base de datos). No imprime valores y devuelve 1
 si queda algo pendiente: es la primera parada cuando el despliegue no arranca.
+
+La guardia de aprobación comprueba que ningún workflow puede aprobar PRs y que
+`can_approve_pull_request_reviews` sigue en `false`. **Cadencia semanal y dueño: DevOps**, mediante
+la rutina de Paperclip «Comprobar la puerta de aprobación de PRs»; el CI ejecuta la mitad estática en
+cada PR (`--static-only`, sin token). La mitad dinámica necesita el token del propietario
+(`Administration: read`), no el del revisor, que recibe `403`
+([ADR-0015](adr/0015-identidad-de-aprobacion-de-prs.md), punto 5).
