@@ -57,3 +57,55 @@ Estas credenciales **no van a Vercel**: son de operación y las aporta el propie
 
 Se usan como variables de entorno del proceso (`GH_TOKEN`, `VERCEL_TOKEN`, `PRODUCTION_DATABASE_URL`)
 y **nunca** se pasan como argumento en claro ni se imprimen.
+
+## 5. Entrega de credenciales al agente (Paperclip Secrets)
+
+Las credenciales de operación **no se pegan** en un comentario de incidencia, en el chat de un run, en
+un PR, en un documento ni en una captura. El canal soportado es el gestor de secretos de Paperclip: el
+propietario escribe el valor una sola vez en la interfaz, queda cifrado y el agente solo ve metadatos.
+
+### 5.1 Nombres acordados
+
+| Secreto en Paperclip           | `configPath` del binding         | Variable de proceso       |
+| ------------------------------ | -------------------------------- | ------------------------- |
+| `github/devops-token`          | `env.GH_TOKEN`                   | `GH_TOKEN`                |
+| `vercel/devops-token`          | `env.VERCEL_TOKEN`               | `VERCEL_TOKEN`            |
+| `neon/production-database-url` | `access.PRODUCTION_DATABASE_URL` | `PRODUCTION_DATABASE_URL` |
+
+### 5.2 Alta del secreto
+
+1. Interfaz de Paperclip → **Company settings → Secrets** (`/company/settings/secrets`).
+2. _Create secret_ con el nombre de la tabla y el valor. El valor no se vuelve a mostrar.
+3. En el secreto, añadir un binding al agente **DevOps** con el `configPath` de la tabla.
+
+Modos de entrega:
+
+- `env.<KEY>`: el valor se inyecta en el entorno de cada run del agente. Cómodo para tokens que se
+  usan en todos los runs.
+- `access.<alias>`: no se inyecta; el agente pide el valor puntualmente con
+  `POST /api/agents/me/secrets/<alias>/value` (lectura auditada). Preferido para lo que se usa poco,
+  como la cadena de Neon.
+
+### 5.3 Alcance mínimo
+
+- **GitHub:** PAT _fine-grained_ limitado a la organización o al repositorio del proyecto, con
+  `contents:write`, `pull_requests:write`, `workflows:write`, `administration:write` (protección de
+  rama) y `metadata:read`; caducidad ≤ 90 días.
+- **Vercel:** token de equipo, no personal, con acceso solo al equipo del proyecto.
+- **Neon:** cadena de conexión del rol de aplicación para `DATABASE_URL` y, aparte, credencial de
+  administración del proyecto para crear ramas y restaurar.
+
+### 5.4 Comprobación desde el agente
+
+```bash
+PAPERCLIP_API_BASE="${PAPERCLIP_API_URL%/}"; PAPERCLIP_API_BASE="${PAPERCLIP_API_BASE%/api}"
+curl -s -H "Authorization: Bearer $PAPERCLIP_API_KEY" "$PAPERCLIP_API_BASE/api/agents/me/secrets"
+```
+
+Devuelve solo metadatos (nombre, alias, versión y modo de entrega); nunca el valor.
+
+### 5.5 Rotación
+
+Si un valor aparece en un log, una captura, un comentario o un transcript de run, se considera
+filtrado: se rota en su origen (GitHub / Vercel / Neon), se actualiza el secreto en Paperclip y se
+anota el incidente **sin** reproducir el valor.
