@@ -30,6 +30,19 @@ const TARIFF_CI_100_V1 = '0192f1b0-0000-7000-8000-000000000101'
 const TARIFF_CI_200_V1 = '0192f1b0-0000-7000-8000-000000000201'
 const TARIFF_CI_300_V1 = '0192f1b0-0000-7000-8000-000000000301'
 
+/**
+ * Borradores del panel: versiones sin tabla de precios que el propietario todavía no ha publicado.
+ * El E2E de publicación (CIF-86) los necesita para cubrir el 200 y el 409, que exigen un borrador
+ * real; `InMemoryCatalogStore` acepta versiones sin tabla desde su `tariffVersions`.
+ *
+ * - `TARIFF_CI_400_2027_DRAFT`: vigencia futura, así que publicarla no cambia el precio vigente de
+ *   la serie (el configurador sigue pasando a presupuesto manual); es el caso **sin** solape.
+ * - `TARIFF_CI_100_V2_DRAFT`: solapa con la v1 publicada de la serie CI-100 (vigencia abierta), así
+ *   que la invariante de no solapamiento debe rechazarla sin escribir.
+ */
+const TARIFF_CI_400_2027_DRAFT = '0192f1b0-0000-7000-8000-000000000401'
+const TARIFF_CI_100_V2_DRAFT = '0192f1b0-0000-7000-8000-000000000102'
+
 function money(value: string): Money {
   return Money.fromDecimalString(value)
 }
@@ -51,6 +64,31 @@ function tariff(props: {
     currency: 'EUR',
     notes: null,
     publishedAt: SEED_INSTANT,
+    createdAt: SEED_INSTANT,
+    updatedAt: SEED_INSTANT,
+  })
+}
+
+/** Borrador: misma tarifa que `tariff` pero sin publicar, sin tabla de precios y con su vigencia. */
+function draftTariff(props: {
+  id: string
+  seriesId: string
+  strategy: TariffVersion['strategy']
+  versionNumber?: number
+  validFrom?: Date
+  validUntil?: Date | null
+}): TariffVersion {
+  return TariffVersion.create({
+    id: props.id,
+    seriesId: props.seriesId,
+    versionNumber: props.versionNumber ?? 1,
+    status: 'draft',
+    strategy: props.strategy,
+    validity: ValidityPeriod.of(props.validFrom ?? SEED_INSTANT, props.validUntil ?? null),
+    taxRatePercent: '21',
+    currency: 'EUR',
+    notes: null,
+    publishedAt: null,
     createdAt: SEED_INSTANT,
     updatedAt: SEED_INSTANT,
   })
@@ -242,6 +280,7 @@ export function buildDemoCatalog(): CatalogStoreSnapshot {
   const catalogoSeries = series[0] as DoorSeries
   const ci200 = series[1] as DoorSeries
   const ci300 = series[2] as DoorSeries
+  const ci400 = series[3] as DoorSeries
 
   const pricing = [
     {
@@ -382,7 +421,32 @@ export function buildDemoCatalog(): CatalogStoreSnapshot {
     },
   ]
 
-  return { series, finishes: [lacado, madera], colors, accessories, pricing }
+  const drafts = [
+    draftTariff({
+      id: TARIFF_CI_400_2027_DRAFT,
+      seriesId: ci400.id,
+      strategy: 'per_square_metre',
+      validFrom: new Date('2027-01-01T00:00:00.000Z'),
+      validUntil: new Date('2028-01-01T00:00:00.000Z'),
+    }),
+    draftTariff({
+      id: TARIFF_CI_100_V2_DRAFT,
+      seriesId: catalogoSeries.id,
+      strategy: 'per_square_metre',
+      versionNumber: 2,
+      validFrom: new Date('2027-01-01T00:00:00.000Z'),
+    }),
+  ]
+
+  return {
+    series,
+    finishes: [lacado, madera],
+    colors,
+    accessories,
+    pricing,
+    // El panel lista versiones con y sin tabla de precios; los borradores aún no dan precio.
+    tariffVersions: [...pricing.map((entry) => entry.tariff), ...drafts],
+  }
 }
 
 export function createDemoCatalogStore(): InMemoryCatalogStore {
