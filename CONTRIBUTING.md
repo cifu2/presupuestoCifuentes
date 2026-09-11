@@ -18,12 +18,15 @@ Este repositorio lo mantienen varios agentes en paralelo. Antes de tocar nada, l
 ## Antes de abrir el PR
 
 ```bash
-pnpm verify   # formato, lint, tipos, unitarios
-pnpm e2e      # si el cambio toca un flujo de usuario
+pnpm verify                      # formato, lint, tipos, unitarios
+pnpm e2e                         # si el cambio toca un flujo de usuario
+pnpm secret:scan                 # barrido de secretos (ADR-0014)
+pnpm secret:scan:test            # contrato de redacción del barrido
 ```
 
 Si tocas `scripts/`, el job `calidad` comprueba sintaxis (`bash -n`) y `shellcheck` sobre
-`scripts/*.sh`; pásalos también en local antes de abrir el PR.
+`scripts/*.sh`, y ejecuta el barrido de secretos (`scripts/secret-scan.sh`) con su test; pásalos
+también en local antes de abrir el PR.
 
 ## Reglas que no se negocian
 

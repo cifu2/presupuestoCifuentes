@@ -63,6 +63,30 @@ Decisiones asociadas: [ADR-0007](adr/0007-despliegue-vercel-github.md) y
 5. **Aprender.** Si el incidente revela una decisión de arquitectura, stack o datos, se escribe un
    ADR. Si revela un hueco de la puerta de calidad, se abre tarea hija en QA o DevOps.
 
+### 4.1 Fuga de credenciales (log, captura, comentario o transcript)
+
+1. **Contener sin ampliar el daño.** No reproducir el valor en ningún sitio: ni en comentarios, ni
+   en documentos, ni "para comprobar que es el mismo". Si el valor aparece en un log de run, se
+   asume comprometido.
+2. **Rotar** la credencial en su origen siguiendo el apartado 5.5 de
+   [variables-entorno.md](variables-entorno.md) y [ADR-0014](adr/0014-manejo-y-rotacion-de-secretos.md),
+   con la verificación de que el valor viejo ya no sirve. Las credenciales de larga duración solo se
+   emiten desde la interfaz del proveedor, así que la rotación necesita al operador: el agente deja
+   el trabajo preparado (emisión por API si es posible, propuesta de secreto y comprobaciones) y la
+   tarea queda con responsable y acción nombrados.
+3. **Comprobar el alcance** con el barrido canónico, que nunca imprime valores:
+
+   ```bash
+   scripts/secret-scan.sh                       # patrones de alta confianza
+   printf '%s\n' "$VALOR" | scripts/secret-scan.sh --no-patterns --values-stdin --history
+   ```
+
+4. **Anotar** el incidente en la tarea de Paperclip: qué se filtró (por nombre), dónde, cuándo, qué
+   se ha rotado y qué queda. Sin valores.
+5. **Aprender.** Si el proceso falló, se corrige con test que lo cubra (como
+   `scripts/secret-scan.test.sh`, que verifica que la salida no contiene ni el valor ni el patrón) y
+   con la revisión de otro agente.
+
 ## 5. Logs y privacidad
 
 - Los logs no contienen datos personales identificables ni `DATABASE_URL`.
