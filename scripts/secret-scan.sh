@@ -4,7 +4,8 @@
 #
 # Busca credenciales en los ficheros **rastreados** por git del repositorio y, opcionalmente, en todo
 # su historial. Nunca imprime el valor buscado, el patrón ni el texto coincidente: solo la regla y
-# `ruta:línea`. Ese contrato es la lección del run c7f69293 (CIF-88): el barrido era correcto, pero
+# `ruta:línea` (en `--history`, `<commit>:<ruta>:<línea>`). Ese contrato es la lección del run
+# c7f69293 (CIF-88): el barrido era correcto, pero
 # un `echo` de los patrones expandidos dejó los valores de las credenciales en el log del run.
 #
 # Uso:
@@ -53,8 +54,8 @@ Uso:
     --allowlist FILE    Fichero con globs de rutas a ignorar (uno por línea; `#` comenta).
     -h | --help
 
-Salida: líneas `[FUGA] <regla> <ruta>:<línea>` y un resumen. Nunca imprime el valor, el patrón ni el
-texto coincidente.
+Salida: líneas `[FUGA] <regla> <ubicación>` y un resumen. La ubicación es `ruta:línea` y, con
+`--history`, `<commit>:<ruta>:<línea>`. Nunca imprime el valor, el patrón ni el texto coincidente.
 Código de salida: 0 sin hallazgos, 1 con hallazgos, 2 error de uso, 69 falta una herramienta.
 TXT
 }
@@ -199,12 +200,20 @@ scan_matches() {
 }
 
 scan_history() {
-  local matches
+  local matches revs=()
   [[ -s "$VALUES_FILE" ]] || return 0
   command -v git >/dev/null 2>&1 || return 0
   git -C "$TARGET_DIR" rev-parse --git-dir >/dev/null 2>&1 || return 0
-  # shellcheck disable=SC2046
-  matches="$(git -C "$TARGET_DIR" grep -I -F -n -f "$VALUES_FILE" $(git -C "$TARGET_DIR" rev-list --all) 2>/dev/null |
+  # Se pasan las revisiones como argumentos, no por sustitución sin comillas: una revisión rara no
+  # puede convertirse en opciones de `git grep`.
+  while IFS= read -r rev; do
+    [[ -n "$rev" ]] && revs+=("$rev")
+  done < <(git -C "$TARGET_DIR" rev-list --all 2>/dev/null || true)
+  # Sin revisiones no hay historial. `git grep` sin revisión escanearía el índice con el formato
+  # `<ruta>:<línea>:<contenido>`, y el `cut` de abajo dejaría el contenido en la salida (CIF-99).
+  # El índice ya lo cubre `scan_matches`, que redacta.
+  [[ ${#revs[@]} -gt 0 ]] || return 0
+  matches="$(git -C "$TARGET_DIR" grep -I -F -n -f "$VALUES_FILE" "${revs[@]}" 2>/dev/null |
     cut -d: -f1,2,3 || true)"
   while IFS= read -r location; do
     [[ -z "$location" ]] && continue

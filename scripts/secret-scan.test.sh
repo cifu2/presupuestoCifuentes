@@ -109,8 +109,47 @@ codigo=0
 comprobar "argumento no reconocido: código 2" test "$codigo" -eq 2
 comprobar "argumento no reconocido: no reproduce el argumento" no_contiene "$salida" "$fake_gh"
 
-# --- Caso 8: no deja ficheros temporales con valores -------------------------
-restos="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'secret-scan.*' 2>/dev/null | wc -l | tr -d ' ')"
+# --- Caso 8: --history localiza el valor aunque ya no esté en el árbol -------
+hist="$TMP/historial"
+mkdir -p "$hist"
+git -C "$hist" init -q
+git -C "$hist" config user.email 'test@example.invalid'
+git -C "$hist" config user.name 'test'
+valor_historial="valor-historial-$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+printf 'const token = "%s";\n' "$valor_historial" > "$hist/token-viejo.ts"
+git -C "$hist" add token-viejo.ts
+git -C "$hist" commit -qm 'añade un token sintético'
+git -C "$hist" rm -q token-viejo.ts
+git -C "$hist" commit -qm 'borra el token sintético'
+salida="$TMP/s9.txt"
+codigo=0
+printf '%s\n' "$valor_historial" | "$SCANNER" --path "$hist" --no-patterns --values-stdin --history > "$salida" 2>&1 || codigo=$?
+comprobar "--history: código 1" test "$codigo" -eq 1
+comprobar "--history: localiza la ruta y la línea" contiene "$salida" 'token-viejo.ts:1'
+comprobar "--history: no imprime el valor" no_contiene "$salida" "$valor_historial"
+comprobar "--history: no imprime el contenido de la línea" no_contiene "$salida" 'const token ='
+
+# --- Caso 9: sin commits no se imprime el contenido del índice ---------------
+# Regresión de CIF-99: con `git rev-list --all` vacío, `git grep` sin revisión imprime
+# `<ruta>:<línea>:<contenido>` y el `cut` deja el contenido en la salida.
+sin_commits="$TMP/sin-commits"
+mkdir -p "$sin_commits"
+git -C "$sin_commits" init -q
+valor_sin_commits="valor-sin-commits-$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+printf 'const token = "%s";\n' "$valor_sin_commits" > "$sin_commits/token.ts"
+git -C "$sin_commits" add token.ts
+salida="$TMP/s10.txt"
+codigo=0
+printf '%s\n' "$valor_sin_commits" | "$SCANNER" --path "$sin_commits" --no-patterns --values-stdin --history > "$salida" 2>&1 || codigo=$?
+comprobar "sin commits: código 1 por el índice" test "$codigo" -eq 1
+comprobar "sin commits: localiza la ruta y la línea" contiene "$salida" 'token.ts:1'
+comprobar "sin commits: no imprime el valor" no_contiene "$salida" "$valor_sin_commits"
+comprobar "sin commits: no imprime el contenido de la línea" no_contiene "$salida" 'const token ='
+
+# --- Caso 10: no deja ficheros temporales con valores ------------------------
+# Solo directorios con la plantilla exacta de `mktemp`; un fichero ajeno llamado `secret-scan.notas`
+# no debe teñir el resultado.
+restos="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name 'secret-scan.??????' 2>/dev/null | wc -l | tr -d ' ')"
 comprobar "sin ficheros temporales con valores" test "$restos" -eq 0
 
 if [[ "$fallos" -eq 0 ]]; then
