@@ -164,8 +164,16 @@ Los `PAPERCLIP_API_KEY` son JWT **por run**: caducan con el run y no se rotan a 
 
 ```bash
 scripts/despliegue-preflight.sh
+GH_TOKEN=... scripts/approval-guard.sh --require-api   # puerta de aprobación (ADR-0015)
 ```
 
 Informe de solo lectura (usuario del token, alcances, repositorio, protección de `main`, proyecto de
 Vercel, variables por entorno y accesibilidad de la base de datos). No imprime valores y devuelve 1
 si queda algo pendiente: es la primera parada cuando el despliegue no arranca.
+
+La guardia de aprobación comprueba que ningún workflow puede aprobar PRs y que
+`can_approve_pull_request_reviews` sigue en `false`. **Cadencia semanal y dueño: DevOps**, mediante
+la rutina de Paperclip «Comprobar la puerta de aprobación de PRs»; el CI ejecuta la mitad estática en
+cada PR (`--static-only`, sin token). La mitad dinámica necesita el token del propietario
+(`Administration: read`), no el del revisor, que recibe `403`
+([ADR-0015](adr/0015-identidad-de-aprobacion-de-prs.md), punto 5).

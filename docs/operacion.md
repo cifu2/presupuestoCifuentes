@@ -107,12 +107,23 @@ secreto `github/review-bot-token` (binding `env.GITHUB_REVIEW_BOT_TOKEN`, tabla 
 ### 6.1 Comprobar que la puerta sigue cerrada
 
 ```bash
-scripts/approval-guard.sh --require-api   # ajustes del repositorio + workflows (necesita token)
+scripts/approval-guard.sh --require-api   # ajustes del repositorio + workflows (token del propietario)
 scripts/approval-guard.sh --static-only   # solo workflows; es lo que corre el CI
 scripts/approval-guard.test.sh            # test de la guardia
 ```
 
+- La mitad dinámica (`--require-api`) lee `GH_TOKEN | GITHUB_DEVOPS_TOKEN`, el token del
+  propietario/DevOps, que tiene `Administration: read` sobre el repositorio. El token del revisor
+  (`GITHUB_REVIEW_BOT_TOKEN`) es de **escritura** y este endpoint le responde `403`: si aparece ese
+  `403`, es la credencial equivocada, no la puerta abierta (la guardia lo dice con un `INFO`).
+  **Cadencia:** semanal, por la rutina de Paperclip «Comprobar la puerta de aprobación de PRs»
+  (asignada a DevOps, apartado 5.6 de [variables-entorno.md](variables-entorno.md)), además de la
+  pasada estática obligatoria en cada PR.
 - Debe decir `can_approve_pull_request_reviews=false` y `default_workflow_permissions=read`.
+- La mitad estática es un **tripwire léxico**: cierra el caso fácil (permisos, `event: APPROVE`
+  escrito en el YAML, `gh pr review --approve`/`-a`) pero se le escapan las _actions_ compuestas, los
+  scripts auxiliares y los valores que no están en el texto. Lo que impide aprobar de verdad es el
+  ajuste del repositorio en `false`; el tripwire solo deja rastro y frena el descuido.
 - Si aparece `VIOLACION` por `ajuste-aprobacion-bot`, alguien ha vuelto a habilitar la aprobación
   desde Actions: se desactiva de inmediato (`PATCH /repos/:owner/:repo/actions/permissions/workflow`
   con `can_approve_pull_request_reviews=false`) y se anota el incidente sin valores.

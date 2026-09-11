@@ -42,21 +42,33 @@ identidad distinta de la del autor. Hoy no existe:
    machine user vía API (`POST /repos/:owner/:repo/pulls/:n/reviews`, `event: APPROVE`), nunca con
    `github-actions[bot]`.
 5. **Guardia automática.** `scripts/approval-guard.sh` con su test `scripts/approval-guard.test.sh`
-   se ejecuta en la puerta `calidad`: ningún workflow puede pedir escritura sobre PRs
-   (`pull-requests: write`), ni `permissions: write-all`, ni llamar al API de revisiones con
-   `event: APPROVE`, ni usar `gh pr review --approve`; en modo operación (`--require-api`) además
-   verifica los dos ajustes del repositorio. El CI lo ejecuta en modo `--static-only`, que no
-   necesita token.
+   se ejecuta en la puerta `calidad`. Tiene dos mitades, con alcances distintos:
+   - **Estática** (lo que corre el CI, `--static-only`, sin token): un **tripwire léxico** sobre los
+     workflows de primer nivel de `.github/workflows/`. Falla si piden escritura sobre PRs
+     (`pull-requests: write`), si usan `permissions: write-all`, si llaman al API de revisiones con
+     el evento que aprueba —también cuando el valor llega por variable— o si usan
+     `gh pr review --approve`/`-a`. **No es análisis semántico**: se le escapan las _actions_
+     compuestas, los scripts auxiliares y los valores que no están escritos en el texto (por ejemplo
+     el evento guardado en un secreto). Es un cierre del caso fácil y un rastro, no una prueba.
+   - **Dinámica** (`--require-api`, con token del propietario: `Administration: read`): verifica que
+     `can_approve_pull_request_reviews` sigue en `false` y `default_workflow_permissions` en `read`.
+     **Esta es la mitad que contiene el riesgo**: con el ajuste en `false` el `GITHUB_TOKEN` no puede
+     aprobar aunque el workflow lo intente. Se ejecuta con **cadencia semanal** mediante la rutina de
+     Paperclip «Comprobar la puerta de aprobación de PRs», asignada a DevOps
+     ([variables-entorno.md](../variables-entorno.md), apartado 5.6). El token del revisor
+     (`GITHUB_REVIEW_BOT_TOKEN`) es de escritura y recibe `403` en ese endpoint: no sirve aquí.
 6. **Quién aprueba.** Un agente distinto del autor del PR, con esta identidad. Arquitectura,
    contratos públicos, datos o seguridad los aprueba además el CTO
    ([CONTRIBUTING](../../CONTRIBUTING.md)).
-7. **Rotación y revocación.** Cada ≤ 90 días o ante cualquier sospecha de filtración, en el orden de
-   ADR-0014 (apartado 5.5): emitir la nueva en GitHub → registrarla en Paperclip y actualizar el
-   binding → verificar con `scripts/approval-guard.sh --require-api` y una aprobación de prueba →
-   revocar la vieja → comprobar que la vieja ya no sirve (401). Si se pierde el control de la
-   cuenta, se retira la colaboración (`DELETE /repos/:owner/:repo/collaborators/cifucorp-review-bot`).
-   Emitir y revocar el token exige la interfaz de la cuenta: es trabajo del board/operador, y la
-   tarea queda con responsable y acción nombrados.
+7. **Rotación y revocación.** Cada ≤ 90 días o ante cualquier sospecha de filtración, en el orden del
+   punto 6 de [ADR-0014](0014-manejo-y-rotacion-de-secretos.md) y del apartado 5.5 de
+   [variables-entorno.md](../variables-entorno.md): emitir la nueva en GitHub → registrarla en
+   Paperclip y actualizar el binding → verificar con `scripts/approval-guard.sh --require-api` (con
+   el token del propietario/DevOps, no con el del revisor) y una aprobación de prueba → revocar la
+   vieja → comprobar que la vieja ya no sirve (401). Si se pierde el control de la cuenta, se retira
+   la colaboración (`DELETE /repos/:owner/:repo/collaborators/cifucorp-review-bot`). Emitir y
+   revocar el token exige la interfaz de la cuenta: es trabajo del board/operador, y la tarea queda
+   con responsable y acción nombrados.
 8. **Emergencia.** Sin la machine user disponible **no** se abre
    `can_approve_pull_request_reviews`. La única vía es la autorización explícita del CTO anotada en
    la tarea; el PR queda bloqueado hasta entonces. La excepción del workflow aprobador queda

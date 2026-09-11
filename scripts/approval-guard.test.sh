@@ -55,7 +55,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$FIX/ok" "$FIX/pr-write" "$FIX/pr-write-sin-espacio" "$FIX/write-all" "$FIX/aprueba" "$FIX/pr-read" "$FIX/vacio"
+mkdir -p "$FIX/ok" "$FIX/pr-write" "$FIX/pr-write-sin-espacio" "$FIX/write-all" "$FIX/aprueba" \
+  "$FIX/pr-read" "$FIX/vacio" "$FIX/yaml-ext" "$FIX/fn-alias" "$FIX/fn-variable" "$FIX/fn-calculado" \
+  "$FIX/fn-secreto"
 
 cat >"$FIX/ok/ci.yml" <<'YML'
 name: CI
@@ -131,6 +133,74 @@ jobs:
       - run: echo hola
 YML
 
+# --- Falsos negativos que QA reprodujo en la revisión del PR #27 (CIF-106) -------------------
+
+# FN-1: `-a` es el alias corto de `--approve` (`gh pr review --help`).
+cat >"$FIX/fn-alias/approve.yml" <<'YML'
+name: revision
+on: [pull_request]
+permissions:
+  contents: read
+jobs:
+  aprobar:
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh pr review 26 -a
+YML
+
+# FN-2: el evento viaja en una variable de entorno.
+cat >"$FIX/fn-variable/approve.yml" <<'YML'
+name: revision
+on: [pull_request]
+permissions:
+  contents: read
+jobs:
+  aprobar:
+    runs-on: ubuntu-latest
+    env:
+      REVIEW_EVENT: APPROVE
+    steps:
+      - run: gh api -X POST "repos/o/r/pulls/26/reviews" -f "event=$REVIEW_EVENT"
+YML
+
+# FN-3: el evento se calcula dentro del propio step.
+cat >"$FIX/fn-calculado/approve.yml" <<'YML'
+name: revision
+on: [pull_request]
+permissions:
+  contents: read
+jobs:
+  aprobar:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          EVENT=$(echo APPROVE)
+          gh api -X POST "repos/o/r/pulls/26/reviews" -f "event=${EVENT}"
+YML
+
+# Limitación declarada: si el evento sale de un secreto no hay nada léxico que leer. Lo contiene la
+# mitad dinámica (`can_approve_pull_request_reviews=false` impide aprobar al GITHUB_TOKEN), no el
+# tripwire. El test fija ese comportamiento para que la limitación sea explícita.
+cat >"$FIX/fn-secreto/approve.yml" <<'YML'
+name: revision
+on: [pull_request]
+permissions:
+  contents: read
+jobs:
+  aprobar:
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh api -X POST "repos/o/r/pulls/26/reviews" -f "event=${{ secrets.REVIEW_EVENT }}"
+YML
+
+# La extensión `.yaml` también se lee.
+cat >"$FIX/yaml-ext/approve.yaml" <<'YML'
+name: revision
+on: [pull_request]
+permissions:
+  pull-requests: write
+YML
+
 echo '== casos estáticos'
 
 run --static-only --workflows-dir "$FIX/ok"
@@ -158,6 +228,30 @@ assert_contains 'señala la regla de aprobación' "aprobacion-desde-actions $FIX
 assert_contains 'señala también el curl con APPROVE' "aprobacion-desde-actions $FIX/aprueba/approve.yml:10"
 assert_not_contains 'no reproduce la línea ni el evento' 'APPROVE'
 assert_not_contains 'no reproduce el fragmento de gh' '--approve'
+
+run --static-only --workflows-dir "$FIX/fn-alias"
+assert_eq 'FN-1 (gh pr review -a) falla' 1 "$RC"
+assert_contains 'FN-1: señala la línea del alias' "aprobacion-desde-actions $FIX/fn-alias/approve.yml:9"
+assert_not_contains 'FN-1: no reproduce la línea' 'gh pr review 26 -a'
+
+run --static-only --workflows-dir "$FIX/fn-variable"
+assert_eq 'FN-2 (evento en variable) falla' 1 "$RC"
+assert_contains 'FN-2: señala la línea de la variable' "aprobacion-desde-actions $FIX/fn-variable/approve.yml:9"
+assert_not_contains 'FN-2: no reproduce la línea' 'REVIEW_EVENT: APPROVE'
+
+run --static-only --workflows-dir "$FIX/fn-calculado"
+assert_eq 'FN-3 (evento calculado) falla' 1 "$RC"
+assert_contains 'FN-3: señala la línea del cálculo' "aprobacion-desde-actions $FIX/fn-calculado/approve.yml:10"
+# El literal con $( ) es justo lo que no debe aparecer en la salida del tripwire.
+# shellcheck disable=SC2016
+assert_not_contains 'FN-3: no reproduce la línea' 'EVENT=$(echo APPROVE)'
+
+run --static-only --workflows-dir "$FIX/fn-secreto"
+assert_eq 'limitación declarada: el evento desde un secreto se le escapa al tripwire' 0 "$RC"
+
+run --static-only --workflows-dir "$FIX/yaml-ext"
+assert_eq 'la extensión .yaml también se analiza' 1 "$RC"
+assert_contains 'señala la regla en el .yaml' "permisos-pr-write $FIX/yaml-ext/approve.yaml:4"
 
 run --static-only --workflows-dir "$FIX/vacio"
 assert_eq 'directorio sin workflows falla' 1 "$RC"
@@ -256,6 +350,22 @@ RC=$?
 assert_eq 'API no accesible con --require-api: falla' 1 "$RC"
 assert_contains 'API no accesible: regla' 'api-no-verificable'
 assert_not_contains 'no imprime el token (403)' "$DUMMY_TOKEN"
+kill "$SERVER_PID" 2>/dev/null
+
+OUT="$(cd "$ROOT" && GH_TOKEN="$DUMMY_TOKEN" bash "$GUARD" --api-base "$API_403" --workflows-dir "$FIX/ok" 2>&1)"
+assert_contains '403: explica que falta Administration: read' 'Administration: read'
+assert_contains '403: distingue el token del revisor' 'cifucorp-review-bot'
+
+API_SIN_CLAVE="$(start_server '{"default_workflow_permissions":"read"}' 200)"
+OUT="$(cd "$ROOT" && GH_TOKEN="$DUMMY_TOKEN" bash "$GUARD" --api-base "$API_SIN_CLAVE" --workflows-dir "$FIX/ok" 2>&1)"
+RC=$?
+assert_eq '200 sin can_approve_pull_request_reviews: no falla sin --require-api' 0 "$RC"
+assert_contains '200 sin la clave: lo dice' 'respuesta sin can_approve_pull_request_reviews'
+
+OUT="$(cd "$ROOT" && GH_TOKEN="$DUMMY_TOKEN" bash "$GUARD" --require-api --api-base "$API_SIN_CLAVE" --workflows-dir "$FIX/ok" 2>&1)"
+RC=$?
+assert_eq '200 sin can_approve_pull_request_reviews: falla con --require-api' 1 "$RC"
+assert_contains '200 sin la clave: regla' 'api-no-verificable'
 kill "$SERVER_PID" 2>/dev/null
 
 echo '== los workflows reales del repositorio'

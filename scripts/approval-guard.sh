@@ -5,12 +5,17 @@
 # La revisión aprobatoria de un PR debe venir de una identidad **no autora** (la machine user de
 # revisión), nunca de GitHub Actions. Esta guardia comprueba las dos mitades de esa puerta:
 #
-#   1. Estática, sin red: ningún workflow de .github/workflows/ pide permiso de escritura sobre PRs
-#      (`pull-requests: write`), ni `permissions: write-all`, ni llama al API de revisiones con
-#      `event: APPROVE`, ni usa `gh pr review --approve`.
+#   1. Estática, sin red: tripwire **léxico** sobre los workflows de .github/workflows/ (primer
+#      nivel, `*.yml` y `*.yaml`) — falla si piden `pull-requests: write`, usan
+#      `permissions: write-all`, llaman al API de revisiones con `event: APPROVE` (también cuando el
+#      valor llega por variable) o usan `gh pr review --approve`/`-a`. No es análisis semántico: se
+#      le escapan las actions compuestas, los scripts auxiliares y los valores que no aparecen en el
+#      texto (por ejemplo un evento guardado en un secreto). Cierra el caso fácil y deja rastro; no
+#      pretende ser exhaustiva.
 #   2. Dinámica, con token de administración: el repositorio sigue con
 #      `can_approve_pull_request_reviews = false` y `default_workflow_permissions = read`, de modo
-#      que Actions no puede aprobar aunque alguien añada el workflow que lo intenta.
+#      que el `GITHUB_TOKEN` no puede aprobar aunque un workflow lo intente. Esta mitad es la que
+#      contiene de verdad el riesgo; la estática es una red de seguridad barata.
 #
 # Contrato de redacción (ADR-0014): la salida nombra la regla y `fichero:línea`; nunca imprime el
 # contenido de la línea ni el valor de un token.
@@ -23,7 +28,11 @@
 #   --api-base URL       Base del API (por defecto, https://api.github.com).
 #   -h | --help
 #
-# Token (solo para la mitad dinámica): GH_TOKEN | GITHUB_DEVOPS_TOKEN.
+# Token (solo para la mitad dinámica): GH_TOKEN | GITHUB_DEVOPS_TOKEN, con permiso de lectura de
+# administración del repositorio (`Administration: read`) — es el del propietario/DevOps. El token
+# del revisor (`GITHUB_REVIEW_BOT_TOKEN`) es de escritura y recibe 403 en este endpoint, así que no
+# sirve para esta comprobación. El valor nunca viaja en `argv` (visible en `ps`): va a curl por su
+# configuración por stdin.
 #
 # Salida: líneas `OK`, `VIOLACION <regla> <fichero>:<línea>` y `OMITIDO`, más un resumen.
 # Código de salida: 0 sin hallazgos, 1 con hallazgos, 2 error de uso, 69 falta una herramienta.
@@ -116,8 +125,11 @@ else
       "$(grep -nE 'pull-requests[[:space:]]*:[[:space:]]*write([^a-zA-Z]|$)' -- "$wf" || true)"
     report_hits 'permisos-write-all' "$wf" \
       "$(grep -nE 'permissions[[:space:]]*:[[:space:]]*write-all([^a-zA-Z]|$)' -- "$wf" || true)"
+    # Tripwire léxico: `-a` es el alias corto de `gh pr review --approve`; el evento puede llegar
+    # por variable (`REVIEW_EVENT: APPROVE`, `EVENT=$(echo APPROVE)`), así que basta con ver la
+    # palabra APPROVE cerca de algo que huela a revisión.
     report_hits 'aprobacion-desde-actions' "$wf" \
-      "$(grep -nE '(event[^a-zA-Z0-9]{0,3}APPROVE|--approve|APPROVE[^a-zA-Z0-9]{0,3}review|reviews?[^a-zA-Z0-9]{0,3}APPROVE)' -- "$wf" || true)"
+      "$(grep -nE '(--approve|gh[[:space:]]+pr[[:space:]]+review[^|]*[[:space:]]-a([^a-zA-Z0-9]|$)|(event|EVENT|review|Review|REVIEW)[^|]{0,40}APPROVE|APPROVE[^|]{0,40}(event|EVENT|review|Review|REVIEW))' -- "$wf" || true)"
   done
   if [[ "$violations" -eq 0 ]]; then
     ok "ningún workflow puede aprobar PRs (${#workflow_files[@]} fichero(s) en $WORKFLOWS_DIR)"
@@ -133,7 +145,7 @@ elif [[ -z "$TOKEN_RESOLVED" ]]; then
   if [[ "$REQUIRE_API" -eq 1 ]]; then
     violation 'api-no-verificable' "$REPO"
   else
-    skipped "ajustes del repositorio: sin GH_TOKEN ni GITHUB_DEVOPS_TOKEN (usa --require-api para exigirlo)"
+    skipped "ajustes del repositorio: sin GH_TOKEN ni GITHUB_DEVOPS_TOKEN, con 'Administration: read' (usa --require-api para exigirlo)"
   fi
 else
   for tool in curl python3; do
@@ -145,15 +157,20 @@ else
 
   TMP_BODY="$(mktemp)"
   trap 'rm -f "$TMP_BODY"' EXIT
-  code="$(curl -sS -o "$TMP_BODY" -w '%{http_code}' \
-    -H "Authorization: Bearer $TOKEN_RESOLVED" -H 'Accept: application/vnd.github+json' \
-    "$API_BASE/repos/$REPO/actions/permissions/workflow" 2>/dev/null || echo 000)"
+  code="$(printf 'header = "Authorization: Bearer %s"\n' "$TOKEN_RESOLVED" |
+    curl -sS --config - -o "$TMP_BODY" -w '%{http_code}' \
+      -H 'Accept: application/vnd.github+json' \
+      "$API_BASE/repos/$REPO/actions/permissions/workflow" 2>/dev/null || echo 000)"
 
   if [[ "$code" != 200 ]]; then
     if [[ "$REQUIRE_API" -eq 1 ]]; then
       violation 'api-no-verificable' "HTTP $code"
     else
       skipped "ajustes del repositorio: el API respondió HTTP $code"
+    fi
+    if [[ "$code" == 403 || "$code" == 401 ]]; then
+      printf '  INFO      %s\n' \
+        "HTTP $code: este endpoint exige 'Administration: read' en el repositorio. Usa el token del propietario/DevOps (GH_TOKEN o GITHUB_DEVOPS_TOKEN), no el del revisor: el de cifucorp-review-bot es de escritura y no puede leer estos ajustes."
     fi
   else
     read -r approve_setting default_perms <<<"$(
@@ -179,7 +196,7 @@ print(str(d.get("can_approve_pull_request_reviews")).lower(), d.get("default_wor
 
     if [[ "$default_perms" == 'read' ]]; then
       ok 'default_workflow_permissions=read'
-    elif [[ "$default_perms" == 'desconocido' || "$default_perms" == 'None' ]]; then
+    elif [[ "$default_perms" == 'desconocido' ]]; then
       if [[ "$REQUIRE_API" -eq 1 ]]; then
         violation 'api-no-verificable' 'respuesta sin default_workflow_permissions'
       else
