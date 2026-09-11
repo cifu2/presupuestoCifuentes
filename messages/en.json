@@ -1,0 +1,94 @@
+{
+  "Metadata": {
+    "title": "Puertas Cifuentes · Made-to-measure quotes",
+    "description": "Configure your made-to-measure door and get a quote in minutes."
+  },
+  "Home": {
+    "eyebrow": "Made-to-measure door manufacturers",
+    "title": "Puertas Cifuentes · Made-to-measure quotes",
+    "intro": "The public configurator will be available here. This page is the MVP skeleton and, for now, its only job is to test the structure, the deployment and the quality gate.",
+    "scopeTitle": "MVP scope",
+    "scope": {
+      "configurator": "Public configurator with 2D preview and live price",
+      "tariffs": "Versioned tariffs by validity period and maximum size per series",
+      "quote": "Quote as PDF and email, multilingual",
+      "admin": "Admin panel for the catalogue and prices"
+    },
+    "footer": "Hexagonal architecture and SOLID · Next.js + PostgreSQL · Vercel"
+  },
+  "LanguageSwitcher": {
+    "label": "Interface language",
+    "options": {
+      "es": "Español",
+      "en": "English"
+    }
+  },
+  "Quote": {
+    "documentTitle": "Quote",
+    "reference": "Reference",
+    "issuedOn": "Issue date",
+    "validUntil": "Valid until",
+    "customer": "Customer",
+    "configuration": "Configuration",
+    "series": "Series",
+    "measurements": "Measurements",
+    "measurementFormat": "{width} × {height} mm",
+    "finish": "Finish",
+    "color": "Colour",
+    "accessories": "Accessories",
+    "noAccessories": "No accessories",
+    "unitPrice": "Unit price",
+    "subtotal": "Subtotal",
+    "taxRate": "VAT ({rate})",
+    "total": "Total",
+    "frozenPriceNotice": "Price frozen at the time the quote was issued.",
+    "manualQuoteNotice": "This configuration exceeds the maximum size of the series and goes to a manual quote.",
+    "contactPrompt": "We will call you within 24 working hours.",
+    "email": {
+      "subject": "Your Puertas Cifuentes quote ({reference})",
+      "greeting": "Hello {customerName},",
+      "intro": "Please find your quote attached as a PDF.",
+      "closing": "Thank you for trusting Puertas Cifuentes.",
+      "signature": "The Puertas Cifuentes team"
+    },
+    "pdf": {
+      "footer": "Puertas Cifuentes · Made-to-measure quotes",
+      "pageNumber": "Page {page} of {total}"
+    }
+  },
+  "CatalogAdmin": {
+    "title": "Catalogue",
+    "loading": "Loading the catalogue…",
+    "error": "The catalogue could not be loaded. Please try again.",
+    "empty": "There are no items in the catalogue yet.",
+    "fields": {
+      "name": "Name",
+      "description": "Description"
+    },
+    "translations": "Translations",
+    "translatedInto": "Translated into {language}",
+    "missingTranslation": "Missing translation into {language}",
+    "missingTranslations": "Missing translations",
+    "save": "Save",
+    "publish": "Publish",
+    "unpublish": "Unpublish",
+    "deactivate": "Deactivate",
+    "editPrice": "Edit price",
+    "history": "Change history"
+  },
+  "DomainErrors": {
+    "INVALID_VALUE": "Some data has a value that is not valid.",
+    "INVALID_MEASUREMENT": "The measurement is outside the allowed range.",
+    "INVALID_SIZE_RANGE": "The size range is not coherent.",
+    "INVALID_CATALOG_VALUE": "The catalogue value has an invalid format.",
+    "INVALID_CATALOG_TEXT": "The text in the default language is missing.",
+    "UNSUPPORTED_LOCALE": "That language is not available.",
+    "INVALID_VALIDITY_PERIOD": "The validity period is not coherent.",
+    "INVALID_TARIFF": "The tariff version has invalid data.",
+    "AMBIGUOUS_TARIFF": "There is more than one valid tariff for this series.",
+    "INVALID_SERIES_TRANSITION": "That status change is not allowed for this series.",
+    "INVALID_CATALOG_TRANSITION": "That status change is not allowed for this catalogue item.",
+    "INVALID_MANUAL_QUOTE_REQUEST": "The manual quote request is incomplete.",
+    "INVALID_MANUAL_QUOTE_TRANSITION": "That status change is not allowed for this manual quote request."
+  }
+}
