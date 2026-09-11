@@ -19,6 +19,7 @@ import {
   InMemoryFinishRepository,
   InMemorySeriesRepository,
   InMemoryTariffPricingRepository,
+  InMemoryTariffVersionRepository,
 } from '@/infrastructure/persistence/in-memory/catalog-store'
 import {
   InMemoryManualQuoteRequestRepository,
@@ -72,6 +73,7 @@ export interface TestWorld {
   readonly colorRepository: InMemoryColorRepository
   readonly accessoryRepository: InMemoryAccessoryRepository
   readonly tariffPricingRepository: InMemoryTariffPricingRepository
+  readonly tariffVersionRepository: InMemoryTariffVersionRepository
   readonly quoteRepository: InMemoryQuoteRepository
   readonly manualQuoteRequestRepository: InMemoryManualQuoteRequestRepository
   readonly quoteNumberSequence: InMemoryQuoteNumberSequence
@@ -166,6 +168,7 @@ export function makeTestWorld(options: TestWorldOptions = {}): TestWorld {
     colorRepository: new InMemoryColorRepository(catalog),
     accessoryRepository: new InMemoryAccessoryRepository(catalog),
     tariffPricingRepository: new InMemoryTariffPricingRepository(catalog),
+    tariffVersionRepository: new InMemoryTariffVersionRepository(catalog),
     quoteRepository: new InMemoryQuoteRepository(quotes),
     manualQuoteRequestRepository: new InMemoryManualQuoteRequestRepository(quotes),
     quoteNumberSequence: new InMemoryQuoteNumberSequence(quotes),

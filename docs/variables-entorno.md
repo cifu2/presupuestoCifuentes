@@ -12,6 +12,7 @@ apartado _Seguridad_).
 | `NEXT_PUBLIC_SITE_URL` | `https://<dominio-produccion>` | URL del deployment de preview    | `http://localhost:3000`     | Vercel (Production / Preview) y `.env.local` |
 | `CATALOG_DEMO_MODE`    | `false`                        | `false`                          | `false`                     | Vercel (opcional) y `.env.local`             |
 | `QUOTE_VALIDITY_DAYS`  | `30`                           | `30`                             | `30`                        | Vercel (opcional) y `.env.local`             |
+| `ADMIN_API_TOKEN`      | valor propio del despliegue    | valor propio del despliegue      | valor de desarrollo         | Vercel (opcional) y `.env.local`             |
 | `NODE_ENV`             | lo fija Vercel (`production`)  | lo fija Vercel (`production`)    | lo fija Next.js             | No se configura a mano                       |
 | `VERCEL_ENV`           | lo fija Vercel (`production`)  | lo fija Vercel (`preview`)       | no definida                 | No se configura a mano                       |
 
@@ -28,6 +29,10 @@ apartado _Seguridad_).
   `true` (CIF-74).
 - `NEXT_PUBLIC_SITE_URL` es pública por diseño (viaja al navegador). `DATABASE_URL` es un secreto: se
   marca como _Sensitive_ en Vercel y no se lee nunca desde el cliente.
+- `ADMIN_API_TOKEN` es un secreto del API del panel: se envía como `Authorization: Bearer …` y se
+  marca como _Sensitive_ en Vercel. Mientras no esté configurado, los endpoints de administración
+  responden `503` y no quedan accesibles (guarda provisional de CIF-9/CIF-14, ver
+  [api.md](api.md)).
 - `.env.example` solo contiene valores de ejemplo sin credenciales y sirve de plantilla local.
 
 ## 2. Reglas

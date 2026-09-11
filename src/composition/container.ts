@@ -10,6 +10,7 @@ import type { QuoteNumberSequence } from '@/application/ports/quote-number-seque
 import type { QuoteRepository } from '@/application/ports/quote-repository'
 import type { SeriesRepository } from '@/application/ports/series-repository'
 import type { TariffPricingRepository } from '@/application/ports/tariff-pricing-repository'
+import type { TariffVersionRepository } from '@/application/ports/tariff-version-repository'
 import { env } from '@/config/env'
 import { SystemClock } from '@/infrastructure/clock/system-clock'
 import { createDemoCatalogStore } from '@/infrastructure/demo/demo-catalog'
@@ -20,6 +21,7 @@ import {
   InMemoryFinishRepository,
   InMemorySeriesRepository,
   InMemoryTariffPricingRepository,
+  InMemoryTariffVersionRepository,
 } from '@/infrastructure/persistence/in-memory/catalog-store'
 import {
   InMemoryManualQuoteRequestRepository,
@@ -37,6 +39,7 @@ import {
   PrismaQuoteRepository,
   PrismaSeriesRepository,
   PrismaTariffPricingRepository,
+  PrismaTariffVersionRepository,
 } from '@/infrastructure/persistence/prisma/repositories'
 
 /**
@@ -58,6 +61,7 @@ export interface Container {
   readonly colorRepository: ColorRepository
   readonly accessoryRepository: AccessoryRepository
   readonly tariffPricingRepository: TariffPricingRepository
+  readonly tariffVersionRepository: TariffVersionRepository
   readonly quoteRepository: QuoteRepository
   readonly manualQuoteRequestRepository: ManualQuoteRequestRepository
   readonly quoteNumberSequence: QuoteNumberSequence
@@ -77,6 +81,7 @@ function createDemoContainer(): Container {
     colorRepository: new InMemoryColorRepository(catalog),
     accessoryRepository: new InMemoryAccessoryRepository(catalog),
     tariffPricingRepository: new InMemoryTariffPricingRepository(catalog),
+    tariffVersionRepository: new InMemoryTariffVersionRepository(catalog),
     quoteRepository: new InMemoryQuoteRepository(quotes),
     manualQuoteRequestRepository: new InMemoryManualQuoteRequestRepository(quotes),
     quoteNumberSequence: new InMemoryQuoteNumberSequence(quotes),
@@ -96,6 +101,7 @@ function createPrismaContainer(connectionString: string): Container {
     colorRepository: new PrismaColorRepository(prisma),
     accessoryRepository: new PrismaAccessoryRepository(prisma),
     tariffPricingRepository: new PrismaTariffPricingRepository(prisma),
+    tariffVersionRepository: new PrismaTariffVersionRepository(prisma),
     quoteRepository: new PrismaQuoteRepository(prisma),
     manualQuoteRequestRepository: new PrismaManualQuoteRequestRepository(prisma),
     quoteNumberSequence: new PrismaQuoteNumberSequence(prisma),

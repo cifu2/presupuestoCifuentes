@@ -13,6 +13,12 @@ import { validationErrorResponse } from './http'
 
 export const localeSchema = z.enum(SUPPORTED_LOCALES).default(DEFAULT_LOCALE)
 
+/**
+ * Identificador de recurso persistido: la columna es `@db.Uuid` en Prisma, así que un valor con
+ * otro formato no puede existir y se rechaza en el borde sin consultar la base de datos.
+ */
+export const uuidSchema = z.uuid({ error: 'El identificador debe ser un UUID válido' })
+
 const dimensionSchema = z.number().int().min(MIN_DIMENSION_MM).max(MAX_DIMENSION_MM)
 
 const optionalId = z.string().min(1).nullable().default(null)

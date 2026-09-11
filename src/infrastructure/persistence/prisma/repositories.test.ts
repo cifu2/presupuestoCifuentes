@@ -12,10 +12,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { ManualQuoteRequest } from '@/domain/catalog/manual-quote-request'
 import { Dimensions } from '@/domain/catalog/measurement'
+import { AmbiguousTariffError } from '@/domain/shared/errors'
 import { CurrentInstantClock } from '@/infrastructure/clock/system-clock'
 
 import { calculatePrice } from '@/application/use-cases/calculate-price'
 import { issueQuote } from '@/application/use-cases/issue-quote'
+import { publishTariffVersion } from '@/application/use-cases/publish-tariff-version'
 import { createPrismaClient } from './client'
 import {
   PrismaAccessoryRepository,
@@ -26,6 +28,8 @@ import {
   PrismaQuoteRepository,
   PrismaSeriesRepository,
   PrismaTariffPricingRepository,
+  PrismaTariffVersionRepository,
+  isPublishedTariffOverlapViolation,
 } from './repositories'
 import type { PrismaClient } from '@prisma/client'
 
@@ -38,18 +42,61 @@ const IDS = {
   accessory: '44444444-4444-7444-8444-444444444444',
   tariff: '55555555-5555-7555-8555-555555555555',
   tariffAuto: '55555555-5555-7555-8555-555555555556',
+  tariffDraft: '55555555-5555-7555-8555-555555555557',
+  tariffDraftSave: '55555555-5555-7555-8555-555555555558',
+  raceSeries: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
+  tariffRaceA: '55555555-5555-7555-8555-555555555561',
+  tariffRaceC: '55555555-5555-7555-8555-555555555562',
   band: '66666666-6666-7666-8666-666666666666',
   modifier: '77777777-7777-7777-8777-777777777777',
   modifierDiscount: '88888888-8888-7888-8888-888888888888',
   modifierAutoDiscount: '99999999-9999-7999-8999-999999999999',
 } as const
 
+/** Todos los códigos de error del grafo del error (`meta.driverAdapterError` incluido). */
+function errorCodes(error: unknown): string[] {
+  const codes = new Set<string>()
+  const visited = new Set<unknown>()
+
+  const visit = (value: unknown, depth: number): void => {
+    if (depth > 8 || typeof value !== 'object' || value === null || visited.has(value)) return
+
+    visited.add(value)
+
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      if (typeof child === 'string') {
+        if (key === 'code' || key === 'originalCode' || key === 'sqlState') codes.add(child)
+        continue
+      }
+
+      if (typeof child === 'object' && child !== null) visit(child, depth + 1)
+    }
+  }
+
+  visit(error, 0)
+
+  return [...codes]
+}
+
 async function clean(prisma: PrismaClient): Promise<void> {
   await prisma.quoteLine.deleteMany({})
   await prisma.quote.deleteMany({})
   await prisma.manualQuoteRequest.deleteMany({})
-  await prisma.tariffVersion.deleteMany({ where: { id: { in: [IDS.tariff, IDS.tariffAuto] } } })
-  await prisma.doorSeries.deleteMany({ where: { id: IDS.series } })
+  await prisma.tariffVersion.deleteMany({
+    where: {
+      id: {
+        in: [
+          IDS.tariff,
+          IDS.tariffAuto,
+          IDS.tariffDraft,
+          IDS.tariffDraftSave,
+          IDS.tariffRaceA,
+          IDS.tariffRaceC,
+        ],
+      },
+    },
+  })
+  await prisma.doorSeries.deleteMany({ where: { id: { in: [IDS.series, IDS.raceSeries] } } })
   await prisma.catalogText.deleteMany({})
   await prisma.finish.deleteMany({ where: { id: IDS.finish } })
   await prisma.accessory.deleteMany({ where: { id: IDS.accessory } })
@@ -150,6 +197,9 @@ async function seed(prisma: PrismaClient): Promise<void> {
       status: 'PUBLISHED',
       strategy: 'PER_SQUARE_METRE',
       validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      // La v1 termina donde empieza la v2: dos versiones publicadas de la misma serie no pueden
+      // solaparse (invariante que la base de datos refuerza desde CIF-89).
+      validUntil: new Date('2027-01-01T00:00:00.000Z'),
       taxRatePercent: '21',
       currency: 'EUR',
       publishedAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -193,6 +243,9 @@ async function seed(prisma: PrismaClient): Promise<void> {
       status: 'PUBLISHED',
       strategy: 'PER_SQUARE_METRE',
       validFrom: new Date('2027-01-01T00:00:00.000Z'),
+      // Termina donde empieza `tariffDraftSave`: al publicarlo, las dos vigencias son adyacentes y
+      // la restricción de exclusión no se dispara (CIF-89).
+      validUntil: new Date('2028-01-01T00:00:00.000Z'),
       taxRatePercent: '21',
       currency: 'EUR',
       publishedAt: new Date('2027-01-01T00:00:00.000Z'),
@@ -215,6 +268,76 @@ async function seed(prisma: PrismaClient): Promise<void> {
         },
       },
     },
+  })
+
+  // Borradores del panel: `tariffDraft` se solapa con la publicada v1 (para el 409 de CIF-82);
+  // `tariffDraftSave` sirve para comprobar que `save` persiste el paso a publicada.
+  await prisma.tariffVersion.createMany({
+    data: [
+      {
+        id: IDS.tariffDraft,
+        seriesId: IDS.series,
+        versionNumber: 3,
+        status: 'DRAFT',
+        strategy: 'PER_SQUARE_METRE',
+        validFrom: new Date('2026-06-01T00:00:00.000Z'),
+        taxRatePercent: '21',
+        currency: 'EUR',
+      },
+      {
+        id: IDS.tariffDraftSave,
+        seriesId: IDS.series,
+        versionNumber: 4,
+        status: 'DRAFT',
+        strategy: 'PER_SQUARE_METRE',
+        validFrom: new Date('2028-01-01T00:00:00.000Z'),
+        taxRatePercent: '21',
+        currency: 'EUR',
+      },
+    ],
+  })
+
+  // Serie sin ninguna tarifa publicada: sirve para provocar de verdad la carrera de dos
+  // publicaciones concurrentes (CIF-89). Los dos borradores se solapan entre sí.
+  await prisma.doorSeries.create({
+    data: {
+      id: IDS.raceSeries,
+      code: 'CI-CARRERA',
+      slug: 'ci-carrera',
+      status: 'PUBLISHED',
+      minWidthMm: 600,
+      maxWidthMm: 1000,
+      minHeightMm: 1800,
+      maxHeightMm: 2200,
+      sortOrder: 2,
+    },
+  })
+
+  await prisma.tariffVersion.createMany({
+    data: [
+      {
+        id: IDS.tariffRaceA,
+        seriesId: IDS.raceSeries,
+        versionNumber: 1,
+        status: 'DRAFT',
+        strategy: 'PER_SQUARE_METRE',
+        validFrom: new Date('2026-03-01T00:00:00.000Z'),
+        validUntil: new Date('2027-01-01T00:00:00.000Z'),
+        taxRatePercent: '21',
+        currency: 'EUR',
+      },
+      {
+        id: IDS.tariffRaceC,
+        seriesId: IDS.raceSeries,
+        versionNumber: 2,
+        status: 'DRAFT',
+        strategy: 'PER_SQUARE_METRE',
+        validFrom: new Date('2026-06-01T00:00:00.000Z'),
+        validUntil: new Date('2027-06-01T00:00:00.000Z'),
+        taxRatePercent: '21',
+        currency: 'EUR',
+      },
+    ],
   })
 }
 
@@ -404,6 +527,116 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
       await expect(
         manualQuoteRequestRepository.findById('00000000-0000-7000-8000-000000000000'),
       ).resolves.toBeNull()
+    })
+
+    it('no publica una tarifa solapada y deja la fila en borrador (CIF-82)', async () => {
+      const tariffVersionRepository = new PrismaTariffVersionRepository(prisma)
+
+      await expect(
+        publishTariffVersion(
+          { tariffVersionRepository, clock },
+          { tariffVersionId: IDS.tariffDraft },
+        ),
+      ).rejects.toThrow(AmbiguousTariffError)
+
+      const row = await prisma.tariffVersion.findUnique({ where: { id: IDS.tariffDraft } })
+
+      expect(row?.status).toBe('DRAFT')
+      expect(row?.publishedAt).toBeNull()
+    })
+
+    it('persiste el paso a publicada con `save`', async () => {
+      const tariffVersionRepository = new PrismaTariffVersionRepository(prisma)
+      const draft = await tariffVersionRepository.findById(IDS.tariffDraftSave)
+
+      expect(draft).not.toBeNull()
+
+      await tariffVersionRepository.save(draft!.publish(clock.now()))
+
+      const stored = await tariffVersionRepository.findById(IDS.tariffDraftSave)
+
+      expect(stored?.status).toBe('published')
+      expect(stored?.publishedAt?.toISOString()).toBe(clock.now().toISOString())
+    })
+
+    it('la base de datos rechaza publicar una tarifa que se solapa con otra publicada (CIF-89)', async () => {
+      // Escritura directa, sin pasar por la comprobación del caso de uso: lo que se prueba aquí es
+      // que la restricción de exclusión de PostgreSQL es la que rechaza el solape (SQLSTATE 23P01).
+      const error = await prisma.tariffVersion
+        .create({
+          data: {
+            id: randomUUID(),
+            seriesId: IDS.series,
+            versionNumber: 90,
+            status: 'PUBLISHED',
+            strategy: 'PER_SQUARE_METRE',
+            // Se solapa con la v1 publicada ([2026-01-01, 2027-01-01)).
+            validFrom: new Date('2026-06-01T00:00:00.000Z'),
+            validUntil: new Date('2026-09-01T00:00:00.000Z'),
+            taxRatePercent: '21',
+            currency: 'EUR',
+            publishedAt: new Date('2026-06-01T00:00:00.000Z'),
+          },
+        })
+        .then(
+          () => null,
+          (caught: unknown) => caught,
+        )
+
+      expect(error).not.toBeNull()
+      expect(isPublishedTariffOverlapViolation(error)).toBe(true)
+      expect(errorCodes(error)).toContain('23P01')
+    })
+
+    it('mapea la violación de la restricción a AmbiguousTariffError, no a 500 (CIF-89)', async () => {
+      const tariffVersionRepository = new PrismaTariffVersionRepository(prisma)
+      const draft = await tariffVersionRepository.findById(IDS.tariffDraft)
+
+      expect(draft).not.toBeNull()
+
+      // `save` sin la comprobación previa del caso de uso: el solape con la v1 publicada lo detecta
+      // la restricción de la base de datos y el adaptador lo traduce al error de dominio (409).
+      await expect(tariffVersionRepository.save(draft!.publish(clock.now()))).rejects.toThrow(
+        AmbiguousTariffError,
+      )
+
+      const row = await prisma.tariffVersion.findUnique({ where: { id: IDS.tariffDraft } })
+
+      expect(row?.status).toBe('DRAFT')
+      expect(row?.publishedAt).toBeNull()
+    })
+
+    it('dos publicaciones concurrentes solapadas dejan una sola tarifa publicada (CIF-89)', async () => {
+      const tariffVersionRepository = new PrismaTariffVersionRepository(prisma)
+
+      const [first, second] = await Promise.allSettled([
+        publishTariffVersion(
+          { tariffVersionRepository, clock },
+          { tariffVersionId: IDS.tariffRaceA },
+        ),
+        publishTariffVersion(
+          { tariffVersionRepository, clock },
+          { tariffVersionId: IDS.tariffRaceC },
+        ),
+      ])
+
+      const rejected = [first, second].filter(
+        (result): result is PromiseRejectedResult => result.status === 'rejected',
+      )
+      const fulfilled = [first, second].filter((result) => result.status === 'fulfilled')
+
+      // La invariante se cumple pase lo que pase: una publica y la otra choca, con el error de
+      // dominio (409) tanto si lo detecta la comprobación previa como si lo detecta PostgreSQL.
+      expect(fulfilled).toHaveLength(1)
+      expect(rejected).toHaveLength(1)
+      expect(rejected[0]?.reason).toBeInstanceOf(AmbiguousTariffError)
+
+      const published = await prisma.tariffVersion.findMany({
+        where: { seriesId: IDS.raceSeries, status: 'PUBLISHED' },
+        select: { id: true },
+      })
+
+      expect(published).toHaveLength(1)
     })
   },
 )
