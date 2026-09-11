@@ -64,6 +64,15 @@ servidores propios en ningún entorno ([ADR-0007](adr/0007-despliegue-vercel-git
 - **Nunca se ejecutan migraciones automáticamente desde un PR** (ADR-0007): el preview de un PR
   apunta a su propia rama de base de datos y las migraciones se aplican ahí solo si el PR las
   necesita.
+- **Extensiones de PostgreSQL:** crear una extensión depende del rol que migra. La migración
+  `20260911150000_constraint_solape_tarifas_publicadas` empieza con `CREATE EXTENSION IF NOT EXISTS`
+  sobre `btree_gist`, así que el rol de migraciones necesita permiso para crearla. **Prerrequisito
+  de permisos:** `btree_gist` es una extensión _trusted_ desde PostgreSQL 13, de modo que basta con
+  ser propietario de la base —el rol de administración de Neon, sin ser superusuario—. Si el rol no
+  puede crearla, `migrate deploy` falla y PostgreSQL revierte la migración entera (Prisma aplica
+  cada migración en una transacción): se para y se eleva el privilegio **antes** de fusionar, nunca
+  después. Verificado el 2026-09-12 en la base de preview de Neon (PostgreSQL 18.6, rol no
+  superusuario): migración aplicada sin errores.
 - **Paso explícito de release**, con `scripts/release.sh` o a mano, justo después de fusionar a
   `main` y antes de dar el release por bueno:
 
@@ -130,6 +139,36 @@ en los datos o el esquema:
   [operacion.md](operacion.md), apartado _Backups_). Es la última opción: pierde los datos escritos
   desde el punto de restauración, así que requiere decisión del CTO.
 
+#### Revertir un cambio que acopla código y esquema
+
+Un despliegue puede traer **código y esquema en el mismo commit**: la migración
+`20260911150000_constraint_solape_tarifas_publicadas` crea la restricción de exclusión
+`tariff_version_published_no_overlap` y el traductor de su error (`SQLSTATE 23P01` → `409`) entra
+con ella. Si se revierte uno y no el otro, el código y el esquema dejan de coincidir: con la
+restricción en pie y el traductor fuera, el camino de carrera de publicación responde `500` en vez
+de `409`.
+
+Al revertir, **primero la aplicación y después los datos**:
+
+1. **Aplicación:** promueve el deployment anterior (apartado 5.1) y abre el PR que revierte el
+   commit causante en `main`, para que repositorio y producción vuelvan a coincidir.
+2. **Datos:** retira la restricción con el `down.sql` de la migración, con el paso explícito del
+   apartado 3:
+
+   ```bash
+   psql "$PRODUCTION_DATABASE_URL" -f \
+     prisma/migrations/20260911150000_constraint_solape_tarifas_publicadas/down.sql
+   ```
+
+   El `down.sql` **no** elimina `btree_gist` a propósito: puede estar en uso por otras restricciones
+   o consultas de la base.
+
+Las dos partes son **un solo rollback y no se dejan a medias**: entre el paso 1 y el paso 2 queda
+abierta la ventana en la que una publicación solapada responde `500` en lugar de `409`. Retirada la
+restricción, la unicidad de la tarifa vigente vuelve a depender solo de la comprobación del dominio
+y con ella vuelve la ventana de carrera que cerró CIF-89. Para deshacer el rollback se reaplica
+`migration.sql`; la extensión no se recrea (`CREATE EXTENSION IF NOT EXISTS`).
+
 ### 5.3 Rollback de variables de entorno
 
 Cambiar una variable en Vercel **no afecta a los despliegues ya construidos**: hay que
@@ -139,11 +178,12 @@ restáuralo antes de redesplegar.
 
 ### 5.4 Cuándo usar cada uno
 
-| Síntoma                                    | Acción                                               |
-| ------------------------------------------ | ---------------------------------------------------- |
-| La aplicación falla tras un release        | Promover el deployment anterior (5.1)                |
-| Faltan o están mal datos/columnas          | Migración compensatoria; PITR solo si es grave (5.2) |
-| Producción falla tras cambiar una variable | Corregir la variable y redesplegar (5.3)             |
+| Síntoma                                                    | Acción                                                      |
+| ---------------------------------------------------------- | ----------------------------------------------------------- |
+| La aplicación falla tras un release                        | Promover el deployment anterior (5.1)                       |
+| Faltan o están mal datos/columnas                          | Migración compensatoria; PITR solo si es grave (5.2)        |
+| Se revierte un cambio con restricción y traductor de error | Revertir la aplicación y luego retirar la restricción (5.2) |
+| Producción falla tras cambiar una variable                 | Corregir la variable y redesplegar (5.3)                    |
 
 ## 6. Puesta en marcha inicial (una sola vez)
 
