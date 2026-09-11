@@ -31,9 +31,10 @@ apartado _Seguridad_).
    ([despliegue.md](despliegue.md), apartado 5.3).
 2. `.env` y `.env.*` están en `.gitignore`; solo se versiona `.env.example`.
 3. Prohibido pegar valores en PRs, tareas de Paperclip, ADRs, capturas o logs.
-4. Los secretos de CI **no existen**: los jobs `calidad` y `e2e` no usan base de datos ni servicios
-   externos (el E2E arranca la app en local sin `DATABASE_URL`). Si en el futuro un job necesita un
-   secreto, se añade como _secret_ de GitHub Actions, nunca como variable en claro.
+4. Los secretos de CI **no existen**: el job `calidad` usa un `postgres:17` efímero del propio
+   runner (autenticación `trust`, solo `localhost`, base `cifuentes_test`) cuya `TEST_DATABASE_URL` es
+   un valor de test sin credenciales reales; el job `e2e` no usa base de datos. Si un job necesitara
+   un secreto de verdad, se añade como _secret_ de GitHub Actions, nunca como valor en claro.
 5. **Rotación:** si un valor se filtra (aparece en un log, en una captura o en un ticket), se rota en
    su origen (Neon / Vercel) y se actualiza en Vercel; el incidente se anota sin reproducir el valor.
 6. **Mínimo privilegio:** las credenciales de Neon que se inyectan en Vercel son las de la base de

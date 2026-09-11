@@ -56,8 +56,8 @@ mapa de flujos a specs, los datos de prueba y la plantilla de informe de fallo e
 `.github/workflows/ci.yml` ejecuta:
 
 - `calidad`: `format:check` → `lint` → `typecheck` → `pnpm db:deploy` → `test:coverage`, con un
-  servicio `postgres:17` efímero y `DATABASE_URL`/`TEST_DATABASE_URL` apuntando a `cifuentes_test`,
-  para que los tests de integración se ejecuten en lugar de saltarse.
+  servicio `postgres:17` efímero y `TEST_DATABASE_URL` apuntando a `cifuentes_test`, para que los
+  tests de integración se ejecuten en lugar de saltarse.
 - `e2e`: instalación de Chromium → build → `pnpm e2e`; ante un fallo sube `playwright-report/` y
   `test-results/` (informe, capturas, trazas y vídeo del reintento).
 
@@ -66,7 +66,16 @@ arregla; no se ignora ni se reintenta en bucle hasta que pasa.
 
 ## Base de datos en los tests
 
-El job `calidad` ya levanta un servicio `postgres:17`, exporta `DATABASE_URL`/`TEST_DATABASE_URL` y
-aplica las migraciones antes de los tests (CIF-10/CIF-19). Los E2E de API y de UI siguen usando el
-catálogo de demostración en memoria, para que la puerta no dependa de datos reales. Procedimiento y
-plantilla de informes de fallo: [e2e-playbook.md](e2e-playbook.md).
+El job `calidad` levanta un servicio `postgres:17` efímero (autenticación `trust`, base
+`cifuentes_test`), publica `TEST_DATABASE_URL` y aplica las migraciones con
+`DATABASE_URL="$TEST_DATABASE_URL" pnpm db:deploy` antes de `pnpm test:coverage` (CIF-10/CIF-19).
+Los E2E de API y de UI siguen usando el catálogo de demostración en memoria, para que la puerta no
+dependa de datos reales.
+
+Los tests de integración (`src/infrastructure/**/*.test.ts`) se declaran con
+`describe.runIf(TEST_DATABASE_URL)`: **si la variable falta, se saltan en silencio**, así que el job
+debe garantizarla. La guarda está en `src/config/ci-workflow.test.ts`, para que nadie quite el
+servicio ni renombre los checks requeridos sin que el CI lo note. Los datos son los que siembra cada
+test y se limpian al terminar; no se usa ninguna base de datos real ni credenciales de cliente.
+
+Procedimiento y plantilla de informes de fallo: [e2e-playbook.md](e2e-playbook.md).
