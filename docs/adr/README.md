@@ -6,23 +6,24 @@ que supersede al anterior y se marca el antiguo como `Superseded por ADR-XXXX`.
 
 ## Índice
 
-| ADR                                                      | Decisión                                                             | Estado   |
-| -------------------------------------------------------- | -------------------------------------------------------------------- | -------- |
-| [0001](0001-repositorio-unico-arquitectura-hexagonal.md) | Repositorio único con arquitectura hexagonal y SOLID                 | Aceptado |
-| [0002](0002-stack-definitivo.md)                         | Stack definitivo del MVP (versiones y herramientas)                  | Aceptado |
-| [0003](0003-motor-de-precios.md)                         | Motor de precios con tarifas versionadas y precio congelado          | Aceptado |
-| [0004](0004-presupuesto-pdf-y-email.md)                  | Presupuesto en PDF y por email                                       | Aceptado |
-| [0005](0005-idiomas-e-i18n.md)                           | Idiomas soportados y arquitectura de i18n                            | Aceptado |
-| [0006](0006-calidad-y-ci.md)                             | Tests, cobertura y puerta de E2E en CI                               | Aceptado |
-| [0007](0007-despliegue-vercel-github.md)                 | Despliegue en Vercel con el código en GitHub                         | Aceptado |
-| [0008](0008-esquema-datos-catalogo.md)                   | Esquema de datos del catálogo y migraciones reversibles              | Aceptado |
-| [0009](0009-base-de-datos-gestionada-y-backups.md)       | Base de datos gestionada (Neon), backups y monitorización            | Aceptado |
-| [0010](0010-puesta-en-produccion-i18n.md)                | Puesta en producción de la i18n mediante el PR #6                    | Aceptado |
-| [0011](0011-politica-madurez-versiones.md)               | Política de madurez de versiones (pnpm y Dependabot)                 | Aceptado |
-| [0012](0012-politica-saltos-version-mayor.md)            | Política ante saltos de versión mayor (TypeScript 7, @types/node 26) | Aceptado |
-| [0013](0013-tarifas-modificadores-y-presupuestos.md)     | Desglose de tarifas, modificadores y precio congelado                | Aceptado |
-| [0014](0014-manejo-y-rotacion-de-secretos.md)            | Manejo, barrido y rotación de secretos de operación                  | Aceptado |
-| [0016](0016-alcance-tipos-puerta-mvp-2d.md)              | Alcance de tipos de puerta del MVP en el configurador 2D             | Aceptado |
+| ADR                                                      | Decisión                                                               | Estado   |
+| -------------------------------------------------------- | ---------------------------------------------------------------------- | -------- |
+| [0001](0001-repositorio-unico-arquitectura-hexagonal.md) | Repositorio único con arquitectura hexagonal y SOLID                   | Aceptado |
+| [0002](0002-stack-definitivo.md)                         | Stack definitivo del MVP (versiones y herramientas)                    | Aceptado |
+| [0003](0003-motor-de-precios.md)                         | Motor de precios con tarifas versionadas y precio congelado            | Aceptado |
+| [0004](0004-presupuesto-pdf-y-email.md)                  | Presupuesto en PDF y por email                                         | Aceptado |
+| [0005](0005-idiomas-e-i18n.md)                           | Idiomas soportados y arquitectura de i18n                              | Aceptado |
+| [0006](0006-calidad-y-ci.md)                             | Tests, cobertura y puerta de E2E en CI                                 | Aceptado |
+| [0007](0007-despliegue-vercel-github.md)                 | Despliegue en Vercel con el código en GitHub                           | Aceptado |
+| [0008](0008-esquema-datos-catalogo.md)                   | Esquema de datos del catálogo y migraciones reversibles                | Aceptado |
+| [0009](0009-base-de-datos-gestionada-y-backups.md)       | Base de datos gestionada (Neon), backups y monitorización              | Aceptado |
+| [0010](0010-puesta-en-produccion-i18n.md)                | Puesta en producción de la i18n mediante el PR #6                      | Aceptado |
+| [0011](0011-politica-madurez-versiones.md)               | Política de madurez de versiones (pnpm y Dependabot)                   | Aceptado |
+| [0012](0012-politica-saltos-version-mayor.md)            | Política ante saltos de versión mayor (TypeScript 7, @types/node 26)   | Aceptado |
+| [0013](0013-tarifas-modificadores-y-presupuestos.md)     | Desglose de tarifas, modificadores y precio congelado                  | Aceptado |
+| [0014](0014-manejo-y-rotacion-de-secretos.md)            | Manejo, barrido y rotación de secretos de operación                    | Aceptado |
+| [0015](0015-base-de-datos-de-produccion.md)              | Destino de la base de datos de producción y `DATABASE_URL` por entorno | Aceptado |
+| [0016](0016-alcance-tipos-puerta-mvp-2d.md)              | Alcance de tipos de puerta del MVP en el configurador 2D               | Aceptado |
 
 ## Cuándo hace falta un ADR
 
