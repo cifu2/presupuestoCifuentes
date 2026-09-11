@@ -26,6 +26,13 @@ updates:
     ignore:
       - dependency-name: eslint
         update-types: ['version-update:semver-major']
+      # Saltos de versión mayor que rompen la puerta `calidad` y no tocan el runtime: TypeScript 7 y
+      # los tipos de Node 26 se posponen hasta después del MVP y hasta que suba el runtime de Node
+      # (.nvmrc = 24). Los tipos siguen siempre la línea del runtime. Ver ADR-0012 (CIF-34).
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
     directory: /
