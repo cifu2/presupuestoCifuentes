@@ -39,7 +39,7 @@ En errores de validación se añade `issues: [{ "path": "widthMm", "message": "�
 | `INVALID_MANUAL_QUOTE_REQUEST`    | 400  | Solicitud manual incompleta                              |
 | `INVALID_QUOTE`                   | 400  | Presupuesto con desglose incoherente                     |
 | `INVALID_QUOTE_REFERENCE`         | 400  | Referencia con formato distinto de `PC-AAAA-NNNNNN`      |
-| `NOT_FOUND`                       | 404  | Serie o presupuesto inexistente                          |
+| `NOT_FOUND`                       | 404  | Serie, presupuesto o tarifa inexistente, o id malformado |
 | `AMBIGUOUS_TARIFF`                | 409  | Más de una tarifa vigente para la misma serie            |
 | `INVALID_CATALOG_TRANSITION`      | 409  | Transición de estado no permitida en el catálogo         |
 | `INVALID_SERIES_TRANSITION`       | 409  | Transición de estado no permitida en una serie           |
@@ -310,7 +310,9 @@ automático: pasa el borrador a `published`, le pone `publishedAt` y la deja dis
 configurador.
 
 - `200` con `{ "data": { "id", "seriesId", "versionNumber", "status": "published", "strategy", "validFrom", "validUntil", "currency", "taxRatePercent", "publishedAt" } }`.
-- `404` `NOT_FOUND` si la versión no existe.
+- `404` `NOT_FOUND` si la versión no existe **o el `:id` no es un UUID**. El identificador se valida
+  con Zod en el borde (la columna es `@db.Uuid`) y se responde sin consultar la base de datos: antes
+  un id malformado llegaba a Prisma y devolvía `500 INTERNAL_ERROR` (hallazgo N2 de CIF-85).
 - `409` `INVALID_CATALOG_TRANSITION` si la versión está archivada (hay que restaurarla a borrador).
 - `409` `AMBIGUOUS_TARIFF` si la versión se solapa con otra ya publicada de la misma serie. **No se
   escribe nada**: la invariante `assertNoOverlappingPublishedTariffs` se comprueba en el caso de uso

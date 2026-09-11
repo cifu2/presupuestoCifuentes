@@ -1,6 +1,8 @@
 /**
  * Test del borde HTTP del panel: publicar una tarifa que se solapa con otra publicada de la misma
  * serie responde 409 y **no** escribe la fila (hallazgo N5 de CIF-78).
+ *
+ * Los ids son UUID reales porque el `:id` se valida en el borde (hallazgo N2 de CIF-85).
  */
 
 import { describe, expect, it, vi } from 'vitest'
@@ -14,6 +16,7 @@ const TOKEN = 'token-de-prueba-suficientemente-largo'
 const store = vi.hoisted(() => ({
   versions: [] as unknown[],
   saves: [] as unknown[],
+  findByIdCalls: [] as string[],
 }))
 
 vi.mock('@/config/env', () => ({
@@ -25,8 +28,11 @@ vi.mock('@/composition/container', () => ({
     mode: 'demo',
     clock: { now: () => new Date('2026-09-11T10:00:00.000Z') },
     tariffVersionRepository: {
-      findById: async (id: string) =>
-        (store.versions as { id: string }[]).find((version) => version.id === id) ?? null,
+      findById: async (id: string) => {
+        store.findByIdCalls.push(id)
+
+        return (store.versions as { id: string }[]).find((version) => version.id === id) ?? null
+      },
       listBySeriesId: async (seriesId: string) =>
         (store.versions as { seriesId: string }[]).filter(
           (version) => version.seriesId === seriesId,
@@ -60,23 +66,29 @@ function publish(id: string, token: string | null = TOKEN): Promise<Response> {
 function seed(versions: readonly TariffVersion[]): void {
   store.versions.length = 0
   store.saves.length = 0
+  store.findByIdCalls.length = 0
   store.versions.push(...versions)
 }
 
-const PUBLISHED = makeTariffVersion({ id: 'tariff-ci-100-v1' })
+const CI_100_V1 = '0192f1b0-0000-7000-8000-000000000101'
+const CI_100_V2 = '0192f1b0-0000-7000-8000-000000000102'
+const CI_400_V1 = '0192f1b0-0000-7000-8000-000000000401'
+const MISSING_ID = '0192f1b0-0000-7000-8000-0000000009ff'
+
+const PUBLISHED = makeTariffVersion({ id: CI_100_V1 })
 
 describe('POST /api/admin/tariff-versions/[id]/publish', () => {
   it('publica el borrador sin solape', async () => {
     seed([
       makeTariffVersion({
-        id: 'tariff-ci-400-v1',
+        id: CI_400_V1,
         seriesId: 'series-ci-400',
         status: 'draft',
         publishedAt: null,
       }),
     ])
 
-    const response = await publish('tariff-ci-400-v1')
+    const response = await publish(CI_400_V1)
     const body = await response.json()
 
     expect(response.status).toBe(200)
@@ -89,7 +101,7 @@ describe('POST /api/admin/tariff-versions/[id]/publish', () => {
     seed([
       PUBLISHED,
       makeTariffVersion({
-        id: 'tariff-ci-100-v2',
+        id: CI_100_V2,
         versionNumber: 2,
         status: 'draft',
         publishedAt: null,
@@ -97,31 +109,44 @@ describe('POST /api/admin/tariff-versions/[id]/publish', () => {
       }),
     ])
 
-    const response = await publish('tariff-ci-100-v2')
+    const response = await publish(CI_100_V2)
     const body = await response.json()
 
     expect(response.status).toBe(409)
     expect(body.error.code).toBe('AMBIGUOUS_TARIFF')
     expect(store.saves).toEqual([])
     expect(
-      (store.versions as TariffVersion[]).find((version) => version.id === 'tariff-ci-100-v2')
-        ?.status,
+      (store.versions as TariffVersion[]).find((version) => version.id === CI_100_V2)?.status,
     ).toBe('draft')
   })
 
-  it('responde 404 si la versión no existe', async () => {
+  it('responde 404 NOT_FOUND si la versión no existe', async () => {
     seed([])
 
-    const response = await publish('tariff-inexistente')
+    const response = await publish(MISSING_ID)
+    const body = await response.json()
 
     expect(response.status).toBe(404)
+    expect(body.error.code).toBe('NOT_FOUND')
+    expect(store.saves).toEqual([])
+  })
+
+  it('responde 404 NOT_FOUND sin consultar la base de datos si el id no es un UUID', async () => {
+    seed([PUBLISHED])
+
+    const response = await publish('tariff-inexistente')
+    const body = await response.json()
+
+    expect(response.status).toBe(404)
+    expect(body.error.code).toBe('NOT_FOUND')
+    expect(store.findByIdCalls).toEqual([])
     expect(store.saves).toEqual([])
   })
 
   it('responde 401 sin credenciales de administración', async () => {
     seed([PUBLISHED])
 
-    const response = await publish('tariff-ci-100-v1', null)
+    const response = await publish(CI_100_V1, null)
 
     expect(response.status).toBe(401)
     expect(store.saves).toEqual([])
