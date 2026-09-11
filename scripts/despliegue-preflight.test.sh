@@ -35,6 +35,8 @@ chmod 700 "$TMP"
 mkdir -p "$TMP/bin"
 
 LISTENER_PID=""
+# `cleanup` solo se invoca desde el trap; shellcheck no ve la llamada (SC2317).
+# shellcheck disable=SC2317
 cleanup() {
   [[ -n "$LISTENER_PID" ]] && kill "$LISTENER_PID" 2>/dev/null
   rm -rf "$TMP"
