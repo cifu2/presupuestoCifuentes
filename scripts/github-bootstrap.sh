@@ -5,6 +5,12 @@
 #
 # Uso:   scripts/github-bootstrap.sh <org>/<repo>
 #        REPO_VISIBILITY=private scripts/github-bootstrap.sh cifucorp/presupuestos
+#        REPO_REQUIRED_APPROVALS=1 scripts/github-bootstrap.sh cifucorp/presupuestos
+#
+# Visibilidad: **pública** por defecto (decisión del propietario; docs/despliegue.md, apartado 6.1).
+# Revisiones obligatorias: **ninguna** por defecto. Mientras el autor del PR y el dueño del token
+# sean la misma cuenta de GitHub, exigir aprobaciones bloquearía todas las fusiones; cuando exista un
+# segundo colaborador, `REPO_REQUIRED_APPROVALS=1` vuelve a activarlas (docs/despliegue.md, 2.2).
 #
 # Credenciales: `gh auth login`, o las variables GH_TOKEN / GITHUB_DEVOPS_TOKEN (secreto de
 # Paperclip). El token no se imprime ni se guarda. Necesita el alcance `workflow` para poder subir
@@ -16,10 +22,16 @@ set -euo pipefail
 export GH_TOKEN="${GH_TOKEN:-${GITHUB_DEVOPS_TOKEN:-}}"
 
 REPO="${1:-}"
-VISIBILITY="${REPO_VISIBILITY:-private}"
+VISIBILITY="${REPO_VISIBILITY:-public}"
+REQUIRED_APPROVALS="${REPO_REQUIRED_APPROVALS:-0}"
 
 if [[ -z "$REPO" || "$REPO" != */* ]]; then
   echo "uso: $0 <org>/<repo>" >&2
+  exit 64
+fi
+
+if [[ ! "$REQUIRED_APPROVALS" =~ ^[0-9]+$ ]]; then
+  echo "REPO_REQUIRED_APPROVALS debe ser un entero >= 0" >&2
   exit 64
 fi
 
@@ -71,8 +83,21 @@ gh api -X PATCH "repos/${REPO}" \
   -F has_issues=true \
   -F has_wiki=false >/dev/null
 
-echo "== 4/4 protección de main (checks requeridos: calidad y e2e)"
-gh api -X PUT "repos/${REPO}/branches/main/protection" --input - >/dev/null <<'JSON'
+# El payload de protección debe reproducir el estado verificado de `main`: con 0 aprobaciones se
+# envía `null` (sin revisiones obligatorias); con REPO_REQUIRED_APPROVALS>0 se exigen esas
+# aprobaciones. Todo lo demás es idéntico en ambos casos.
+if (( REQUIRED_APPROVALS > 0 )); then
+  reviews_json="{
+    \"dismiss_stale_reviews\": true,
+    \"require_code_owner_reviews\": false,
+    \"required_approving_review_count\": ${REQUIRED_APPROVALS}
+  }"
+else
+  reviews_json="null"
+fi
+
+echo "== 4/4 protección de main (checks requeridos: calidad y e2e; aprobaciones: ${REQUIRED_APPROVALS})"
+gh api -X PUT "repos/${REPO}/branches/main/protection" --input - >/dev/null <<JSON
 {
   "required_status_checks": {
     "strict": true,
@@ -82,11 +107,7 @@ gh api -X PUT "repos/${REPO}/branches/main/protection" --input - >/dev/null <<'J
     ]
   },
   "enforce_admins": true,
-  "required_pull_request_reviews": {
-    "dismiss_stale_reviews": true,
-    "require_code_owner_reviews": false,
-    "required_approving_review_count": 1
-  },
+  "required_pull_request_reviews": ${reviews_json},
   "restrictions": null,
   "required_conversation_resolution": true,
   "allow_force_pushes": false,
