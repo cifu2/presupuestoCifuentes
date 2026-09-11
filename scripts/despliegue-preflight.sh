@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 #
 # Comprobación de solo lectura de la puesta en marcha del despliegue (CIF-11, docs/despliegue.md 6).
+# Exige que Production defina DATABASE_URL y ADMIN_API_TOKEN (sin esta última el API del panel
+# responde 503, CIF-123). Los avisos de esta comprobación se prueban en
+# scripts/despliegue-preflight.test.sh.
 #
 # No crea, no modifica ni borra nada y no imprime ningún valor secreto: solo metadatos (usuario,
 # repositorio, proyecto, nombres de variables). Funciona sin las CLI de GitHub y de Vercel, así que
@@ -128,6 +131,9 @@ e = json.load(open(sys.argv[1])).get("envs", [])
 print(", ".join(sorted({x["key"] for x in e if "production" in (x.get("target") or [])})))' "$TMP/env.json")"
       ok "variables de Production definidas: ${keys:-ninguna}"
       [[ "$keys" == *DATABASE_URL* ]] || ko "falta DATABASE_URL en Production"
+      # Sin ADMIN_API_TOKEN el API del panel responde 503 y el propietario no puede publicar
+      # ni archivar tarifas (CIF-123): la falta tiene que doler aquí, antes del despliegue.
+      [[ "$keys" == *ADMIN_API_TOKEN* ]] || ko "falta ADMIN_API_TOKEN en Production: el API del panel responde 503 (CIF-123)"
     else
       ko "no se pudo listar las variables (HTTP $code)"
     fi
