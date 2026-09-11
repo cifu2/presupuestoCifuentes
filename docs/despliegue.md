@@ -198,7 +198,40 @@ abierta es el rol de aplicación de Neon frente al rol propietario.
    rollback del apartado 5.1 (probarlo de verdad, no darlo por supuesto).
 6. **Dominio:** apuntar el dominio de puertascifuentes.com en Vercel y verificar HTTPS.
 
-## 7. Referencias
+## 7. Actualizaciones de dependencias (Dependabot)
+
+Dependabot abre PRs de dependencias contra `main` (`.github/dependabot.yml`) y esos PRs pasan por la
+misma puerta requerida que cualquier otro cambio: `calidad` y `e2e` (apartado 2). No se fusiona un PR
+de dependencias con la puerta en rojo, igual que no se fusiona un cambio de la aplicación.
+
+La resolución del lockfile depende de ajustes de pnpm que se versionan en `pnpm-workspace.yaml`,
+**no** en el campo `pnpm` de `package.json`:
+
+- `minimumReleaseAge: 0`: fija de forma explícita que no se aplica la ventana de madurez de
+  versiones. Sin este valor, pnpm 11 —el que trae preinstalado el contenedor del updater— aplica 24 h
+  por defecto y rechaza dependencias publicadas el mismo día; con él, local y CI (pnpm 10.34.5) y el
+  updater de Dependabot resuelven igual.
+- `onlyBuiltDependencies`: paquetes autorizados a ejecutar scripts de instalación (`prisma`,
+  `@prisma/engines`, `@swc/core`…). pnpm 11 ya no lee ese campo desde `package.json`, así que aquí es
+  donde tiene efecto.
+
+### Cómo comprobar que el updater sigue verde
+
+1. GitHub → Actions: el job dinámico `npm_and_yarn in /. - Update` (workflow
+   `dynamic/dependabot/dependabot-updates`) termina en verde sobre `main`. Un fallo aquí no bloquea
+   ninguna entrega, pero deja el CI en rojo y se tria como incidencia de DevOps.
+2. Cada PR que abre Dependabot ejecuta `calidad` y `e2e`, y no se fusiona sin ambos en verde.
+3. Reproducción local con la misma versión que usa el updater:
+
+   ```bash
+   npx --yes pnpm@11 install --lockfile-only --no-frozen-lockfile
+   ```
+
+   Debe terminar sin `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION` ni
+   `ERR_PNPM_NO_MATURE_MATCHING_VERSION`. Si vuelve a aparecer, es que se ha perdido el ajuste de
+   `pnpm-workspace.yaml`.
+
+## 8. Referencias
 
 - [Variables de entorno y secretos](variables-entorno.md)
 - [Base de datos, backups y monitorización](operacion.md)
