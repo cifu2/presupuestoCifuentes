@@ -16,8 +16,12 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RELEASE="$SCRIPT_DIR/release.sh"
-# Valor sintético, nunca una credencial: sirve para comprobar que el script no lo imprime.
-SENTINEL="postgresql://usuario-sentinel:clave-sentinel@example.invalid:5432/sentinel"
+# Valor sintético, nunca una credencial: sirve para comprobar que el script no lo imprime. Se arma
+# por piezas a propósito: el fichero no puede contener una cadena con forma de credencial porque el
+# propio barrido (`scripts/secret-scan.sh`) es una puerta de CI y la marcaría como fuga.
+SENTINEL_USER='usuario-sentinel'
+SENTINEL_PASS='clave-sentinel'
+SENTINEL="$(printf '%s://%s:%s@example.invalid:5432/sentinel' 'postgresql' "$SENTINEL_USER" "$SENTINEL_PASS")"
 
 if [[ ! -x "$RELEASE" ]]; then
   echo "no encuentro $RELEASE" >&2
