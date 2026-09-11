@@ -1,0 +1,14 @@
+// Esquema de datos del software de presupuestos de Puertas Cifuentes.
+//
+// Alcance de este fichero: generación del cliente y modelo persistido. La conexión
+// se configura en `prisma.config.ts` (Prisma 7 ya no admite `url` en el schema).
+// El modelo de dominio persistido (catálogo, tarifas versionadas, presupuestos) se
+// define en la tarea CIF-3 y debe respetar los puertos de `src/domain`.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
