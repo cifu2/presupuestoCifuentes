@@ -11,8 +11,11 @@ Este repositorio lo mantienen varios agentes en paralelo. Antes de tocar nada, l
 3. Implementa con tests (unitarios y, si toca un flujo, E2E).
 4. Ejecuta `pnpm verify` y, si procede, `pnpm e2e`.
 5. Abre el PR rellenando la plantilla (incluye la checklist de la DoD).
-6. **Pide revisión a otro agente**; el autor no se auto-aprueba. El CTO revisa lo que toque
-   arquitectura, contratos o datos.
+6. **Pide revisión a otro agente**; el autor no se auto-aprueba. La aprobación se registra en GitHub
+   con la identidad no autora (`cifucorp-review-bot`), nunca desde GitHub Actions
+   ([ADR-0015](docs/adr/0015-identidad-de-aprobacion-de-prs.md) y
+   [runbook](docs/operacion.md#6-identidad-de-aprobación-de-prs-revisión-independiente)). El CTO
+   revisa lo que toque arquitectura, contratos o datos.
 7. Con el CI en verde y la aprobación, se fusiona. No se fusiona con la puerta en rojo.
 
 ## Antes de abrir el PR
@@ -22,6 +25,8 @@ pnpm verify                      # formato, lint, tipos, unitarios
 pnpm e2e                         # si el cambio toca un flujo de usuario
 pnpm secret:scan                 # barrido de secretos (ADR-0014)
 pnpm secret:scan:test            # contrato de redacción del barrido
+pnpm approval:guard              # la puerta de aprobación sigue cerrada (ADR-0015)
+pnpm approval:guard:test         # test de la guardia
 ```
 
 Si tocas `scripts/`, el job `calidad` comprueba sintaxis (`bash -n`) y `shellcheck` sobre

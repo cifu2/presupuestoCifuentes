@@ -22,6 +22,8 @@
     "e2e": "playwright test",
     "secret:scan": "./scripts/secret-scan.sh",
     "secret:scan:test": "./scripts/secret-scan.test.sh",
+    "approval:guard": "./scripts/approval-guard.sh",
+    "approval:guard:test": "./scripts/approval-guard.test.sh",
     "e2e:install": "playwright install --with-deps chromium",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

@@ -73,6 +73,7 @@ Estas credenciales **no van a Vercel**: son de operación y las aporta el propie
 | Token de GitHub (`repo` + `workflow`) | Crear el repositorio y proteger `main`   | Secreto `github/devops-token`          |
 | Token de Vercel                       | Enlazar el proyecto e inyectar variables | Secreto `vercel/devops-token`          |
 | Cadena de conexión de Neon            | Migraciones y restauración               | Secreto `neon/production-database-url` |
+| Token del revisor (`public_repo`)     | Aprobar PRs con identidad no autora      | Secreto `github/review-bot-token`      |
 
 Se usan como variables de entorno del proceso (`GITHUB_DEVOPS_TOKEN`, `VERCEL_DEVOPS_TOKEN`,
 `NEON_PRODUCTION_DATABASE_URL`) y **nunca** se pasan como argumento en claro ni se imprimen. Los
@@ -94,6 +95,7 @@ propietario escribe el valor una sola vez en la interfaz, queda cifrado y el age
 | Secreto en Paperclip           | `configPath` del binding           | Variable de proceso            |
 | ------------------------------ | ---------------------------------- | ------------------------------ |
 | `github/devops-token`          | `env.GITHUB_DEVOPS_TOKEN`          | `GITHUB_DEVOPS_TOKEN`          |
+| `github/review-bot-token`      | `env.GITHUB_REVIEW_BOT_TOKEN`      | `GITHUB_REVIEW_BOT_TOKEN`      |
 | `vercel/devops-token`          | `env.VERCEL_DEVOPS_TOKEN`          | `VERCEL_DEVOPS_TOKEN`          |
 | `neon/production-database-url` | `env.NEON_PRODUCTION_DATABASE_URL` | `NEON_PRODUCTION_DATABASE_URL` |
 

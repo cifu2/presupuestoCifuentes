@@ -22,6 +22,7 @@ que supersede al anterior y se marca el antiguo como `Superseded por ADR-XXXX`.
 | [0012](0012-politica-saltos-version-mayor.md)            | Política ante saltos de versión mayor (TypeScript 7, @types/node 26) | Aceptado |
 | [0013](0013-tarifas-modificadores-y-presupuestos.md)     | Desglose de tarifas, modificadores y precio congelado                | Aceptado |
 | [0014](0014-manejo-y-rotacion-de-secretos.md)            | Manejo, barrido y rotación de secretos de operación                  | Aceptado |
+| [0015](0015-identidad-de-aprobacion-de-prs.md)           | Identidad de aprobación de PRs (machine user) y su token             | Aceptado |
 
 ## Cuándo hace falta un ADR
 
