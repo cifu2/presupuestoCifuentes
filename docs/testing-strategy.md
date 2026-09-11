@@ -20,7 +20,9 @@ es la que manda cuando hay duda.
 4. Emitir presupuesto, descargar el PDF y enviarlo por email.
 5. Cambiar de idioma y comprobar que configurador, PDF y email salen traducidos.
 
-Cada flujo crítico tiene su `spec` en `e2e/` y pasa a ser puerta obligatoria cuando existe.
+Cada flujo crítico tiene su `spec` en `e2e/` y pasa a ser puerta obligatoria cuando existe. El
+mapa de flujos a specs, los datos de prueba y la plantilla de informe de fallo están en
+[e2e-playbook.md](e2e-playbook.md).
 
 ## Reglas de escritura
 
@@ -46,20 +48,25 @@ Cada flujo crítico tiene su `spec` en `e2e/` y pasa a ser puerta obligatoria cu
   Solo se añade `data-testid` cuando no hay alternativa semántica.
 - Cada test parte de datos conocidos: los _fixtures_ preparan y limpian su propio estado; no se
   depende del orden de ejecución.
-- Ante un fallo, el CI sube `playwright-report/` con traza, captura y vídeo del reintento.
+- Ante un fallo, el CI sube `playwright-report/` y `test-results/` con informe, traza, captura y
+  vídeo del reintento.
 
 ## CI
 
 `.github/workflows/ci.yml` ejecuta:
 
-- `calidad`: `format:check` → `lint` → `typecheck` → `test:coverage`.
-- `e2e`: instalación de Chromium → build → `pnpm e2e`.
+- `calidad`: `format:check` → `lint` → `typecheck` → `pnpm db:deploy` → `test:coverage`, con un
+  servicio `postgres:17` efímero y `DATABASE_URL`/`TEST_DATABASE_URL` apuntando a `cifuentes_test`,
+  para que los tests de integración se ejecuten en lugar de saltarse.
+- `e2e`: instalación de Chromium → build → `pnpm e2e`; ante un fallo sube `playwright-report/` y
+  `test-results/` (informe, capturas, trazas y vídeo del reintento).
 
 Ambos son _checks_ requeridos en `main` (los configura DevOps en CIF-11). Un test inestable se
 arregla; no se ignora ni se reintenta en bucle hasta que pasa.
 
-## Cuando lleguen los tests con base de datos
+## Base de datos en los tests
 
-QA (CIF-10) y DevOps (CIF-11) añadirán al job `e2e` (o a un job `integracion`) un servicio
-`postgres:17`, `DATABASE_URL` apuntando a él y el paso `pnpm db:deploy` con migraciones. El esqueleto
-actual no usa base de datos a propósito, para que la puerta no dependa de datos reales.
+El job `calidad` ya levanta un servicio `postgres:17`, exporta `DATABASE_URL`/`TEST_DATABASE_URL` y
+aplica las migraciones antes de los tests (CIF-10/CIF-19). Los E2E de API y de UI siguen usando el
+catálogo de demostración en memoria, para que la puerta no dependa de datos reales. Procedimiento y
+plantilla de informes de fallo: [e2e-playbook.md](e2e-playbook.md).

@@ -17,9 +17,29 @@ env:
 
 jobs:
   calidad:
-    name: calidad (formato · lint · tipos · unitarios)
+    name: calidad (formato · lint · tipos · unitarios e integración)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Los tests de integración de los adaptadores Prisma solo se ejecutan si existe
+    # TEST_DATABASE_URL; esta base es efímera y no contiene datos reales (ver
+    # docs/testing-strategy.md y docs/e2e-playbook.md).
+    env:
+      DATABASE_URL: postgresql://postgres@localhost:5432/cifuentes_test
+      TEST_DATABASE_URL: postgresql://postgres@localhost:5432/cifuentes_test
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: cifuentes_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d cifuentes_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -38,6 +58,8 @@ jobs:
         run: shellcheck scripts/*.sh
       - run: pnpm lint
       - run: pnpm typecheck
+      - name: migraciones en la base de datos de integración
+        run: pnpm db:deploy
       - run: pnpm test:coverage
       - if: always()
         uses: actions/upload-artifact@v7
@@ -64,5 +86,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
-          path: playwright-report/
+          path: |
+            playwright-report/
+            test-results/
           retention-days: 7
