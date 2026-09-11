@@ -9,6 +9,8 @@
 # Recuerda: después hay que revertir el cambio en `main` para que repositorio y producción coincidan.
 set -euo pipefail
 
+export VERCEL_TOKEN="${VERCEL_TOKEN:-${VERCEL_DEVOPS_TOKEN:-}}"
+
 command -v vercel >/dev/null 2>&1 || { echo "falta la CLI de Vercel (vercel)" >&2; exit 69; }
 
 case "${1:-list}" in

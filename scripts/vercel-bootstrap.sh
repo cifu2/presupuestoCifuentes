@@ -6,8 +6,11 @@
 # Uso:   scripts/vercel-bootstrap.sh [ruta/al/fichero.env.local]
 #
 # El fichero de valores NO se versiona (está en .gitignore) y sus valores no se imprimen.
-# Credenciales: `vercel login` o la variable VERCEL_TOKEN.
+# Credenciales: `vercel login`, VERCEL_TOKEN o el secreto de Paperclip VERCEL_DEVOPS_TOKEN.
+# Sin terminal interactiva: define también VERCEL_ORG_ID y VERCEL_PROJECT_ID y la CLI no pregunta.
 set -euo pipefail
+
+export VERCEL_TOKEN="${VERCEL_TOKEN:-${VERCEL_DEVOPS_TOKEN:-}}"
 
 ENV_FILE="${1:-.env.vercel.local}"
 ENVIRONMENTS=(production preview development)
@@ -25,7 +28,7 @@ fi
 
 if [[ ! -f .vercel/project.json ]]; then
   echo "== enlazando el proyecto de Vercel (vercel link)"
-  vercel link
+  vercel link --yes
 fi
 
 while IFS= read -r line || [[ -n "$line" ]]; do

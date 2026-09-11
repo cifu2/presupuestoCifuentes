@@ -49,14 +49,20 @@ apartado _Seguridad_).
 
 Estas credenciales **no van a Vercel**: son de operación y las aporta el propietario (CIF-14).
 
-| Credencial                               | Para qué                                 | Dónde vive                        |
-| ---------------------------------------- | ---------------------------------------- | --------------------------------- |
-| Token de GitHub con `repo` + `admin:org` | Crear el repositorio y proteger `main`   | Gestor de secretos del operador   |
-| Token de Vercel                          | Enlazar el proyecto e inyectar variables | Gestor de secretos del operador   |
-| Cadena de conexión de Neon               | Migraciones y restauración               | Gestor de secretos / `.env.local` |
+| Credencial                            | Para qué                                 | Dónde vive                             |
+| ------------------------------------- | ---------------------------------------- | -------------------------------------- |
+| Token de GitHub (`repo` + `workflow`) | Crear el repositorio y proteger `main`   | Secreto `github/devops-token`          |
+| Token de Vercel                       | Enlazar el proyecto e inyectar variables | Secreto `vercel/devops-token`          |
+| Cadena de conexión de Neon            | Migraciones y restauración               | Secreto `neon/production-database-url` |
 
-Se usan como variables de entorno del proceso (`GH_TOKEN`, `VERCEL_TOKEN`, `PRODUCTION_DATABASE_URL`)
-y **nunca** se pasan como argumento en claro ni se imprimen.
+Se usan como variables de entorno del proceso (`GITHUB_DEVOPS_TOKEN`, `VERCEL_DEVOPS_TOKEN`,
+`NEON_PRODUCTION_DATABASE_URL`) y **nunca** se pasan como argumento en claro ni se imprimen. Los
+scripts aceptan también los nombres cortos `GH_TOKEN`, `VERCEL_TOKEN` y `PRODUCTION_DATABASE_URL`
+(útil en el puesto de trabajo, con `gh auth login` / `vercel login`).
+
+El alcance `workflow` del token de GitHub **no es opcional**: sin él, GitHub rechaza el push entero
+que contenga cambios en `.github/workflows/`, con un mensaje que no menciona el alcance. Un PAT
+clásico con solo `repo` sirve para leer y proteger `main`, pero no para subir el CI.
 
 ## 5. Entrega de credenciales al agente (Paperclip Secrets)
 
@@ -66,11 +72,15 @@ propietario escribe el valor una sola vez en la interfaz, queda cifrado y el age
 
 ### 5.1 Nombres acordados
 
-| Secreto en Paperclip           | `configPath` del binding         | Variable de proceso       |
-| ------------------------------ | -------------------------------- | ------------------------- |
-| `github/devops-token`          | `env.GH_TOKEN`                   | `GH_TOKEN`                |
-| `vercel/devops-token`          | `env.VERCEL_TOKEN`               | `VERCEL_TOKEN`            |
-| `neon/production-database-url` | `access.PRODUCTION_DATABASE_URL` | `PRODUCTION_DATABASE_URL` |
+| Secreto en Paperclip           | `configPath` del binding           | Variable de proceso            |
+| ------------------------------ | ---------------------------------- | ------------------------------ |
+| `github/devops-token`          | `env.GITHUB_DEVOPS_TOKEN`          | `GITHUB_DEVOPS_TOKEN`          |
+| `vercel/devops-token`          | `env.VERCEL_DEVOPS_TOKEN`          | `VERCEL_DEVOPS_TOKEN`          |
+| `neon/production-database-url` | `env.NEON_PRODUCTION_DATABASE_URL` | `NEON_PRODUCTION_DATABASE_URL` |
+
+Esta es la configuración **real** en uso (comprobada con `scripts/despliegue-preflight.sh`). La
+variante `access.<alias>` sigue siendo válida y preferible para lo que se usa poco; si se cambia, hay
+que actualizar esta tabla y los scripts, que resuelven el nombre corto y el inyectado.
 
 ### 5.2 Alta del secreto
 
@@ -90,10 +100,20 @@ Modos de entrega:
 
 - **GitHub:** PAT _fine-grained_ limitado a la organización o al repositorio del proyecto, con
   `contents:write`, `pull_requests:write`, `workflows:write`, `administration:write` (protección de
-  rama) y `metadata:read`; caducidad ≤ 90 días.
+  rama) y `metadata:read`; caducidad ≤ 90 días. En un PAT clásico, `workflow` **y** `repo`.
 - **Vercel:** token de equipo, no personal, con acceso solo al equipo del proyecto.
 - **Neon:** cadena de conexión del rol de aplicación para `DATABASE_URL` y, aparte, credencial de
   administración del proyecto para crear ramas y restaurar.
+
+### 5.6 Comprobación periódica
+
+```bash
+scripts/despliegue-preflight.sh
+```
+
+Informe de solo lectura (usuario del token, alcances, repositorio, protección de `main`, proyecto de
+Vercel, variables por entorno y accesibilidad de la base de datos). No imprime valores y devuelve 1
+si queda algo pendiente: es la primera parada cuando el despliegue no arranca.
 
 ### 5.4 Comprobación desde el agente
 

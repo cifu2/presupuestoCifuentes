@@ -9,6 +9,9 @@
 # La cadena de conexión se lee de una variable de entorno y no se imprime en ningún momento.
 set -euo pipefail
 
+# El secreto de Paperclip llega como NEON_PRODUCTION_DATABASE_URL.
+export PRODUCTION_DATABASE_URL="${PRODUCTION_DATABASE_URL:-${NEON_PRODUCTION_DATABASE_URL:-}}"
+
 if [[ -z "${PRODUCTION_DATABASE_URL:-}" ]]; then
   echo "falta PRODUCTION_DATABASE_URL." >&2
   echo "Tómala del gestor de secretos o de .env.local (no versionado). Nunca la escribas aquí." >&2

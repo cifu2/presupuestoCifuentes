@@ -6,8 +6,14 @@
 # Uso:   scripts/github-bootstrap.sh <org>/<repo>
 #        REPO_VISIBILITY=private scripts/github-bootstrap.sh cifucorp/presupuestos
 #
-# Credenciales: usa `gh auth login` o la variable GH_TOKEN. El token no se imprime ni se guarda.
+# Credenciales: `gh auth login`, o las variables GH_TOKEN / GITHUB_DEVOPS_TOKEN (secreto de
+# Paperclip). El token no se imprime ni se guarda. Necesita el alcance `workflow` para poder subir
+# .github/workflows/: un PAT clásico con solo `repo` rechaza el push entero y el error de git no lo
+# explica.
 set -euo pipefail
+
+# El secreto de Paperclip llega como GITHUB_DEVOPS_TOKEN; se respeta el nombre corto si ya existe.
+export GH_TOKEN="${GH_TOKEN:-${GITHUB_DEVOPS_TOKEN:-}}"
 
 REPO="${1:-}"
 VISIBILITY="${REPO_VISIBILITY:-private}"
@@ -23,9 +29,17 @@ command -v gh >/dev/null 2>&1 || {
   exit 69
 }
 gh auth status >/dev/null 2>&1 || {
-  echo "gh no está autenticado. Ejecuta 'gh auth login' o exporta GH_TOKEN." >&2
+  echo "gh no está autenticado. Ejecuta 'gh auth login' o define GH_TOKEN / GITHUB_DEVOPS_TOKEN." >&2
   exit 69
 }
+
+# Aviso temprano del alcance. Los PAT finos no anuncian alcances: solo se comprueba si hay cabecera.
+scopes="$(gh api -i user 2>/dev/null | tr -d '\r' | awk 'tolower($1) == "x-oauth-scopes:" { $1 = ""; print }' || true)"
+if [[ -n "$scopes" && "$scopes" != *workflow* ]]; then
+  echo "el token no tiene el alcance 'workflow': no se puede subir .github/workflows/." >&2
+  echo "Añádelo en GitHub (Settings -> Developer settings -> Tokens) y actualiza el secreto." >&2
+  exit 77
+fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
@@ -44,7 +58,8 @@ if git remote get-url origin >/dev/null 2>&1; then
 else
   git remote add origin "https://github.com/${REPO}.git"
 fi
-git push -u origin main
+# gh actúa como ayudante de credenciales: el push usa el token del entorno sin guardarlo en disco.
+git -c credential.helper= -c credential.helper='!gh auth git-credential' push -u origin main
 
 echo "== 3/4 ajustes del repositorio (auto-merge, borrado de rama al fusionar)"
 gh api -X PATCH "repos/${REPO}" \
