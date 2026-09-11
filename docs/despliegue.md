@@ -23,13 +23,21 @@ servidores propios en ningún entorno ([ADR-0007](adr/0007-despliegue-vercel-git
   [variables-entorno.md](variables-entorno.md).
 - Las URLs de vista previa no contienen datos reales de clientes: la base de datos de preview es una
   rama desechable, no una copia de producción.
+- **Protección de despliegue desactivada** (2026-09-11): Vercel traía activada la autenticación SSO
+  para todos los despliegues, lo que dejaba el configurador público y las URLs de preview detrás de
+  un login. Se desactiva a propósito para que el cliente pueda ver producción y QA pueda validar los
+  flujos del PR sin cuenta de Vercel; es asumible porque el preview no toca datos reales.
 
 ## 2. Cómo se despliega
 
 1. La **integración nativa Vercel ↔ GitHub** es la única vía de despliegue. GitHub Actions **no**
    despliega y no guarda credenciales de Vercel.
-2. `main` está **protegida**: no se admite push directo, solo fusión por PR con los checks requeridos
-   `calidad` y `e2e` en verde y la revisión de otro agente (ADR-0006).
+2. `main` está **protegida** (verificado el 2026-09-11): no se admite push directo (`enforce_admins`
+   incluido), solo fusión por PR con los checks requeridos `calidad` y `e2e` en verde, la conversación
+   resuelta y sin force push ni borrado de rama. La revisión de otro agente que exige la
+   [Definition of Done](definition-of-done.md) se registra en la incidencia de Paperclip: GitHub no
+   permite exigirla mientras el autor del PR y el dueño del token sean la misma cuenta de GitHub.
+   Cuando exista un segundo colaborador, se vuelve a activar `required_pull_request_reviews`.
 3. La configuración del proyecto de Vercel (framework Next.js, `pnpm build`, Node de `.nvmrc`) se
    detecta sola; no hace falta `vercel.json`. Si en el futuro hiciera falta configuración, se
    versiona en el repositorio.
@@ -145,16 +153,16 @@ accesibilidad de la base de datos, no imprime ningún valor y devuelve 1 si qued
 
 Estado verificado el 2026-09-11 con `scripts/despliegue-preflight.sh` (informe de solo lectura):
 
-| Paso                            | Estado    | Detalle                                                                                                                                                                           |
-| ------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Credenciales                 | Hecho     | Los tres secretos se inyectan en el entorno del agente y responden: el token de GitHub anuncia los alcances `repo` y `workflow` ([variables-entorno.md](variables-entorno.md), 5) |
-| 2. Repositorio remoto           | Hecho     | `cifu2/presupuestoCifuentes`, **público** por decisión del propietario; `main` subida con el CI y la protección                                                                   |
-| 3. Protección de `main`         | Hecho     | Sin push directo: `calidad (formato · lint · tipos · unitarios)` y `e2e (puerta obligatoria)` requeridos y estrictos, 1 revisión, conversación resuelta, `enforce_admins`         |
-| 4. Proyecto de Vercel           | Hecho     | `presupuesto-cifuentes` (`prj_7hKfqaoBcQVsn5xk4cfkrXFHUUOb`), framework Next.js, con `DATABASE_URL` (sensible) y `NEXT_PUBLIC_SITE_URL` en _Production_                           |
-| 5. Integración Git de Vercel    | Hecho     | Proyecto enlazado al repositorio: hay preview por PR y producción desde `main`                                                                                                    |
-| 6. Base de datos                | Parcial   | Neon responde en PostgreSQL 18 (base `neondb`, rol `neondb_owner`); faltan la rama `preview` y un rol de aplicación con menos privilegios                                         |
-| 7. Primer despliegue y rollback | Pendiente | Se ejecuta al fusionar el primer PR (apartado 5.1 para el rollback)                                                                                                               |
-| 8. Dominio                      | Pendiente | Depende de la decisión de dominio (CIF-14); hasta entonces `NEXT_PUBLIC_SITE_URL` apunta al dominio `*.vercel.app`                                                                |
+| Paso                            | Estado    | Detalle                                                                                                                                                                                    |
+| ------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1. Credenciales                 | Hecho     | Los tres secretos se inyectan en el entorno del agente y responden: el token de GitHub anuncia los alcances `repo` y `workflow` ([variables-entorno.md](variables-entorno.md), 5)          |
+| 2. Repositorio remoto           | Hecho     | `cifu2/presupuestoCifuentes`, **público** por decisión del propietario; `main` subida con el CI y la protección                                                                            |
+| 3. Protección de `main`         | Hecho     | Sin push directo: `calidad (formato · lint · tipos · unitarios)` y `e2e (puerta obligatoria)` requeridos y estrictos, conversación resuelta, sin force push, `enforce_admins` (apartado 2) |
+| 4. Proyecto de Vercel           | Hecho     | `presupuesto-cifuentes` (`prj_7hKfqaoBcQVsn5xk4cfkrXFHUUOb`), framework Next.js, con `DATABASE_URL` (sensible) y `NEXT_PUBLIC_SITE_URL` en _Production_                                    |
+| 5. Integración Git de Vercel    | Hecho     | Proyecto enlazado al repositorio: hay preview por PR y producción desde `main`                                                                                                             |
+| 6. Base de datos                | Parcial   | Neon responde en PostgreSQL 18 (base `neondb`, rol `neondb_owner`); faltan la rama `preview` y un rol de aplicación con menos privilegios                                                  |
+| 7. Primer despliegue y rollback | Parcial   | Producción y preview desplegadas y comprobadas con `/api/health` (PR #1); falta el ensayo real de rollback (apartado 5.1), que necesita dos despliegues de producción                      |
+| 8. Dominio                      | Pendiente | Depende de la decisión de dominio (CIF-14); hasta entonces `NEXT_PUBLIC_SITE_URL` apunta al dominio `*.vercel.app`                                                                         |
 
 Decisión del propietario (2026-09-11): el repositorio se queda **público** por ahora. La otra decisión
 abierta es el rol de aplicación de Neon frente al rol propietario.
