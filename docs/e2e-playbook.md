@@ -40,17 +40,19 @@ fusionar. Los flujos pendientes se añaden en el mismo PR que trae la funcionali
 
 - Cada test prepara y limpia su propio estado; nunca depende del orden de ejecución.
 - E2E de API y de UI: catálogo de demostración en memoria (`CATALOG_DEMO_MODE`), sin base de datos.
-- E2E que necesiten base de datos: PostgreSQL efímero `postgres:17` del CI, base `cifuentes_test`,
-  migraciones con `pnpm db:deploy` (ver más abajo).
+- E2E con base de datos: hoy **ningún** E2E la usa. Si alguno la necesitara, hay que añadirle al job
+  `e2e` el mismo servicio `postgres:17` (`cifuentes_test`) y el paso
+  `DATABASE_URL="$TEST_DATABASE_URL" pnpm db:deploy` que ya tiene el job `calidad` (ver más abajo).
 - **Nada de datos reales de clientes, credenciales ni secretos** en specs, capturas o informes. Los
   contactos de prueba usan siempre el dominio reservado (`@example.com`).
 - Medidas, precios y acabados de prueba salen de las factorías del dominio, no de literales sueltos.
 
 ## Base de datos en CI
 
-El job `calidad` levanta un servicio `postgres:17` efímero y exporta `DATABASE_URL` y
-`TEST_DATABASE_URL` apuntando a `cifuentes_test`; después de `typecheck` aplica las migraciones con
-`pnpm db:deploy` y ejecuta `pnpm test:coverage`. Los tests de integración de los adaptadores Prisma
+El job `calidad` levanta un servicio `postgres:17` efímero y publica `TEST_DATABASE_URL` a nivel de
+job apuntando a `cifuentes_test`; `DATABASE_URL` se fija en línea y solo en el paso de migraciones.
+Después de `typecheck` aplica las migraciones con `pnpm db:deploy` y ejecuta
+`pnpm test:coverage`. Los tests de integración de los adaptadores Prisma
 están guardados por `describe.runIf(process.env.TEST_DATABASE_URL)`: sin la variable se saltarían, así
 que el CI debe mantenerla. En local, para reproducirlo:
 
