@@ -10,6 +10,7 @@ function readRepositoryFile(name: string): string {
 }
 
 const pnpmWorkspace = readRepositoryFile('pnpm-workspace.yaml')
+const dependabotConfig = readRepositoryFile('.github/dependabot.yml')
 const packageJson = JSON.parse(readRepositoryFile('package.json')) as Record<string, unknown>
 
 function topLevelSetting(name: string): string | undefined {
@@ -61,5 +62,14 @@ describe('ajustes de pnpm versionados con el repositorio', () => {
 
   it('mantiene packageManager fijado a la serie de pnpm con la que se valida el lockfile', () => {
     expect(packageJson.packageManager).toMatch(/^pnpm@10\./)
+  })
+})
+
+describe('ajustes de Dependabot versionados con el repositorio', () => {
+  it('desactiva el cooldown para que no inyecte un minimumReleaseAge más estricto', () => {
+    // Dependabot traduce su cooldown (3 días por defecto) a `--config.minimumReleaseAge` sobre sus
+    // comandos de pnpm y ese flag gana a `minimumReleaseAge: 0` del repositorio: sin la exclusión la
+    // resolución del updater falla (CIF-29).
+    expect(dependabotConfig).toMatch(/cooldown:\s*\n\s+exclude:\s*\[\s*'\*'\s*\]/)
   })
 })

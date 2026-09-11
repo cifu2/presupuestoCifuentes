@@ -48,8 +48,9 @@ Sin `DATABASE_URL` (o con `CATALOG_DEMO_MODE=true`) la API sirve un catálogo de
 memoria: útil para desarrollo y E2E sin PostgreSQL. El catálogo real lo gestiona el propietario desde
 el panel.
 
-> Nota local: si tu entorno inyecta `NODE_ENV=development`, ejecuta el build con
-> `NODE_ENV=production pnpm build`.
+> `pnpm build` fija `NODE_ENV=production`: Next 16 respeta un `NODE_ENV=development` heredado y
+> pasa a su modo debug de prerender, que aborta el build en la página builtin `/_global-error`
+> (CIF-49). El modo debug sigue disponible con `pnpm exec next build --debug-prerender`.
 
 ## Estructura
 

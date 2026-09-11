@@ -3,7 +3,7 @@
 Contrato público que consumen el configurador (CIF-7) y el panel (CIF-9). Implementación:
 route handlers de `src/app/api/**` → casos de uso de `src/application/use-cases` → dominio.
 Decisiones de precio: [ADR-0003](adr/0003-motor-de-precios.md) y
-[ADR-0011](adr/0011-tarifas-modificadores-y-presupuestos.md).
+[ADR-0011](adr/0013-tarifas-modificadores-y-presupuestos.md).
 
 ## Convenciones
 

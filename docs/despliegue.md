@@ -204,16 +204,26 @@ Dependabot abre PRs de dependencias contra `main` (`.github/dependabot.yml`) y e
 misma puerta requerida que cualquier otro cambio: `calidad` y `e2e` (apartado 2). No se fusiona un PR
 de dependencias con la puerta en rojo, igual que no se fusiona un cambio de la aplicación.
 
-La resolución del lockfile depende de ajustes de pnpm que se versionan en `pnpm-workspace.yaml`,
-**no** en el campo `pnpm` de `package.json`:
+La política está registrada en [ADR-0011 — Política de madurez de versiones](adr/0011-politica-madurez-versiones.md).
 
-- `minimumReleaseAge: 0`: fija de forma explícita que no se aplica la ventana de madurez de
-  versiones. Sin este valor, pnpm 11 —el que trae preinstalado el contenedor del updater— aplica 24 h
-  por defecto y rechaza dependencias publicadas el mismo día; con él, local y CI (pnpm 10.34.5) y el
-  updater de Dependabot resuelven igual.
-- `onlyBuiltDependencies`: paquetes autorizados a ejecutar scripts de instalación (`prisma`,
-  `@prisma/engines`, `@swc/core`…). pnpm 11 ya no lee ese campo desde `package.json`, así que aquí es
-  donde tiene efecto.
+La resolución del lockfile depende de dos ajustes que deben contar la misma política de madurez:
+
+- **pnpm** (`pnpm-workspace.yaml`, **no** el campo `pnpm` de `package.json`, que pnpm 11 ya no lee):
+  - `minimumReleaseAge: 0`: fija de forma explícita que no hay ventana de madurez de versiones. Sin
+    este valor, pnpm 11 —el que trae preinstalado el contenedor del updater— aplica 24 h por defecto y
+    rechaza dependencias publicadas el mismo día.
+  - `onlyBuiltDependencies`: paquetes autorizados a ejecutar scripts de instalación (`prisma`,
+    `@prisma/engines`, `@swc/core`…).
+- **Dependabot** (`.github/dependabot.yml`, entrada `npm`): `cooldown.exclude: ['*']`. Aunque no se
+  configure, Dependabot aplica un _cooldown_ de 3 días a las actualizaciones de versión y lo traduce a
+  `--config.minimumReleaseAge=4320` (minutos) en sus comandos de pnpm; ese flag gana a
+  `minimumReleaseAge` del repositorio, así que abortaba la resolución cuando el lockfile contenía
+  versiones más jóvenes que la ventana. Con todas las dependencias excluidas del cooldown, Dependabot
+  no inyecta el flag y manda la política del repositorio (0 días).
+
+  Si algún día se quiere una ventana de madurez real, hay que fijarla **en los dos sitios** —`cooldown`
+  de Dependabot y `minimumReleaseAge` de pnpm (en minutos)— y asumir que las versiones recién
+  publicadas no entran en el lockfile hasta que maduren.
 
 ### Cómo comprobar que el updater sigue verde
 
@@ -221,15 +231,17 @@ La resolución del lockfile depende de ajustes de pnpm que se versionan en `pnpm
    `dynamic/dependabot/dependabot-updates`) termina en verde sobre `main`. Un fallo aquí no bloquea
    ninguna entrega, pero deja el CI en rojo y se tria como incidencia de DevOps.
 2. Cada PR que abre Dependabot ejecuta `calidad` y `e2e`, y no se fusiona sin ambos en verde.
-3. Reproducción local con la misma versión que usa el updater:
+3. Reproducción local con la misma versión que usa el updater (pnpm 11):
 
    ```bash
+   # Política del repositorio: no debe fallar.
    npx --yes pnpm@11 install --lockfile-only --no-frozen-lockfile
-   ```
 
-   Debe terminar sin `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION` ni
-   `ERR_PNPM_NO_MATURE_MATCHING_VERSION`. Si vuelve a aparecer, es que se ha perdido el ajuste de
-   `pnpm-workspace.yaml`.
+   # Gate que Dependabot inyectaba con su cooldown de 3 días: si vuelve a dar
+   # ERR_PNPM_NO_MATURE_MATCHING_VERSION, revisar `cooldown.exclude` en .github/dependabot.yml.
+   npx --yes pnpm@11 update typescript --lockfile-only --no-save -r \
+     --config.minimumReleaseAge=4320
+   ```
 
 ## 8. Referencias
 
