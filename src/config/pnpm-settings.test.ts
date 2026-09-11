@@ -72,4 +72,17 @@ describe('ajustes de Dependabot versionados con el repositorio', () => {
     // resolución del updater falla (CIF-29).
     expect(dependabotConfig).toMatch(/cooldown:\s*\n\s+exclude:\s*\[\s*'\*'\s*\]/)
   })
+
+  it('veta los saltos de versión mayor que rompen la puerta de calidad (ADR-0012)', () => {
+    // CIF-34: Dependabot subió TypeScript 5.9 → 7 y @types/node 24 → 26 en el mismo PR y la puerta
+    // `calidad` cayó. Se posponen hasta después del MVP y hasta que suba el runtime de Node
+    // (.nvmrc = 24): los tipos siguen siempre la línea del runtime. Ver ADR-0012.
+    for (const dependencia of ['eslint', 'typescript', '@types/node']) {
+      expect(dependabotConfig).toMatch(
+        new RegExp(
+          `dependency-name:\\s*'?${dependencia}'?\\s*\\n\\s+update-types:\\s*\\[\\s*'version-update:semver-major'\\s*\\]`,
+        ),
+      )
+    }
+  })
 })
