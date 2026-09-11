@@ -94,6 +94,10 @@
     "INVALID_SERIES_TRANSITION": "That status change is not allowed for this series.",
     "INVALID_CATALOG_TRANSITION": "That status change is not allowed for this catalogue item.",
     "INVALID_MANUAL_QUOTE_REQUEST": "The manual quote request is incomplete.",
-    "INVALID_MANUAL_QUOTE_TRANSITION": "That status change is not allowed for this manual quote request."
+    "INVALID_MANUAL_QUOTE_TRANSITION": "That status change is not allowed for this manual quote request.",
+    "INVALID_QUOTE": "The quote has invalid data.",
+    "INVALID_QUOTE_TRANSITION": "That status change is not allowed for this quote.",
+    "INVALID_QUOTE_REFERENCE": "The quote reference has an invalid format.",
+    "NOT_FOUND": "We could not find what you are looking for."
   }
 }

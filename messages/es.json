@@ -94,6 +94,10 @@
     "INVALID_SERIES_TRANSITION": "Ese cambio de estado no está permitido en esta serie.",
     "INVALID_CATALOG_TRANSITION": "Ese cambio de estado no está permitido en este elemento del catálogo.",
     "INVALID_MANUAL_QUOTE_REQUEST": "La solicitud de presupuesto manual está incompleta.",
-    "INVALID_MANUAL_QUOTE_TRANSITION": "Ese cambio de estado no está permitido en esta solicitud manual."
+    "INVALID_MANUAL_QUOTE_TRANSITION": "Ese cambio de estado no está permitido en esta solicitud manual.",
+    "INVALID_QUOTE": "El presupuesto tiene datos que no son válidos.",
+    "INVALID_QUOTE_TRANSITION": "Ese cambio de estado no está permitido en este presupuesto.",
+    "INVALID_QUOTE_REFERENCE": "La referencia del presupuesto no tiene un formato válido.",
+    "NOT_FOUND": "No hemos encontrado lo que buscas."
   }
 }
