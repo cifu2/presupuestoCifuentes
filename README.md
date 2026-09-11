@@ -7,8 +7,10 @@ y por email, multi-idioma y panel de administración para el propietario.
 ## Estado
 
 Kickoff técnico completado (CIF-2): estructura, stack, arquitectura, ADRs, convenciones y CI.
-La aplicación todavía es un esqueleto: la home y `/api/health` son lo único implementado, y existen
-para probar que la tubería (build, despliegue y puerta de calidad) funciona de punta a punta.
+Modelo de dominio y esquema de datos del catálogo (CIF-3): series con **tamaño máximo por serie**,
+acabados, colores, accesorios, tarifas versionadas por vigencia, textos multi-idioma y solicitudes de
+presupuesto manual. La home y `/api/health` siguen siendo lo único expuesto por HTTP: la API del
+configurador llega con CIF-4.
 
 ## Stack
 
@@ -28,15 +30,16 @@ pnpm dev                    # http://localhost:3000
 
 Comandos habituales:
 
-| Comando                              | Qué hace                                                       |
-| ------------------------------------ | -------------------------------------------------------------- |
-| `pnpm dev`                           | Servidor de desarrollo                                         |
-| `pnpm verify`                        | Formato + lint + tipos + tests unitarios (lo que exige la DoD) |
-| `pnpm test` / `pnpm test:coverage`   | Tests unitarios con Vitest                                     |
-| `pnpm e2e`                           | Tests E2E con Playwright (escritorio y móvil)                  |
-| `pnpm e2e:install`                   | Instala Chromium para Playwright                               |
-| `pnpm db:migrate` / `pnpm db:deploy` | Migraciones Prisma en local / despliegue                       |
-| `pnpm build`                         | Build de producción                                            |
+| Comando                              | Qué hace                                                                                           |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| `pnpm dev`                           | Servidor de desarrollo                                                                             |
+| `pnpm verify`                        | Formato + lint + tipos + tests unitarios (lo que exige la DoD)                                     |
+| `pnpm test` / `pnpm test:coverage`   | Tests unitarios con Vitest                                                                         |
+| `pnpm e2e`                           | Tests E2E con Playwright (escritorio y móvil)                                                      |
+| `pnpm e2e:install`                   | Instala Chromium para Playwright                                                                   |
+| `pnpm db:migrate` / `pnpm db:deploy` | Migraciones Prisma en local / despliegue                                                           |
+| —                                    | Reversión de la última migración: `psql "$DATABASE_URL" -f prisma/migrations/<migración>/down.sql` |
+| `pnpm build`                         | Build de producción                                                                                |
 
 > Nota local: si tu entorno inyecta `NODE_ENV=development`, ejecuta el build con
 > `NODE_ENV=production pnpm build`.

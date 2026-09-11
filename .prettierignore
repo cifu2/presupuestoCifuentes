@@ -4,3 +4,6 @@ coverage
 playwright-report
 test-results
 pnpm-lock.yaml
+
+# generado por Next.js (no se edita a mano)
+next-env.d.ts

@@ -14,6 +14,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov'],
       include: ['src/domain/**', 'src/application/**'],
+      exclude: ['src/**/testing/**'],
       thresholds: {
         lines: 80,
         functions: 80,

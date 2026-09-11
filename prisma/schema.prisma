@@ -1,9 +1,12 @@
 // Esquema de datos del software de presupuestos de Puertas Cifuentes.
 //
-// Alcance de este fichero: generación del cliente y modelo persistido. La conexión
-// se configura en `prisma.config.ts` (Prisma 7 ya no admite `url` en el schema).
-// El modelo de dominio persistido (catálogo, tarifas versionadas, presupuestos) se
-// define en la tarea CIF-3 y debe respetar los puertos de `src/domain`.
+// Alcance: catálogo (series, medidas con tamaño máximo, acabados, colores y accesorios),
+// tarifas versionadas por vigencia, textos multi-idioma y solicitudes de presupuesto manual.
+// La conexión se configura en `prisma.config.ts` (Prisma 7 ya no admite `url` en el schema).
+//
+// Correspondencia con el dominio: las entidades de `src/domain/catalog` se persisten aquí; el
+// dominio no conoce Prisma. Las tablas y columnas van en snake_case (`@@map`/`@map`) para que el
+// propietario y los informes SQL trabajen cómodos.
 
 generator client {
   provider = "prisma-client-js"
@@ -11,4 +14,250 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+/// Estados editoriales compartidos por los elementos de catálogo editables desde el panel.
+enum CatalogStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+
+  @@map("catalog_status")
+}
+
+/// Estrategia de cálculo que aplica una versión de tarifa (ADR-0003).
+enum PricingStrategy {
+  PER_SQUARE_METRE @map("per_square_metre")
+  SIZE_BANDS       @map("size_bands")
+  FIXED            @map("fixed")
+
+  @@map("pricing_strategy")
+}
+
+/// Estados editoriales de una versión de tarifa.
+enum TariffStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+
+  @@map("tariff_status")
+}
+
+/// Motivo por el que el configurador no puede dar precio automático (ADR-0003).
+enum ManualQuoteReason {
+  SIZE_EXCEEDS_SERIES_MAX @map("size_exceeds_series_max")
+  NO_TARIFF_IN_FORCE      @map("no_tariff_in_force")
+  UNCOVERED_CONFIGURATION @map("uncovered_configuration")
+  CUSTOMER_REQUESTED      @map("customer_requested")
+
+  @@map("manual_quote_reason")
+}
+
+/// Estado de seguimiento de una solicitud de presupuesto manual.
+enum ManualQuoteStatus {
+  PENDING
+  CONTACTED
+  CLOSED
+
+  @@map("manual_quote_status")
+}
+
+/// Entidad de catálogo a la que pertenece un texto traducible.
+enum CatalogEntityType {
+  SERIES
+  FINISH
+  COLOR
+  ACCESSORY
+
+  @@map("catalog_entity_type")
+}
+
+/// Campo de catálogo que se traduce.
+enum CatalogTextField {
+  NAME
+  DESCRIPTION
+
+  @@map("catalog_text_field")
+}
+
+/// Familia de un accesorio o herraje.
+enum AccessoryCategory {
+  HARDWARE
+  CLOSING
+  GLASS
+  VENTILATION
+  OTHER
+
+  @@map("accessory_category")
+}
+
+/// Serie de puertas: modelo, rango de medidas (con el máximo que pasa a presupuesto manual) y
+/// compatibilidades con acabados y accesorios.
+model DoorSeries {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  code        String        @unique @db.VarChar(32)
+  slug        String        @unique @db.VarChar(80)
+  status      CatalogStatus @default(DRAFT)
+  minWidthMm  Int           @map("min_width_mm")
+  maxWidthMm  Int           @map("max_width_mm")
+  minHeightMm Int           @map("min_height_mm")
+  maxHeightMm Int           @map("max_height_mm")
+  sortOrder   Int           @default(0) @map("sort_order")
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tariffVersions TariffVersion[]
+  finishLinks    SeriesFinish[]
+  accessoryLinks SeriesAccessory[]
+  manualQuotes   ManualQuoteRequest[]
+
+  @@index([status, sortOrder])
+  @@map("door_series")
+}
+
+/// Acabado disponible en el catálogo (lacado, chapa natural, aluminio…).
+model Finish {
+  id        String        @id @default(uuid(7)) @db.Uuid
+  code      String        @unique @db.VarChar(32)
+  status    CatalogStatus @default(DRAFT)
+  sortOrder Int           @default(0) @map("sort_order")
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  colors         Color[]
+  seriesLinks    SeriesFinish[]
+  manualQuotes   ManualQuoteRequest[]
+
+  @@map("finish")
+}
+
+/// Color de un acabado, con su hexadecimal para la vista previa 2D.
+model Color {
+  id        String        @id @default(uuid(7)) @db.Uuid
+  finishId  String        @map("finish_id") @db.Uuid
+  finish    Finish        @relation(fields: [finishId], references: [id], onDelete: Cascade)
+  code      String        @db.VarChar(32)
+  hex       String?       @db.Char(7)
+  status    CatalogStatus @default(DRAFT)
+  sortOrder Int           @default(0) @map("sort_order")
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  manualQuotes ManualQuoteRequest[]
+
+  @@unique([finishId, code])
+  @@index([finishId, status, sortOrder])
+  @@map("color")
+}
+
+/// Accesorio o herraje configurable.
+model Accessory {
+  id        String            @id @default(uuid(7)) @db.Uuid
+  code      String            @unique @db.VarChar(32)
+  category  AccessoryCategory @default(OTHER)
+  status    CatalogStatus     @default(DRAFT)
+  sortOrder Int               @default(0) @map("sort_order")
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  seriesLinks SeriesAccessory[]
+
+  @@index([category, status, sortOrder])
+  @@map("accessory")
+}
+
+/// Compatibilidad serie ↔ acabado.
+model SeriesFinish {
+  seriesId String     @map("series_id") @db.Uuid
+  series   DoorSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  finishId String     @map("finish_id") @db.Uuid
+  finish   Finish     @relation(fields: [finishId], references: [id], onDelete: Cascade)
+
+  @@id([seriesId, finishId])
+  @@map("series_finish")
+}
+
+/// Compatibilidad serie ↔ accesorio.
+model SeriesAccessory {
+  seriesId    String     @map("series_id") @db.Uuid
+  series      DoorSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  accessoryId String     @map("accessory_id") @db.Uuid
+  accessory   Accessory  @relation(fields: [accessoryId], references: [id], onDelete: Cascade)
+
+  @@id([seriesId, accessoryId])
+  @@map("series_accessory")
+}
+
+/// Texto de catálogo traducible (nombre o descripción de series, acabados, colores y accesorios).
+///
+/// Es una tabla polimórfica a propósito: el panel edita traducciones de cualquier entidad con el
+/// mismo formulario. `entityId` no lleva clave ajena porque apunta a tablas distintas; la
+/// integridad la garantiza la capa de aplicación y el borrado en cascada se hace desde el panel.
+model CatalogText {
+  id         String            @id @default(uuid(7)) @db.Uuid
+  entityType CatalogEntityType @map("entity_type")
+  entityId   String            @map("entity_id") @db.Uuid
+  field      CatalogTextField
+  locale     String            @db.VarChar(5)
+  value      String            @db.Text
+  createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([entityType, entityId, field, locale])
+  @@index([entityType, entityId, field])
+  @@map("catalog_text")
+}
+
+/// Versión de tarifa de una serie con su vigencia (ADR-0003). Como máximo una publicada vigente
+/// por serie y momento; el desglose de precios (bandas y modificadores) llega con CIF-4.
+model TariffVersion {
+  id             String          @id @default(uuid(7)) @db.Uuid
+  seriesId       String          @map("series_id") @db.Uuid
+  series         DoorSeries      @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  versionNumber  Int             @map("version_number")
+  status         TariffStatus    @default(DRAFT)
+  strategy       PricingStrategy
+  validFrom      DateTime        @map("valid_from") @db.Date
+  validUntil     DateTime?       @map("valid_until") @db.Date
+  taxRatePercent Decimal         @map("tax_rate_percent") @db.Decimal(5, 2)
+  currency       String          @default("EUR") @db.Char(3)
+  notes          String?         @db.Text
+  publishedAt    DateTime?       @map("published_at") @db.Timestamptz(3)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([seriesId, versionNumber])
+  @@index([seriesId, status, validFrom])
+  @@map("tariff_version")
+}
+
+/// Solicitud de presupuesto manual: el configurador no pudo dar precio y el cliente pidió que le
+/// llamen. Guarda el motivo y la configuración pedida para el comercial.
+model ManualQuoteRequest {
+  id                    String            @id @default(uuid(7)) @db.Uuid
+  reason                ManualQuoteReason
+  status                ManualQuoteStatus @default(PENDING)
+  seriesId              String?           @map("series_id") @db.Uuid
+  series                DoorSeries?       @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  widthMm               Int?              @map("width_mm")
+  heightMm              Int?              @map("height_mm")
+  finishId              String?           @map("finish_id") @db.Uuid
+  finish                Finish?           @relation(fields: [finishId], references: [id], onDelete: SetNull)
+  colorId               String?           @map("color_id") @db.Uuid
+  color                 Color?            @relation(fields: [colorId], references: [id], onDelete: SetNull)
+  accessoryIds          String[]          @map("accessory_ids") @db.Uuid
+  locale                String            @db.VarChar(5)
+  customerName          String            @map("customer_name") @db.VarChar(120)
+  customerEmail         String            @map("customer_email") @db.VarChar(254)
+  customerPhone         String?           @map("customer_phone") @db.VarChar(40)
+  message               String?           @db.Text
+  configurationSnapshot Json?             @map("configuration_snapshot")
+  handledAt             DateTime?         @map("handled_at") @db.Timestamptz(3)
+  handledByUserId       String?           @map("handled_by_user_id") @db.Uuid
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([status, createdAt])
+  @@index([seriesId])
+  @@map("manual_quote_request")
 }
