@@ -11,6 +11,12 @@ updates:
       day: monday
       time: '06:00'
       timezone: Europe/Madrid
+    # Dependabot aplica un cooldown de 3 días por defecto y lo traduce a `--config.minimumReleaseAge`
+    # en el updater de pnpm; ese flag gana a `minimumReleaseAge` del repositorio y abortaba la
+    # resolución cuando el lockfile tenía versiones más jóvenes que la ventana (CIF-29). Excluir todas
+    # las dependencias deja la política en manos del repositorio: 0 días, igual que pnpm.
+    cooldown:
+      exclude: ['*']
     open-pull-requests-limit: 5
     groups:
       produccion:
