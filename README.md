@@ -9,10 +9,11 @@ y por email, multi-idioma y panel de administración para el propietario.
 Kickoff técnico completado (CIF-2): estructura, stack, arquitectura, ADRs, convenciones y CI.
 Modelo de dominio y esquema de datos del catálogo (CIF-3): series con **tamaño máximo por serie**,
 acabados, colores, accesorios, tarifas versionadas por vigencia, textos multi-idioma y solicitudes de
-presupuesto manual. Capa multi-idioma (CIF-8): URLs por idioma (`/es/...`, `/en/...`), diccionarios
-`messages/`, selector de idioma, textos de catálogo traducibles desde el panel y mensajes de error
-traducibles. Lo expuesto por HTTP es la home por idioma y `/api/health`: la API del configurador
-llega con CIF-4.
+presupuesto manual. API de catálogo y motor de presupuestos (CIF-4): endpoints de catálogo, cálculo
+en vivo, paso a presupuesto manual por tamaño máximo o falta de tarifa y emisión de presupuestos con
+precio congelado y multi-idioma. Contrato: [docs/api.md](docs/api.md). Capa multi-idioma (CIF-8):
+URLs por idioma (`/es/...`, `/en/...`), diccionarios `messages/`, selector de idioma, textos de
+catálogo traducibles desde el panel y mensajes de error traducibles.
 
 ## Stack
 
@@ -43,6 +44,10 @@ Comandos habituales:
 | —                                    | Reversión de la última migración: `psql "$DATABASE_URL" -f prisma/migrations/<migración>/down.sql` |
 | `pnpm build`                         | Build de producción                                                                                |
 
+Sin `DATABASE_URL` (o con `CATALOG_DEMO_MODE=true`) la API sirve un catálogo de demostración en
+memoria: útil para desarrollo y E2E sin PostgreSQL. El catálogo real lo gestiona el propietario desde
+el panel.
+
 > `pnpm build` fija `NODE_ENV=production`: Next 16 respeta un `NODE_ENV=development` heredado y
 > pasa a su modo debug de prerender, que aborta el build en la página builtin `/_global-error`
 > (CIF-49). El modo debug sigue disponible con `pnpm exec next build --debug-prerender`.
@@ -69,6 +74,7 @@ Detalle en [docs/architecture.md](docs/architecture.md). Los límites entre capa
 ## Documentación
 
 - [Arquitectura](docs/architecture.md) · [ADR](docs/adr/README.md)
+- [API de catálogo y presupuestos](docs/api.md) — contrato del configurador y del panel
 - [Multi-idioma](docs/i18n.md) — capas, URLs por idioma y contratos de presupuesto y panel
 - [Definition of Done](docs/definition-of-done.md) — nadie da algo por terminado sin cumplirla
 - [Convenciones de código](docs/coding-conventions.md)

@@ -9,8 +9,8 @@
 import {
   assertIntegerInRange,
   assertNonEmptyString,
-  assertPercentage,
   assertValidDate,
+  normalizePercentage,
 } from '@/domain/shared/assertions'
 import { AmbiguousTariffError, InvalidTariffVersionError } from '@/domain/shared/errors'
 
@@ -71,7 +71,7 @@ export class TariffVersion {
     assertNonEmptyString(props.id, 'id')
     assertNonEmptyString(props.seriesId, 'seriesId')
     assertIntegerInRange(props.versionNumber, 'versionNumber', 1, 100_000)
-    assertPercentage(props.taxRatePercent, 'taxRatePercent')
+    const taxRatePercent = normalizePercentage(props.taxRatePercent, 'taxRatePercent')
 
     if (!PRICING_STRATEGIES.includes(props.strategy)) {
       throw new InvalidTariffVersionError(
@@ -87,7 +87,7 @@ export class TariffVersion {
       assertValidDate(props.publishedAt, 'publishedAt')
     }
 
-    return new TariffVersion({ ...props })
+    return new TariffVersion({ ...props, taxRatePercent })
   }
 
   isPublished(): boolean {

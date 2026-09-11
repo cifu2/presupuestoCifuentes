@@ -24,6 +24,8 @@ export default defineConfig({
   ],
   webServer: {
     command: process.env.CI ? `pnpm build && pnpm start --port ${port}` : `pnpm dev --port ${port}`,
+    // El E2E usa el catálogo de demostración en memoria: no depende de PostgreSQL (CIF-10/CIF-11).
+    env: { CATALOG_DEMO_MODE: 'true' },
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,

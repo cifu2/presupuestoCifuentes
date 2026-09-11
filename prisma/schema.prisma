@@ -34,6 +34,47 @@ enum PricingStrategy {
   @@map("pricing_strategy")
 }
 
+/// Forma de aplicar un modificador de precio (ADR-0003).
+enum ModifierKind {
+  FIXED      @map("fixed")
+  PER_UNIT   @map("per_unit")
+  PERCENTAGE @map("percentage")
+
+  @@map("modifier_kind")
+}
+
+/// Concepto sobre el que actúa un modificador de precio.
+enum ModifierTarget {
+  FINISH       @map("finish")
+  COLOR        @map("color")
+  ACCESSORY    @map("accessory")
+  INSTALLATION @map("installation")
+  SHIPPING     @map("shipping")
+  URGENCY      @map("urgency")
+  DISCOUNT     @map("discount")
+
+  @@map("modifier_target")
+}
+
+/// Ciclo de vida de un presupuesto emitido.
+enum QuoteStatus {
+  ISSUED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+
+  @@map("quote_status")
+}
+
+/// Tipo de línea del desglose congelado de un presupuesto.
+enum QuoteLineKind {
+  BASE     @map("base")
+  ADDITION @map("addition")
+  DISCOUNT @map("discount")
+
+  @@map("quote_line_kind")
+}
+
 /// Estados editoriales de una versión de tarifa.
 enum TariffStatus {
   DRAFT
@@ -110,6 +151,7 @@ model DoorSeries {
   finishLinks    SeriesFinish[]
   accessoryLinks SeriesAccessory[]
   manualQuotes   ManualQuoteRequest[]
+  quotes         Quote[]
 
   @@index([status, sortOrder])
   @@map("door_series")
@@ -124,9 +166,11 @@ model Finish {
   createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  colors         Color[]
-  seriesLinks    SeriesFinish[]
-  manualQuotes   ManualQuoteRequest[]
+  colors          Color[]
+  seriesLinks     SeriesFinish[]
+  manualQuotes    ManualQuoteRequest[]
+  quotes          Quote[]
+  tariffModifiers TariffModifier[]
 
   @@map("finish")
 }
@@ -143,7 +187,9 @@ model Color {
   createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  manualQuotes ManualQuoteRequest[]
+  manualQuotes    ManualQuoteRequest[]
+  quotes         Quote[]
+  tariffModifiers TariffModifier[]
 
   @@unique([finishId, code])
   @@index([finishId, status, sortOrder])
@@ -160,7 +206,8 @@ model Accessory {
   createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  seriesLinks SeriesAccessory[]
+  seriesLinks     SeriesAccessory[]
+  tariffModifiers TariffModifier[]
 
   @@index([category, status, sortOrder])
   @@map("accessory")
@@ -226,6 +273,9 @@ model TariffVersion {
   createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  priceTable TariffPriceTable?
+  quotes     Quote[]
+
   @@unique([seriesId, versionNumber])
   @@index([seriesId, status, validFrom])
   @@map("tariff_version")
@@ -260,4 +310,133 @@ model ManualQuoteRequest {
   @@index([status, createdAt])
   @@index([seriesId])
   @@map("manual_quote_request")
+}
+
+/// Precios de una versión de tarifa: el precio base según la estrategia (ADR-0003).
+///
+/// `per_square_metre_cents` y `fixed_price_cents` son mutuamente excluyentes y la coherencia con
+/// `tariff_version.strategy` la valida la capa de aplicación (Prisma no cruza tablas en un CHECK).
+model TariffPriceTable {
+  tariffVersionId     String         @id @map("tariff_version_id") @db.Uuid
+  tariffVersion       TariffVersion  @relation(fields: [tariffVersionId], references: [id], onDelete: Cascade)
+  perSquareMetreCents BigInt?        @map("per_square_metre_cents")
+  fixedPriceCents     BigInt?        @map("fixed_price_cents")
+  createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  bands     TariffSizeBand[]
+  modifiers TariffModifier[]
+
+  @@map("tariff_price_table")
+}
+
+/// Banda de medida de una tarifa por tramos (anchura × altura), con su precio.
+model TariffSizeBand {
+  id                String           @id @default(uuid(7)) @db.Uuid
+  tariffPriceTableId String          @map("tariff_price_table_id") @db.Uuid
+  priceTable        TariffPriceTable @relation(fields: [tariffPriceTableId], references: [tariffVersionId], onDelete: Cascade)
+  label           Json?
+  minWidthMm      Int            @map("min_width_mm")
+  maxWidthMm      Int            @map("max_width_mm")
+  minHeightMm     Int            @map("min_height_mm")
+  maxHeightMm     Int            @map("max_height_mm")
+  priceCents      BigInt         @map("price_cents")
+  sortOrder       Int            @default(0) @map("sort_order")
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([tariffPriceTableId, sortOrder])
+  @@map("tariff_size_band")
+}
+
+/// Modificador de precio: acabado, color, accesorio, instalación, portes, urgencia o descuento.
+model TariffModifier {
+  id                 String           @id @default(uuid(7)) @db.Uuid
+  tariffPriceTableId String           @map("tariff_price_table_id") @db.Uuid
+  priceTable         TariffPriceTable @relation(fields: [tariffPriceTableId], references: [tariffVersionId], onDelete: Cascade)
+  code            String         @db.VarChar(32)
+  label           Json?
+  kind            ModifierKind
+  target          ModifierTarget
+  /// Código de descuento al que aplica un modificador `discount`. `null` = descuento automático
+  /// (CIF-74); el código del descuento no se deriva de `code`.
+  discountCode    String?        @map("discount_code") @db.VarChar(32)
+  finishId        String?        @map("finish_id") @db.Uuid
+  finish          Finish?        @relation(fields: [finishId], references: [id], onDelete: SetNull)
+  colorId         String?        @map("color_id") @db.Uuid
+  color           Color?         @relation(fields: [colorId], references: [id], onDelete: SetNull)
+  accessoryId     String?        @map("accessory_id") @db.Uuid
+  accessory       Accessory?     @relation(fields: [accessoryId], references: [id], onDelete: SetNull)
+  amountCents     BigInt?        @map("amount_cents")
+  percentage      Decimal?       @db.Decimal(5, 2)
+  sortOrder       Int            @default(0) @map("sort_order")
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([tariffPriceTableId, code])
+  @@map("tariff_modifier")
+}
+
+/// Presupuesto emitido con el precio congelado (ADR-0003): guarda tarifa, configuración, desglose
+/// y totales. A partir de su emisión no cambia aunque se publiquen tarifas nuevas.
+model Quote {
+  id                 String        @id @db.Uuid
+  reference          String        @unique @db.VarChar(32)
+  status             QuoteStatus   @default(ISSUED)
+  seriesId           String        @map("series_id") @db.Uuid
+  series             DoorSeries    @relation(fields: [seriesId], references: [id], onDelete: Restrict)
+  tariffVersionId    String        @map("tariff_version_id") @db.Uuid
+  tariffVersion      TariffVersion @relation(fields: [tariffVersionId], references: [id], onDelete: Restrict)
+  locale             String        @db.VarChar(5)
+  widthMm            Int           @map("width_mm")
+  heightMm           Int           @map("height_mm")
+  finishId           String?       @map("finish_id") @db.Uuid
+  finish             Finish?       @relation(fields: [finishId], references: [id], onDelete: SetNull)
+  colorId            String?       @map("color_id") @db.Uuid
+  color              Color?        @relation(fields: [colorId], references: [id], onDelete: SetNull)
+  accessoryIds       String[]      @map("accessory_ids") @db.Uuid
+  extras             String[]
+  discountCode       String?       @map("discount_code") @db.VarChar(32)
+  currency           String        @db.Char(3)
+  subtotalCents      BigInt        @map("subtotal_cents")
+  taxRatePercent     Decimal       @map("tax_rate_percent") @db.Decimal(5, 2)
+  taxCents           BigInt        @map("tax_cents")
+  totalCents         BigInt        @map("total_cents")
+  priceSnapshot      Json          @map("price_snapshot")
+  validUntil         DateTime?     @map("valid_until") @db.Date
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  lines QuoteLine[]
+
+  @@index([seriesId, createdAt])
+  @@index([status, createdAt])
+  @@map("quote")
+}
+
+/// Línea del desglose congelado de un presupuesto.
+model QuoteLine {
+  id              String        @id @db.Uuid
+  quoteId         String        @map("quote_id") @db.Uuid
+  quote           Quote         @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  code            String        @db.VarChar(64)
+  kind            QuoteLineKind
+  label           Json?
+  units           Int           @default(1)
+  unitAmountCents BigInt        @map("unit_amount_cents")
+  amountCents     BigInt        @map("amount_cents")
+  sortOrder       Int           @default(0) @map("sort_order")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([quoteId, sortOrder])
+  @@map("quote_line")
+}
+
+/// Contador de referencias de presupuesto por año (sin huecos). El adaptador Prisma lo incrementa
+/// con un UPSERT atómico; no es una secuencia global para que cada año empiece en 1.
+model QuoteReferenceCounter {
+  year      Int    @id
+  lastValue BigInt @default(0) @map("last_value")
+
+  @@map("quote_reference_counter")
 }

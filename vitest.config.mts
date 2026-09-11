@@ -9,6 +9,8 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    // La API se prueba contra el catálogo de demostración en memoria (sin PostgreSQL).
+    env: { CATALOG_DEMO_MODE: 'true' },
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     coverage: {
       provider: 'v8',

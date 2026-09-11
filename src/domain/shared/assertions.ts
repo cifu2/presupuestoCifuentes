@@ -56,3 +56,16 @@ export function assertPercentage(value: string, field: string): void {
     throw new InvalidValueError(`${field} no puede superar 100; recibido "${value}"`)
   }
 }
+
+/**
+ * Normaliza un porcentaje a dos decimales exactos, la misma representación que guarda la columna
+ * `NUMERIC(5,2)` de PostgreSQL. Así el dominio y la base de datos nunca divergen en el formato
+ * (p. ej. `"21"` y `"21.00"` son el mismo porcentaje).
+ */
+export function normalizePercentage(value: string, field: string): string {
+  assertPercentage(value, field)
+
+  const [integerPart = '0', fractionPart = ''] = value.trim().split('.')
+
+  return `${Number.parseInt(integerPart, 10)}.${(fractionPart + '00').slice(0, 2)}`
+}

@@ -20,6 +20,7 @@ que supersede al anterior y se marca el antiguo como `Superseded por ADR-XXXX`.
 | [0010](0010-puesta-en-produccion-i18n.md)                | Puesta en producción de la i18n mediante el PR #6                    | Aceptado |
 | [0011](0011-politica-madurez-versiones.md)               | Política de madurez de versiones (pnpm y Dependabot)                 | Aceptado |
 | [0012](0012-politica-saltos-version-mayor.md)            | Política ante saltos de versión mayor (TypeScript 7, @types/node 26) | Aceptado |
+| [0013](0013-tarifas-modificadores-y-presupuestos.md)     | Desglose de tarifas, modificadores y precio congelado                | Aceptado |
 
 ## Cuándo hace falta un ADR
 
