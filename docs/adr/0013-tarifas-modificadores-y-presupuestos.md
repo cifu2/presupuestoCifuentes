@@ -70,11 +70,25 @@ reversibles y una API estable para el configurador (CIF-7) y el panel (CIF-9).
   hecho tipado (`ManualQuoteDetail`) y el borde HTTP compone el `detail` traducido con el namespace
   `ManualQuoteReasons` de `messages/<locale>.json` (ADR-0005). El motivo estable de la API sigue
   siendo `reason`.
-- **El no solapamiento de tarifas publicadas se comprueba antes de escribir.** El flujo de
-  publicación del panel (`publishTariffVersion`, `POST /api/admin/tariff-versions/:id/publish`)
-  carga las versiones de la serie y llama a `assertNoOverlappingPublishedTariffs` antes del
-  `INSERT`/`UPDATE`: si hay solape lanza `AmbiguousTariffError` y la API responde 409 sin tocar la
-  fila. `selectTariffInForce` se mantiene como última red de lectura.
+- **El no solapamiento de tarifas publicadas se defiende en el dominio y en la base de datos (CIF-89).**
+  El flujo de publicación del panel (`publishTariffVersion`,
+  `POST /api/admin/tariff-versions/:id/publish`) carga las versiones de la serie y llama a
+  `assertNoOverlappingPublishedTariffs` antes del `INSERT`/`UPDATE`: si hay solape lanza
+  `AmbiguousTariffError` y la API responde 409 sin tocar la fila. Esa comprobación previa, sin
+  embargo, no es atómica: dos publicaciones concurrentes de versiones solapadas de la misma serie
+  pueden superarla ambas antes de que ninguna escriba. Por eso la garantía vive además en
+  PostgreSQL, en la migración `20260911150000_constraint_solape_tarifas_publicadas`: una
+  restricción de exclusión parcial (`EXCLUDE USING gist (series_id WITH =,
+daterange(valid_from, valid_until, '[)') WITH &&) WHERE (status = 'PUBLISHED')`, con
+  `btree_gist`) rechaza en la escritura cualquier solape de vigencia entre versiones publicadas de
+  la misma serie, con independencia de lo que viera la comprobación previa. El adaptador
+  (`isPublishedTariffOverlapViolation` en `PrismaTariffVersionRepository`) traduce esa violación
+  (SQLSTATE `23P01`) a `AmbiguousTariffError`, de modo que la carrera concurrente también responde
+  409 y nunca 500. `selectTariffInForce` se mantiene como última red de lectura
+  (`AmbiguousTariffError` si aun así coexistieran dos vigentes). La reversión está documentada en
+  `prisma/migrations/20260911150000_constraint_solape_tarifas_publicadas/down.sql`: al retirar la
+  restricción vuelve a abrirse la ventana de carrera, así que solo es aceptable con un motivo
+  explícito y volviendo a la comprobación previa como única defensa.
 - Se necesitan tests de integración con PostgreSQL real en CI: los añaden QA/DevOps (CIF-10/CIF-11).
 
 ## Alternativas consideradas

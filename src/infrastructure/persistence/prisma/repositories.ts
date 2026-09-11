@@ -13,7 +13,7 @@ import type { $Enums, PrismaClient } from '@prisma/client'
 import { selectTariffInForce, type TariffVersion } from '@/domain/catalog/tariff-version'
 import type { ManualQuoteRequest } from '@/domain/catalog/manual-quote-request'
 import type { Quote } from '@/domain/quote/quote'
-import { InvalidValueError } from '@/domain/shared/errors'
+import { AmbiguousTariffError, InvalidValueError } from '@/domain/shared/errors'
 import type { QuoteExtra } from '@/domain/pricing/quote-configuration'
 
 import type {
@@ -50,6 +50,75 @@ import {
 } from './mappers'
 
 type TextMap = ReturnType<typeof groupCatalogTexts>
+
+/** SQLSTATE que PostgreSQL devuelve al violar una restricción de exclusión (`EXCLUDE`). */
+const POSTGRES_EXCLUSION_VIOLATION = '23P01'
+
+/** Restricción de exclusión que impide dos tarifas publicadas solapadas de la misma serie. */
+const PUBLISHED_TARIFF_OVERLAP_CONSTRAINT = 'tariff_version_published_no_overlap'
+
+/** Profundidad máxima del recorrido del error; Prisma anida el del driver 2-3 niveles. */
+const MAX_ERROR_DEPTH = 8
+
+/**
+ * ¿El error viene de publicar dos versiones de tarifa solapadas de la misma serie?
+ *
+ * La restricción de exclusión (`tariff_version_published_no_overlap`) es la defensa en escritura
+ * frente a dos publicaciones concurrentes (CIF-89). Prisma 7 (adaptador `pg`) envuelve el error de
+ * PostgreSQL en un `PrismaClientKnownRequestError` con código `P2039`, y el SQLSTATE real queda
+ * anidado en `meta.driverAdapterError.cause` (`code`/`originalCode`). Para no depender de esa
+ * forma concreta se recorre el grafo del error buscando el SQLSTATE 23P01 o el nombre de la
+ * restricción (que aparece en `message`, `originalMessage` y `detail`). Se exporta para probarlo
+ * sin base de datos.
+ */
+export function isPublishedTariffOverlapViolation(error: unknown): boolean {
+  const visited = new Set<unknown>()
+
+  const inspect = (value: unknown, depth: number): boolean => {
+    if (depth > MAX_ERROR_DEPTH || typeof value !== 'object' || value === null) {
+      return false
+    }
+
+    if (visited.has(value)) {
+      return false
+    }
+
+    visited.add(value)
+
+    const record = value as Record<string, unknown>
+    const code = record.code ?? record.originalCode ?? record.sqlState
+
+    if (typeof code === 'string' && code === POSTGRES_EXCLUSION_VIOLATION) {
+      return true
+    }
+
+    if (record.constraint === PUBLISHED_TARIFF_OVERLAP_CONSTRAINT) {
+      return true
+    }
+
+    // `message` (y `cause` en algunos motores) no son enumerables en las subclases de `Error`, así
+    // que se leen aparte de `Object.values`.
+    const message = record.message
+
+    if (typeof message === 'string' && message.includes(PUBLISHED_TARIFF_OVERLAP_CONSTRAINT)) {
+      return true
+    }
+
+    for (const child of Object.values(record)) {
+      if (typeof child === 'object' && child !== null && inspect(child, depth + 1)) {
+        return true
+      }
+    }
+
+    if (record.cause !== undefined && inspect(record.cause, depth + 1)) {
+      return true
+    }
+
+    return false
+  }
+
+  return inspect(error, 0)
+}
 
 const SERIES_INCLUDE = {
   finishLinks: { select: { finishId: true } },
@@ -337,17 +406,29 @@ export class PrismaTariffVersionRepository implements TariffVersionRepository {
       updatedAt: version.updatedAt,
     }
 
-    await this.prisma.tariffVersion.upsert({
-      where: { id: version.id },
-      create: {
-        id: version.id,
-        seriesId: version.seriesId,
-        versionNumber: version.versionNumber,
-        createdAt: version.createdAt,
-        ...mutableFields,
-      },
-      update: mutableFields,
-    })
+    try {
+      await this.prisma.tariffVersion.upsert({
+        where: { id: version.id },
+        create: {
+          id: version.id,
+          seriesId: version.seriesId,
+          versionNumber: version.versionNumber,
+          createdAt: version.createdAt,
+          ...mutableFields,
+        },
+        update: mutableFields,
+      })
+    } catch (error) {
+      // Defensa en profundidad: la comprobación previa del caso de uso no cubre dos publicaciones
+      // concurrentes; aquí la base de datos ya ha rechazado el solape (CIF-89).
+      if (isPublishedTariffOverlapViolation(error)) {
+        throw new AmbiguousTariffError(
+          `Ya hay una versión de tarifa publicada que se solapa con la versión ${version.versionNumber} de la serie "${version.seriesId}"`,
+        )
+      }
+
+      throw error
+    }
   }
 }
 
