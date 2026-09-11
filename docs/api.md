@@ -39,7 +39,7 @@ En errores de validación se añade `issues: [{ "path": "widthMm", "message": "�
 | `INVALID_MANUAL_QUOTE_REQUEST`    | 400  | Solicitud manual incompleta                              |
 | `INVALID_QUOTE`                   | 400  | Presupuesto con desglose incoherente                     |
 | `INVALID_QUOTE_REFERENCE`         | 400  | Referencia con formato distinto de `PC-AAAA-NNNNNN`      |
-| `NOT_FOUND`                       | 404  | Serie, presupuesto o tarifa inexistente, o id malformado |
+| `NOT_FOUND`                       | 404  | Serie, presupuesto o tarifa inexistente                  |
 | `AMBIGUOUS_TARIFF`                | 409  | Más de una tarifa vigente para la misma serie            |
 | `INVALID_CATALOG_TRANSITION`      | 409  | Transición de estado no permitida en el catálogo         |
 | `INVALID_SERIES_TRANSITION`       | 409  | Transición de estado no permitida en una serie           |

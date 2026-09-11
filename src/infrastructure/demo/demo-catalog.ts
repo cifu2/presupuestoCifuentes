@@ -22,6 +22,14 @@ import { InMemoryCatalogStore } from '@/infrastructure/persistence/in-memory/cat
 
 const SEED_INSTANT = new Date('2026-01-01T00:00:00.000Z')
 
+/**
+ * Ids de tarifa en UUID canónico: el panel publica contra ellos también en modo demo y el borde
+ * valida el `:id` con `z.uuid` (hallazgo N2 de CIF-85, regresión R1 de la revisión de CIF-87).
+ */
+const TARIFF_CI_100_V1 = '0192f1b0-0000-7000-8000-000000000101'
+const TARIFF_CI_200_V1 = '0192f1b0-0000-7000-8000-000000000201'
+const TARIFF_CI_300_V1 = '0192f1b0-0000-7000-8000-000000000301'
+
 function money(value: string): Money {
   return Money.fromDecimalString(value)
 }
@@ -238,12 +246,12 @@ export function buildDemoCatalog(): CatalogStoreSnapshot {
   const pricing = [
     {
       tariff: tariff({
-        id: 'tariff-ci-100-v1',
+        id: TARIFF_CI_100_V1,
         seriesId: catalogoSeries.id,
         strategy: 'per_square_metre',
       }),
       priceTable: PriceTable.create({
-        tariffVersionId: 'tariff-ci-100-v1',
+        tariffVersionId: TARIFF_CI_100_V1,
         strategy: 'per_square_metre',
         perSquareMetre: money('380.00'),
         fixedPrice: null,
@@ -323,9 +331,9 @@ export function buildDemoCatalog(): CatalogStoreSnapshot {
       }),
     },
     {
-      tariff: tariff({ id: 'tariff-ci-200-v1', seriesId: ci200.id, strategy: 'size_bands' }),
+      tariff: tariff({ id: TARIFF_CI_200_V1, seriesId: ci200.id, strategy: 'size_bands' }),
       priceTable: PriceTable.create({
-        tariffVersionId: 'tariff-ci-200-v1',
+        tariffVersionId: TARIFF_CI_200_V1,
         strategy: 'size_bands',
         perSquareMetre: null,
         fixedPrice: null,
@@ -362,9 +370,9 @@ export function buildDemoCatalog(): CatalogStoreSnapshot {
       }),
     },
     {
-      tariff: tariff({ id: 'tariff-ci-300-v1', seriesId: ci300.id, strategy: 'fixed' }),
+      tariff: tariff({ id: TARIFF_CI_300_V1, seriesId: ci300.id, strategy: 'fixed' }),
       priceTable: PriceTable.create({
-        tariffVersionId: 'tariff-ci-300-v1',
+        tariffVersionId: TARIFF_CI_300_V1,
         strategy: 'fixed',
         perSquareMetre: null,
         fixedPrice: money('1450.00'),

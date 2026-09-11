@@ -128,6 +128,7 @@ describe('POST /api/admin/tariff-versions/[id]/publish', () => {
 
     expect(response.status).toBe(404)
     expect(body.error.code).toBe('NOT_FOUND')
+    expect(store.findByIdCalls).toEqual([MISSING_ID])
     expect(store.saves).toEqual([])
   })
 
