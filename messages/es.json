@@ -23,6 +23,11 @@
       "en": "English"
     }
   },
+  "NotFound": {
+    "title": "No encontramos esta página",
+    "description": "Puede que el enlace esté roto o que la página se haya movido. Vuelve al inicio para seguir configurando tu puerta.",
+    "backHome": "Volver al inicio"
+  },
   "Quote": {
     "documentTitle": "Presupuesto",
     "reference": "Referencia",

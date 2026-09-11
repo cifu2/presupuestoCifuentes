@@ -93,3 +93,73 @@ test('cada idioma declara su canónica y alternativas para los buscadores', asyn
 
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\/en$/)
 })
+
+/**
+ * 404 global (regresión de CIF-8, hallazgo F1).
+ *
+ * Con el layout raíz dentro de `[locale]`, Next no puede componer el 404 a partir de los
+ * layouts: lo sirve `src/app/global-not-found.tsx` (`experimental.globalNotFound`). Estos casos
+ * vigilan que siga respondiendo 404 con `lang`, con la hoja de estilos de la app y con el texto
+ * traducido, nunca con el inglés interno de Next.
+ */
+test.describe('URL inexistente (404 global)', () => {
+  /** Color de fondo de `globals.css` (`#f7f7f5`). Sin la hoja, `body` sería transparente. */
+  const BRAND_BACKGROUND = 'rgb(247, 247, 245)'
+
+  test('en español conserva idioma, estilos y texto traducido', async ({ page }) => {
+    const response = await page.goto('/es/no-existe-esta-pagina')
+
+    expect(response?.status()).toBe(404)
+    await expect(page.locator('html')).toHaveAttribute('lang', 'es')
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'No encontramos esta página' }),
+    ).toBeVisible()
+    await expect(page.getByText('Puede que el enlace esté roto')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Volver al inicio' })).toHaveAttribute(
+      'href',
+      '/es',
+    )
+    await expect(page.locator('body')).toHaveCSS('background-color', BRAND_BACKGROUND)
+    await expect(page.locator('body')).not.toContainText('This page could not be found')
+  })
+
+  test('en inglés conserva idioma, estilos y texto traducido', async ({ page }) => {
+    const response = await page.goto('/en/no-existe-esta-pagina')
+
+    expect(response?.status()).toBe(404)
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+    await expect(
+      page.getByRole('heading', { level: 1, name: "We couldn't find this page" }),
+    ).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Back to home' })).toHaveAttribute('href', '/en')
+    await expect(page.locator('body')).toHaveCSS('background-color', BRAND_BACKGROUND)
+  })
+
+  test('sin prefijo de idioma usa el idioma negociado', async ({ browser }) => {
+    const context = await browser.newContext({ locale: 'en-US' })
+    const page = await context.newPage()
+
+    try {
+      const response = await page.goto('/no-existe-esta-pagina')
+
+      expect(response?.status()).toBe(404)
+      await expect(page).toHaveURL(/\/en\/no-existe-esta-pagina$/)
+      await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+      await expect(page.getByRole('link', { name: 'Back to home' })).toBeVisible()
+    } finally {
+      await context.close()
+    }
+  })
+
+  test('una sección inexistente bajo un idioma válido también da 404 localizado', async ({
+    page,
+  }) => {
+    const response = await page.goto('/es/seccion-inexistente')
+
+    expect(response?.status()).toBe(404)
+    await expect(page.locator('html')).toHaveAttribute('lang', 'es')
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'No encontramos esta página' }),
+    ).toBeVisible()
+  })
+})

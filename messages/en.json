@@ -23,6 +23,11 @@
       "en": "English"
     }
   },
+  "NotFound": {
+    "title": "We couldn't find this page",
+    "description": "The link may be broken, or the page may have moved. Go back home to keep configuring your door.",
+    "backHome": "Back to home"
+  },
   "Quote": {
     "documentTitle": "Quote",
     "reference": "Reference",
