@@ -13,5 +13,7 @@ test('el endpoint de salud responde ok', async ({ request }) => {
 
   expect(response.ok()).toBe(true)
   expect(body).toMatchObject({ status: 'ok', service: 'cifuentes-presupuestos' })
+  // `environment` sale de VERCEL_ENV ?? NODE_ENV: en Vercel distingue preview de production.
+  expect(['production', 'preview', 'development']).toContain(body.environment)
   expect(new Date(body.checkedAt).toString()).not.toBe('Invalid Date')
 })

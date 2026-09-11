@@ -77,8 +77,11 @@ else
   if [[ "$code" == "200" ]]; then
     ok "existe (privado=$(field "$TMP/repo.json" private), rama por defecto=$(field "$TMP/repo.json" default_branch))"
     admin="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("permissions",{}).get("admin"))' "$TMP/repo.json")"
-    [[ "$admin" == "True" ]] && ok "el token tiene administración (puede aplicar la protección de main)" \
-                             || ko "el token no es administrador del repositorio: no podrá proteger main"
+    if [[ "$admin" == "True" ]]; then
+      ok "el token tiene administración (puede aplicar la protección de main)"
+    else
+      ko "el token no es administrador del repositorio: no podrá proteger main"
+    fi
   else
     ko "no accesible con este token (HTTP $code)"
   fi
@@ -113,8 +116,11 @@ if [[ -n "$VERCEL_TOKEN_RESOLVED" ]]; then
   if [[ "$code" == "200" ]]; then
     ok "existe (id $(field "$TMP/proj.json" id), framework $(field "$TMP/proj.json" framework))"
     linked="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("link",{}).get("repo",""))' "$TMP/proj.json")"
-    [[ -n "$linked" ]] && ok "enlazado al repositorio $linked" \
-                       || ko "sin integración Git: instala la GitHub App de Vercel en el repositorio y enlaza el proyecto"
+    if [[ -n "$linked" ]]; then
+      ok "enlazado al repositorio $linked"
+    else
+      ko "sin integración Git: instala la GitHub App de Vercel en el repositorio y enlaza el proyecto"
+    fi
     code="$(api "https://api.vercel.com/v9/projects/$VERCEL_PROJECT/env?teamId=$VERCEL_TEAM_ID" "$VERCEL_TOKEN_RESOLVED" "$TMP/env.json")"
     if [[ "$code" == "200" ]]; then
       keys="$(python3 -c 'import json,sys

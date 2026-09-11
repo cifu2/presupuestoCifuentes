@@ -38,8 +38,9 @@ Decisiones asociadas: [ADR-0007](adr/0007-despliegue-vercel-github.md) y
 ## 3. Monitorización
 
 - **Salud de la aplicación:** `GET /api/health` devuelve `status`, `environment` y
-  `database: "configured" | "unconfigured"`. Se usa como comprobación manual tras cada release y
-  como sonda del monitor externo.
+  `database: "configured" | "unconfigured"`. `environment` sale de `VERCEL_ENV` (`production` o
+  `preview`; `NODE_ENV` fuera de Vercel), así que el monitor distingue producción de preview. Se usa
+  como comprobación manual tras cada release y como sonda del monitor externo.
 - **Monitorización básica sin coste añadido:**
   - _Deployment notifications_ de Vercel al correo del propietario/CTO en cada despliegue de
     producción (éxito y fallo).

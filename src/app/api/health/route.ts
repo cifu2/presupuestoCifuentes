@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 
 import { getSystemStatus } from '@/application/use-cases/get-system-status'
 import { createContainer } from '@/composition/container'
-import { env } from '@/config/env'
+import { env, resolveEnvironment } from '@/config/env'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,7 +12,7 @@ export function GET(): NextResponse {
   return NextResponse.json({
     status,
     service: 'cifuentes-presupuestos',
-    environment: env.NODE_ENV,
+    environment: resolveEnvironment(env),
     database: env.DATABASE_URL ? 'configured' : 'unconfigured',
     checkedAt,
   })

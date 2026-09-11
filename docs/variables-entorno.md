@@ -11,11 +11,15 @@ apartado _Seguridad_).
 | `DATABASE_URL`         | Neon, rama `production`        | Neon, base `presupuesto_preview` | PostgreSQL local o rama dev | Vercel (Production / Preview) y `.env.local` |
 | `NEXT_PUBLIC_SITE_URL` | `https://<dominio-produccion>` | URL del deployment de preview    | `http://localhost:3000`     | Vercel (Production / Preview) y `.env.local` |
 | `NODE_ENV`             | lo fija Vercel (`production`)  | lo fija Vercel (`production`)    | lo fija Next.js             | No se configura a mano                       |
+| `VERCEL_ENV`           | lo fija Vercel (`production`)  | lo fija Vercel (`preview`)       | no definida                 | No se configura a mano                       |
 
 - El esquema de validación está en `src/config/env.ts` (Zod). `DATABASE_URL` y
   `NEXT_PUBLIC_SITE_URL` son opcionales en el esquema para que el esqueleto arranque sin base de
   datos; en producción **deben** estar definidas y `/api/health` lo refleja
   (`database: "configured"`).
+- `/api/health` informa `environment` con `VERCEL_ENV ?? NODE_ENV`: en Vercel distingue `production`
+  de `preview` (dentro de Vercel, `NODE_ENV` es `production` en ambos), y fuera de Vercel cae en
+  `NODE_ENV`.
 - `NEXT_PUBLIC_SITE_URL` es pública por diseño (viaja al navegador). `DATABASE_URL` es un secreto: se
   marca como _Sensitive_ en Vercel y no se lee nunca desde el cliente.
 - `.env.example` solo contiene valores de ejemplo sin credenciales y sirve de plantilla local.
@@ -105,16 +109,6 @@ Modos de entrega:
 - **Neon:** cadena de conexión del rol de aplicación para `DATABASE_URL` y, aparte, credencial de
   administración del proyecto para crear ramas y restaurar.
 
-### 5.6 Comprobación periódica
-
-```bash
-scripts/despliegue-preflight.sh
-```
-
-Informe de solo lectura (usuario del token, alcances, repositorio, protección de `main`, proyecto de
-Vercel, variables por entorno y accesibilidad de la base de datos). No imprime valores y devuelve 1
-si queda algo pendiente: es la primera parada cuando el despliegue no arranca.
-
 ### 5.4 Comprobación desde el agente
 
 ```bash
@@ -129,3 +123,13 @@ Devuelve solo metadatos (nombre, alias, versión y modo de entrega); nunca el va
 Si un valor aparece en un log, una captura, un comentario o un transcript de run, se considera
 filtrado: se rota en su origen (GitHub / Vercel / Neon), se actualiza el secreto en Paperclip y se
 anota el incidente **sin** reproducir el valor.
+
+### 5.6 Comprobación periódica
+
+```bash
+scripts/despliegue-preflight.sh
+```
+
+Informe de solo lectura (usuario del token, alcances, repositorio, protección de `main`, proyecto de
+Vercel, variables por entorno y accesibilidad de la base de datos). No imprime valores y devuelve 1
+si queda algo pendiente: es la primera parada cuando el despliegue no arranca.

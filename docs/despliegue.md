@@ -37,7 +37,8 @@ servidores propios en ningún entorno ([ADR-0007](adr/0007-despliegue-vercel-git
    resuelta y sin force push ni borrado de rama. La revisión de otro agente que exige la
    [Definition of Done](definition-of-done.md) se registra en la incidencia de Paperclip: GitHub no
    permite exigirla mientras el autor del PR y el dueño del token sean la misma cuenta de GitHub.
-   Cuando exista un segundo colaborador, se vuelve a activar `required_pull_request_reviews`.
+   Cuando exista un segundo colaborador, se vuelve a activar `required_pull_request_reviews`
+   (`REPO_REQUIRED_APPROVALS=1`, apartado 6.2).
 3. La configuración del proyecto de Vercel (framework Next.js, `pnpm build`, Node de `.nvmrc`) se
    detecta sola; no hace falta `vercel.json`. Si en el futuro hiciera falta configuración, se
    versiona en el repositorio.
@@ -46,7 +47,8 @@ servidores propios en ningún entorno ([ADR-0007](adr/0007-despliegue-vercel-git
 
 1. Rama de feature desde `main` (`feat/...`, `fix/...`, `docs/...`).
 2. PR contra `main` con la plantilla `.github/pull_request_template.md`.
-3. Vercel publica el **preview** del PR y comenta la URL; el CI arranca `calidad` y `e2e`.
+3. Vercel publica el **preview** del PR y comenta la URL; el CI arranca `calidad` (formato, sintaxis
+   y `shellcheck` de `scripts/`, lint, tipos y unitarios) y `e2e`.
 4. Revisión de otro agente distinto del autor. QA valida el flujo en la URL de preview.
 5. Con CI en verde y aprobación, se fusiona a `main`.
 6. Vercel despliega **producción** desde `main` automáticamente.
@@ -175,11 +177,17 @@ abierta es el rol de aplicación de Neon frente al rol propietario.
 2. **Repositorio remoto y protección de `main`:**
 
    ```bash
+   # Público (por defecto) y sin revisiones obligatorias, como el estado verificado de `main`.
    scripts/github-bootstrap.sh <org>/<repo>
+
+   # Variantes:
+   # REPO_VISIBILITY=private scripts/github-bootstrap.sh <org>/<repo>
+   # REPO_REQUIRED_APPROVALS=1 scripts/github-bootstrap.sh <org>/<repo>   # con un 2º colaborador
    ```
 
-   Crea el repositorio, sube `main` y aplica la protección con `calidad` y `e2e` como checks
-   requeridos.
+   Crea el repositorio (público por defecto), sube `main` y aplica la protección con `calidad` y
+   `e2e` como checks requeridos y estrictos, sin revisiones obligatorias por defecto (el autor del
+   PR y el dueño del token son la misma cuenta).
 
 3. **Proyecto de Vercel y variables:** `scripts/vercel-bootstrap.sh` enlaza el proyecto con el
    repositorio e inyecta las variables de [variables-entorno.md](variables-entorno.md) en los
