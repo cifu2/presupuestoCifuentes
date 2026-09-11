@@ -167,6 +167,26 @@ cat > "$TMP/env-sin-token.json" <<'JSON'
 }
 JSON
 
+cat > "$TMP/env-token-legacy.json" <<'JSON'
+{
+  "envs": [
+    { "key": "ADMIN_API_TOKEN_LEGACY", "target": ["production"], "type": "sensitive" },
+    { "key": "DATABASE_URL", "target": ["production"], "type": "sensitive" },
+    { "key": "NEXT_PUBLIC_SITE_URL", "target": ["production"], "type": "plain" }
+  ]
+}
+JSON
+
+cat > "$TMP/env-db-unpooled.json" <<'JSON'
+{
+  "envs": [
+    { "key": "ADMIN_API_TOKEN", "target": ["production"], "type": "sensitive" },
+    { "key": "DATABASE_URL_UNPOOLED", "target": ["production"], "type": "sensitive" },
+    { "key": "NEXT_PUBLIC_SITE_URL", "target": ["production"], "type": "plain" }
+  ]
+}
+JSON
+
 fallos=0
 pasa() { printf 'ok    %s\n' "$1"; }
 falla() {
@@ -210,7 +230,37 @@ else
   falla "el informe no marca PENDIENTE la falta de ADMIN_API_TOKEN"
 fi
 
-# Caso 3: contrato de redacción (ADR-0014): el informe no imprime ningún valor de credencial.
+# Caso 3: `ADMIN_API_TOKEN_LEGACY` no es `ADMIN_API_TOKEN` (CIF-129): aunque contenga la subcadena,
+# falta la clave exacta y el preflight tiene que seguir marcándolo PENDIENTE.
+ejecutar "$TMP/env-token-legacy.json"
+codigo=$?
+if [[ "$codigo" -eq 1 ]]; then
+  pasa "con solo ADMIN_API_TOKEN_LEGACY el preflight sale con código 1"
+else
+  falla "con solo ADMIN_API_TOKEN_LEGACY el preflight sale con código $codigo (se esperaba 1)"
+fi
+if grep -qE '^  PENDIENTE falta ADMIN_API_TOKEN en Production' "$TMP/salida"; then
+  pasa "ADMIN_API_TOKEN_LEGACY no satisface la guarda de ADMIN_API_TOKEN"
+else
+  falla "ADMIN_API_TOKEN_LEGACY satisfizo la guarda de ADMIN_API_TOKEN"
+fi
+
+# Caso 4: `DATABASE_URL_UNPOOLED` no es `DATABASE_URL` (CIF-129), mismo contrato que el caso 3.
+ejecutar "$TMP/env-db-unpooled.json"
+codigo=$?
+if [[ "$codigo" -eq 1 ]]; then
+  pasa "con solo DATABASE_URL_UNPOOLED el preflight sale con código 1"
+else
+  falla "con solo DATABASE_URL_UNPOOLED el preflight sale con código $codigo (se esperaba 1)"
+fi
+if grep -qE '^  PENDIENTE falta DATABASE_URL en Production' "$TMP/salida"; then
+  pasa "DATABASE_URL_UNPOOLED no satisface la guarda de DATABASE_URL"
+else
+  falla "DATABASE_URL_UNPOOLED satisfizo la guarda de DATABASE_URL"
+fi
+
+# Caso 5: contrato de redacción (ADR-0014): el informe no imprime ningún valor de credencial.
+ejecutar "$TMP/env-con-token.json"
 if grep -qF "$SENTINEL_GH" "$TMP/salida" || grep -qF "$SENTINEL_VERCEL" "$TMP/salida" ||
   grep -qF "$SENTINEL_DB" "$TMP/salida"; then
   falla "el informe imprime un valor de credencial"

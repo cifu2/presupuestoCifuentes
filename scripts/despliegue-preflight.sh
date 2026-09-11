@@ -40,6 +40,12 @@ api() { # api <url> <token> <fichero-salida>  -> imprime el código HTTP
   curl -sS -o "$3" -w '%{http_code}' -H "Authorization: Bearer $2" -H 'Accept: application/json' "$1" 2>/dev/null
 }
 
+tiene_clave() { # tiene_clave <fichero-de-claves> <clave> -> 0 si la clave está, comparando por
+  # elemento exacto y no por subcadena: una `ADMIN_API_TOKEN_LEGACY` no puede dar por buena la
+  # falta de `ADMIN_API_TOKEN`, ni `DATABASE_URL_UNPOOLED` la de `DATABASE_URL` (CIF-129).
+  grep -qxF -e "$2" "$1"
+}
+
 field() { # field <fichero-json> <clave>
   python3 -c 'import json,sys
 try: d = json.load(open(sys.argv[1]))
@@ -128,12 +134,16 @@ if [[ -n "$VERCEL_TOKEN_RESOLVED" ]]; then
     if [[ "$code" == "200" ]]; then
       keys="$(python3 -c 'import json,sys
 e = json.load(open(sys.argv[1])).get("envs", [])
-print(", ".join(sorted({x["key"] for x in e if "production" in (x.get("target") or [])})))' "$TMP/env.json")"
+claves = sorted({x["key"] for x in e if "production" in (x.get("target") or [])})
+with open(sys.argv[2], "w", encoding="utf-8") as salida:
+    for clave in claves:
+        salida.write(clave + "\n")
+print(", ".join(claves))' "$TMP/env.json" "$TMP/claves-production.txt")"
       ok "variables de Production definidas: ${keys:-ninguna}"
-      [[ "$keys" == *DATABASE_URL* ]] || ko "falta DATABASE_URL en Production"
+      tiene_clave "$TMP/claves-production.txt" DATABASE_URL || ko "falta DATABASE_URL en Production"
       # Sin ADMIN_API_TOKEN el API del panel responde 503 y el propietario no puede publicar
       # ni archivar tarifas (CIF-123): la falta tiene que doler aquí, antes del despliegue.
-      [[ "$keys" == *ADMIN_API_TOKEN* ]] || ko "falta ADMIN_API_TOKEN en Production: el API del panel responde 503 (CIF-123)"
+      tiene_clave "$TMP/claves-production.txt" ADMIN_API_TOKEN || ko "falta ADMIN_API_TOKEN en Production: el API del panel responde 503 (CIF-123)"
     else
       ko "no se pudo listar las variables (HTTP $code)"
     fi
