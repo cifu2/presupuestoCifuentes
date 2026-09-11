@@ -153,16 +153,16 @@ accesibilidad de la base de datos, no imprime ningún valor y devuelve 1 si qued
 
 Estado verificado el 2026-09-11 con `scripts/despliegue-preflight.sh` (informe de solo lectura):
 
-| Paso                            | Estado    | Detalle                                                                                                                                                                                    |
-| ------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1. Credenciales                 | Hecho     | Los tres secretos se inyectan en el entorno del agente y responden: el token de GitHub anuncia los alcances `repo` y `workflow` ([variables-entorno.md](variables-entorno.md), 5)          |
-| 2. Repositorio remoto           | Hecho     | `cifu2/presupuestoCifuentes`, **público** por decisión del propietario; `main` subida con el CI y la protección                                                                            |
-| 3. Protección de `main`         | Hecho     | Sin push directo: `calidad (formato · lint · tipos · unitarios)` y `e2e (puerta obligatoria)` requeridos y estrictos, conversación resuelta, sin force push, `enforce_admins` (apartado 2) |
-| 4. Proyecto de Vercel           | Hecho     | `presupuesto-cifuentes` (`prj_7hKfqaoBcQVsn5xk4cfkrXFHUUOb`), framework Next.js, con `DATABASE_URL` (sensible) y `NEXT_PUBLIC_SITE_URL` en _Production_                                    |
-| 5. Integración Git de Vercel    | Hecho     | Proyecto enlazado al repositorio: hay preview por PR y producción desde `main`                                                                                                             |
-| 6. Base de datos                | Parcial   | Neon responde en PostgreSQL 18 (base `neondb`, rol `neondb_owner`); faltan la rama `preview` y un rol de aplicación con menos privilegios                                                  |
-| 7. Primer despliegue y rollback | Parcial   | Producción y preview desplegadas y comprobadas con `/api/health` (PR #1); falta el ensayo real de rollback (apartado 5.1), que necesita dos despliegues de producción                      |
-| 8. Dominio                      | Pendiente | Depende de la decisión de dominio (CIF-14); hasta entonces `NEXT_PUBLIC_SITE_URL` apunta al dominio `*.vercel.app`                                                                         |
+| Paso                            | Estado    | Detalle                                                                                                                                                                                                          |
+| ------------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Credenciales                 | Hecho     | Los tres secretos se inyectan en el entorno del agente y responden: el token de GitHub anuncia los alcances `repo` y `workflow` ([variables-entorno.md](variables-entorno.md), 5)                                |
+| 2. Repositorio remoto           | Hecho     | `cifu2/presupuestoCifuentes`, **público** por decisión del propietario; `main` subida con el CI y la protección                                                                                                  |
+| 3. Protección de `main`         | Hecho     | Sin push directo: `calidad (formato · lint · tipos · unitarios)` y `e2e (puerta obligatoria)` requeridos y estrictos, conversación resuelta, sin force push, `enforce_admins` (apartado 2)                       |
+| 4. Proyecto de Vercel           | Hecho     | `presupuesto-cifuentes` (`prj_7hKfqaoBcQVsn5xk4cfkrXFHUUOb`), framework Next.js, con `DATABASE_URL` (sensible) y `NEXT_PUBLIC_SITE_URL` en _Production_                                                          |
+| 5. Integración Git de Vercel    | Hecho     | Proyecto enlazado al repositorio: hay preview por PR y producción desde `main`                                                                                                                                   |
+| 6. Base de datos                | Hecho     | Base `presupuesto_preview` creada en el mismo proyecto de Neon y migrada (`prisma migrate deploy`), asignada a _Preview_ en Vercel; sigue pendiente el rol de aplicación con menos privilegios y una rama por PR |
+| 7. Primer despliegue y rollback | Parcial   | Producción y preview desplegadas y comprobadas con `/api/health` (PR #1); falta el ensayo real de rollback (apartado 5.1), que necesita dos despliegues de producción                                            |
+| 8. Dominio                      | Pendiente | Depende de la decisión de dominio (CIF-14); hasta entonces `NEXT_PUBLIC_SITE_URL` apunta al dominio `*.vercel.app`                                                                                               |
 
 Decisión del propietario (2026-09-11): el repositorio se queda **público** por ahora. La otra decisión
 abierta es el rol de aplicación de Neon frente al rol propietario.

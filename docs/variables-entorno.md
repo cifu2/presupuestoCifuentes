@@ -6,11 +6,11 @@ apartado _Seguridad_).
 
 ## 1. Inventario
 
-| Variable               | Producción                     | Preview                       | Desarrollo local            | Se define en                                 |
-| ---------------------- | ------------------------------ | ----------------------------- | --------------------------- | -------------------------------------------- |
-| `DATABASE_URL`         | Neon, rama `production`        | Neon, rama de preview del PR  | PostgreSQL local o rama dev | Vercel (Production / Preview) y `.env.local` |
-| `NEXT_PUBLIC_SITE_URL` | `https://<dominio-produccion>` | URL del deployment de preview | `http://localhost:3000`     | Vercel (Production / Preview) y `.env.local` |
-| `NODE_ENV`             | lo fija Vercel (`production`)  | lo fija Vercel (`production`) | lo fija Next.js             | No se configura a mano                       |
+| Variable               | Producción                     | Preview                          | Desarrollo local            | Se define en                                 |
+| ---------------------- | ------------------------------ | -------------------------------- | --------------------------- | -------------------------------------------- |
+| `DATABASE_URL`         | Neon, rama `production`        | Neon, base `presupuesto_preview` | PostgreSQL local o rama dev | Vercel (Production / Preview) y `.env.local` |
+| `NEXT_PUBLIC_SITE_URL` | `https://<dominio-produccion>` | URL del deployment de preview    | `http://localhost:3000`     | Vercel (Production / Preview) y `.env.local` |
+| `NODE_ENV`             | lo fija Vercel (`production`)  | lo fija Vercel (`production`)    | lo fija Next.js             | No se configura a mano                       |
 
 - El esquema de validación está en `src/config/env.ts` (Zod). `DATABASE_URL` y
   `NEXT_PUBLIC_SITE_URL` son opcionales en el esquema para que el esqueleto arranque sin base de
