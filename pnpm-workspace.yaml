@@ -1,0 +1,16 @@
+# Ajustes de pnpm versionados con el repositorio (una sola fuente de verdad).
+#
+# pnpm 11 dejó de leer el campo "pnpm" de package.json y aplica por defecto una política
+# `minimumReleaseAge` de 24 h. El updater de Dependabot usa su propio pnpm (11.x) y aplicaba esa
+# política al resolver el lockfile, lo que hacía fallar el job "npm_and_yarn in /. - Update".
+# Al fijar el valor aquí, local, CI (pnpm 10) y el updater de Dependabot (pnpm 11) se comportan
+# igual. Detalle y verificación: docs/despliegue.md, apartado 7.
+minimumReleaseAge: 0
+
+# Paquetes autorizados a ejecutar scripts de instalación (antes en el campo "pnpm" de package.json).
+onlyBuiltDependencies:
+  - '@parcel/watcher'
+  - '@prisma/engines'
+  - '@swc/core'
+  - prisma
+  - unrs-resolver
