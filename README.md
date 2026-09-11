@@ -43,8 +43,9 @@ Comandos habituales:
 | —                                    | Reversión de la última migración: `psql "$DATABASE_URL" -f prisma/migrations/<migración>/down.sql` |
 | `pnpm build`                         | Build de producción                                                                                |
 
-> Nota local: si tu entorno inyecta `NODE_ENV=development`, ejecuta el build con
-> `NODE_ENV=production pnpm build`.
+> `pnpm build` fija `NODE_ENV=production`: Next 16 respeta un `NODE_ENV=development` heredado y
+> pasa a su modo debug de prerender, que aborta el build en la página builtin `/_global-error`
+> (CIF-49). El modo debug sigue disponible con `pnpm exec next build --debug-prerender`.
 
 ## Estructura
 
