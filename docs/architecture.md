@@ -38,6 +38,8 @@ Next.js, Prisma ni Resend. La UI no sabe que existe Postgres.
 | `src/composition`           | Raíz de composición: une puertos con adaptadores                     | Todo                                |
 | `src/app`                   | Rutas, layouts, route handlers, server actions                       | `application`, `composition`, `ui`  |
 | `src/ui`                    | Componentes de presentación compartidos                              | `domain` (tipos), otros componentes |
+| `src/i18n`                  | Enrutado por idioma, diccionarios y mensajes de error traducibles    | `domain`, `next-intl`               |
+| `messages`                  | Diccionarios de interfaz por idioma (`es.json`, `en.json`)           | —                                   |
 | `src/config`                | Validación de entorno y configuración transversal                    | Nada del proyecto                   |
 | `prisma`                    | Esquema y migraciones                                                | —                                   |
 | `e2e`                       | Tests Playwright de flujos completos                                 | —                                   |

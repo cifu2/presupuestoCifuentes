@@ -40,6 +40,11 @@ las URLs y —lo más importante— cómo se traduce el **texto del catálogo qu
 - Los textos legales del presupuesto necesitan una revisión humana por idioma: los agentes no
   sustituyen a un traductor profesional para contenido comercial.
 
+## Implementación
+
+Cómo se aplica esta decisión (capas, URLs, contratos de presupuesto/panel y cómo añadir un idioma):
+[docs/i18n.md](../i18n.md).
+
 ## Pendiente de negocio (CIF-13)
 
 - Confirmar la lista (propuesta: español + inglés) y si hace falta catalán, francés o portugués.

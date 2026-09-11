@@ -9,8 +9,10 @@ y por email, multi-idioma y panel de administración para el propietario.
 Kickoff técnico completado (CIF-2): estructura, stack, arquitectura, ADRs, convenciones y CI.
 Modelo de dominio y esquema de datos del catálogo (CIF-3): series con **tamaño máximo por serie**,
 acabados, colores, accesorios, tarifas versionadas por vigencia, textos multi-idioma y solicitudes de
-presupuesto manual. La home y `/api/health` siguen siendo lo único expuesto por HTTP: la API del
-configurador llega con CIF-4.
+presupuesto manual. Capa multi-idioma (CIF-8): URLs por idioma (`/es/...`, `/en/...`), diccionarios
+`messages/`, selector de idioma, textos de catálogo traducibles desde el panel y mensajes de error
+traducibles. Lo expuesto por HTTP es la home por idioma y `/api/health`: la API del configurador
+llega con CIF-4.
 
 ## Stack
 
@@ -53,6 +55,8 @@ src/infrastructure  Adaptadores: Prisma, email, PDF, reloj
 src/composition     Raíz de composición (puertos → adaptadores)
 src/app             Rutas, layouts y route handlers de Next.js
 src/config          Validación de entorno con Zod
+src/i18n            Enrutado por idioma, diccionarios y mensajes de error
+messages            Textos de interfaz por idioma (`es.json`, `en.json`)
 docs/adr            Decisiones de arquitectura
 e2e                 Tests Playwright de flujos completos
 prisma              Esquema y migraciones
@@ -64,6 +68,7 @@ Detalle en [docs/architecture.md](docs/architecture.md). Los límites entre capa
 ## Documentación
 
 - [Arquitectura](docs/architecture.md) · [ADR](docs/adr/README.md)
+- [Multi-idioma](docs/i18n.md) — capas, URLs por idioma y contratos de presupuesto y panel
 - [Definition of Done](docs/definition-of-done.md) — nadie da algo por terminado sin cumplirla
 - [Convenciones de código](docs/coding-conventions.md)
 - [Estrategia de pruebas](docs/testing-strategy.md)
