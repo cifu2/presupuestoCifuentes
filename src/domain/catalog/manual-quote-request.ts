@@ -15,14 +15,10 @@ import {
 import type { Locale } from './locale'
 import type { Dimensions } from './measurement'
 
-export const MANUAL_QUOTE_REASONS = [
-  'size_exceeds_series_max',
-  'no_tariff_in_force',
-  'uncovered_configuration',
-  'customer_requested',
-] as const
+import { MANUAL_QUOTE_REASONS, type ManualQuoteReason } from './manual-quote-reason'
 
-export type ManualQuoteReason = (typeof MANUAL_QUOTE_REASONS)[number]
+export { MANUAL_QUOTE_REASONS }
+export type { ManualQuoteReason }
 
 export const MANUAL_QUOTE_STATUSES = ['pending', 'contacted', 'closed'] as const
 

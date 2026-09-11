@@ -5,6 +5,10 @@ const envSchema = z.object({
   VERCEL_ENV: z.enum(['production', 'preview', 'development']).optional(),
   DATABASE_URL: z.string().min(1).optional(),
   NEXT_PUBLIC_SITE_URL: z.url().optional(),
+  /** Días de validez de un presupuesto emitido (decisión de negocio, CIF-14). */
+  QUOTE_VALIDITY_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  /** Fuerza el catálogo de demostración en memoria aunque haya `DATABASE_URL`. */
+  CATALOG_DEMO_MODE: z.coerce.boolean().default(false),
 })
 
 export type Env = z.infer<typeof envSchema>

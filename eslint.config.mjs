@@ -54,7 +54,8 @@ export default defineConfig([
     rules: importBoundaries(['@/infrastructure/*'], UI_MESSAGE),
   },
   {
-    files: ['**/*.test.ts', '**/*.test.tsx', 'e2e/**/*.ts'],
+    // Tests y andamiaje de pruebas (`testing/`): pueden tocar adaptadores en memoria.
+    files: ['**/*.test.ts', '**/*.test.tsx', 'e2e/**/*.ts', 'src/**/testing/**/*.ts'],
     rules: {
       'no-restricted-imports': 'off',
     },

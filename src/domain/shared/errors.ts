@@ -20,6 +20,10 @@ export type DomainErrorCode =
   | 'INVALID_CATALOG_TRANSITION'
   | 'INVALID_MANUAL_QUOTE_REQUEST'
   | 'INVALID_MANUAL_QUOTE_TRANSITION'
+  | 'INVALID_QUOTE'
+  | 'INVALID_QUOTE_TRANSITION'
+  | 'INVALID_QUOTE_REFERENCE'
+  | 'NOT_FOUND'
 
 export class DomainError extends Error {
   readonly code: DomainErrorCode
@@ -112,6 +116,34 @@ export class InvalidCatalogTransitionError extends DomainError {
 export class InvalidManualQuoteRequestError extends DomainError {
   constructor(message: string) {
     super('INVALID_MANUAL_QUOTE_REQUEST', message)
+  }
+}
+
+/** Presupuesto con datos inválidos o desglose incoherente. */
+export class InvalidQuoteError extends DomainError {
+  constructor(message: string) {
+    super('INVALID_QUOTE', message)
+  }
+}
+
+/** Transición de estado no permitida en un presupuesto. */
+export class InvalidQuoteTransitionError extends DomainError {
+  constructor(message: string) {
+    super('INVALID_QUOTE_TRANSITION', message)
+  }
+}
+
+/** Referencia de presupuesto con formato inválido. */
+export class InvalidQuoteReferenceError extends DomainError {
+  constructor(message: string) {
+    super('INVALID_QUOTE_REFERENCE', message)
+  }
+}
+
+/** Recurso no encontrado (serie, presupuesto, tarifa…). */
+export class ResourceNotFoundError extends DomainError {
+  constructor(message: string) {
+    super('NOT_FOUND', message)
   }
 }
 
