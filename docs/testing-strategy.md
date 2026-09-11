@@ -52,14 +52,21 @@ Cada flujo crítico tiene su `spec` en `e2e/` y pasa a ser puerta obligatoria cu
 
 `.github/workflows/ci.yml` ejecuta:
 
-- `calidad`: `format:check` → `lint` → `typecheck` → `test:coverage`.
+- `calidad`: `format:check` → `lint` → `typecheck` → migraciones de test → `test:coverage`.
 - `e2e`: instalación de Chromium → build → `pnpm e2e`.
 
 Ambos son _checks_ requeridos en `main` (los configura DevOps en CIF-11). Un test inestable se
 arregla; no se ignora ni se reintenta en bucle hasta que pasa.
 
-## Cuando lleguen los tests con base de datos
+### Base de datos de los tests de integración
 
-QA (CIF-10) y DevOps (CIF-11) añadirán al job `e2e` (o a un job `integracion`) un servicio
-`postgres:17`, `DATABASE_URL` apuntando a él y el paso `pnpm db:deploy` con migraciones. El esqueleto
-actual no usa base de datos a propósito, para que la puerta no dependa de datos reales.
+El job `calidad` arranca un servicio `postgres:17` efímero y publica `TEST_DATABASE_URL`
+(`postgresql://cifuentes@127.0.0.1:5432/cifuentes_test`, contenedor del runner con
+`POSTGRES_HOST_AUTH_METHOD=trust`). Antes de los tests aplica las migraciones con
+`DATABASE_URL="$TEST_DATABASE_URL" pnpm db:deploy` y después ejecuta `pnpm test:coverage`.
+
+Los tests de integración (`src/infrastructure/**/*.test.ts`) se declaran con
+`describe.runIf(TEST_DATABASE_URL)`: **si la variable falta, se saltan en silencio**, así que el job
+debe garantizarla. La guarda del workflow está en `src/config/ci-workflow.test.ts` para que nadie
+quite el servicio sin que el CI lo note. Los datos son los que siembra cada test y se limpian al
+terminar; no se usa ninguna base de datos real ni credenciales de cliente.
