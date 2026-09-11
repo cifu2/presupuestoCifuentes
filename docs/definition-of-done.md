@@ -62,14 +62,14 @@
 
 ## Definición de Terminado por tipo de tarea
 
-| Tipo                     | Además de la puerta obligatoria                                                                             |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| Dominio / precios        | Casos de la tabla de decisión cubiertos, incluidos los caminos "a consultar" y redondeos                    |
-| API / route handlers     | Contrato documentado, validación de entrada, códigos de error estables y test de integración                |
-| UI (configurador, panel) | E2E del flujo, estados vacío/carga/error, i18n y responsive                                                 |
-| PDF / email              | Test del render y del envío con adaptador falso; reintento probado                                          |
-| Infraestructura / DevOps | Procedimiento documentado ([despliegue.md](despliegue.md)), variable de entorno en Vercel, rollback probado |
-| Documentación / ADR      | Enlace desde el índice y desde la tarea; revisado por el CTO                                                |
+| Tipo                     | Además de la puerta obligatoria                                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| Dominio / precios        | Casos de la tabla de decisión cubiertos, incluidos los caminos "a consultar" y redondeos                                 |
+| API / route handlers     | Contrato documentado, validación de entrada, códigos de error estables y test de integración                             |
+| UI (configurador, panel) | E2E del flujo, estados vacío/carga/error, i18n y responsive                                                              |
+| PDF / email              | Test del render y del envío con adaptador falso; reintento probado                                                       |
+| Infraestructura / DevOps | Procedimiento documentado ([despliegue.md](despliegue.md)), variable de entorno en Vercel, rollback probado (2026-09-11) |
+| Documentación / ADR      | Enlace desde el índice y desde la tarea; revisado por el CTO                                                             |
 
 ## Cuándo una tarea NO está terminada
 
