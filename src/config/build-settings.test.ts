@@ -22,6 +22,19 @@ describe('build de producción versionado con el repositorio', () => {
     expect(scripts.build).toMatch(/(?:^|\s)next build(?:\s|$)/)
   })
 
+  it('genera el cliente de Prisma antes de next build', () => {
+    // Vercel ejecuta tal cual el `build` de package.json: `pnpm install` + `pnpm run build`, sin
+    // `pnpm db:generate` (ese paso solo lo añade CI en CIF-36). pnpm 10 no ejecuta el `postinstall`
+    // de `@prisma/client`, así que sin esta generación el type-check de Next falla con TS2305
+    // ("has no exported member 'PrismaClient'") y el despliegue queda en ERROR (CIF-66).
+    const build = scripts.build ?? ''
+    const generateAt = build.indexOf('prisma generate')
+    const nextBuildAt = build.indexOf('next build')
+
+    expect(generateAt).toBeGreaterThanOrEqual(0)
+    expect(nextBuildAt).toBeGreaterThan(generateAt)
+  })
+
   it('no fija NODE_ENV en dev, que sí depende del entorno', () => {
     expect(scripts.dev).toBe('next dev')
   })
