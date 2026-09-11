@@ -29,6 +29,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
+      - name: Sintaxis de los scripts de operación
+        run: |
+          for script in scripts/*.sh; do
+            bash -n "$script"
+          done
+      - name: shellcheck de los scripts de operación
+        run: shellcheck scripts/*.sh
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test:coverage

@@ -22,6 +22,9 @@ pnpm verify   # formato, lint, tipos, unitarios
 pnpm e2e      # si el cambio toca un flujo de usuario
 ```
 
+Si tocas `scripts/`, el job `calidad` comprueba sintaxis (`bash -n`) y `shellcheck` sobre
+`scripts/*.sh`; pásalos también en local antes de abrir el PR.
+
 ## Reglas que no se negocian
 
 - Un tema por PR; diffs pequeños.
