@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { makeSeries } from '@/domain/catalog/testing/factories'
 
-import { makeTestWorld } from '@/application/testing/fixtures'
+import { makeTestWorld } from '@/infrastructure/testing/fixtures'
 import { getPublishedSeries } from './get-published-series'
 
 describe('getPublishedSeries', () => {

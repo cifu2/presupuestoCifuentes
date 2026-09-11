@@ -12,6 +12,7 @@ import type { ManualQuoteReason } from '@/domain/catalog/manual-quote-reason'
 import type { DoorSeries } from '@/domain/catalog/series'
 import type { TariffVersion } from '@/domain/catalog/tariff-version'
 import { calculateQuotePrice } from '@/domain/pricing/calculate-quote-price'
+import type { ManualQuoteDetail } from '@/domain/pricing/manual-quote-detail'
 import type { PriceBreakdown } from '@/domain/pricing/price-breakdown'
 import { QuoteConfiguration, type QuoteExtra } from '@/domain/pricing/quote-configuration'
 import { ResourceNotFoundError } from '@/domain/shared/errors'
@@ -63,7 +64,8 @@ export interface ManualQuoteRequiredResult {
   readonly seriesId: string
   readonly seriesCode: string
   readonly reason: ManualQuoteReason
-  readonly detail: string
+  /** Hecho que provoca el paso a manual; el borde lo traduce con `ManualQuoteReasons.<kind>`. */
+  readonly detail: ManualQuoteDetail
 }
 
 /** Precio calculado con objetos de dominio, listo para congelar en un presupuesto. */

@@ -1,8 +1,9 @@
 /**
- * Mundo de pruebas de la capa de aplicación: puertos doblados en memoria con datos explícitos.
+ * Mundo de pruebas compartido: puertos doblados en memoria con datos explícitos.
  *
- * Se exporta desde `testing/` y queda fuera de la cobertura (es andamiaje). Reutiliza los
- * adaptadores en memoria de infraestructura, que implementan los mismos puertos que los de Prisma.
+ * Vive en `infrastructure/testing` porque monta los adaptadores en memoria (implementan los
+ * mismos puertos que los de Prisma): así la capa de aplicación no importa infraestructura ni
+ * siquiera desde sus fixtures (ADR-0001). Queda fuera de la cobertura por ser andamiaje.
  */
 
 import { LocalizedText } from '@/domain/catalog/catalog-text'

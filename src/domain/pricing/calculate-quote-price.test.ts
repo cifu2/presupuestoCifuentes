@@ -111,6 +111,14 @@ describe('calculateQuotePrice', () => {
     expect(result).toMatchObject({
       status: 'manual_quote_required',
       reason: 'size_exceeds_series_max',
+      detail: {
+        kind: 'size_above_series_max',
+        widthMm: 1500,
+        heightMm: 2100,
+        seriesCode: 'CI-100',
+        maxWidthMm: 1000,
+        maxHeightMm: 2200,
+      },
     })
   })
 
@@ -122,13 +130,25 @@ describe('calculateQuotePrice', () => {
     expect(result).toMatchObject({
       status: 'manual_quote_required',
       reason: 'uncovered_configuration',
+      detail: {
+        kind: 'size_below_series_min',
+        widthMm: 400,
+        heightMm: 2100,
+        seriesCode: 'CI-100',
+        minWidthMm: 600,
+        minHeightMm: 1800,
+      },
     })
   })
 
   it('pasa a presupuesto manual cuando no hay tarifa vigente', () => {
     const result = calculateQuotePrice(input({ tariff: null, priceTable: null }))
 
-    expect(result).toMatchObject({ status: 'manual_quote_required', reason: 'no_tariff_in_force' })
+    expect(result).toMatchObject({
+      status: 'manual_quote_required',
+      reason: 'no_tariff_in_force',
+      detail: { kind: 'no_tariff_in_force', seriesCode: 'CI-100' },
+    })
   })
 
   it('pasa a presupuesto manual cuando la tarifa no está publicada', () => {
@@ -142,7 +162,11 @@ describe('calculateQuotePrice', () => {
   it('pasa a presupuesto manual cuando la tarifa vigente no tiene precios cargados', () => {
     const result = calculateQuotePrice(input({ priceTable: null }))
 
-    expect(result).toMatchObject({ status: 'manual_quote_required', reason: 'no_tariff_in_force' })
+    expect(result).toMatchObject({
+      status: 'manual_quote_required',
+      reason: 'no_tariff_in_force',
+      detail: { kind: 'tariff_without_prices', seriesCode: 'CI-100' },
+    })
   })
 
   it('pasa a presupuesto manual cuando la tabla de precios es de otra versión de tarifa', () => {
@@ -151,6 +175,22 @@ describe('calculateQuotePrice', () => {
     )
 
     expect(result).toMatchObject({ status: 'manual_quote_required', reason: 'no_tariff_in_force' })
+  })
+
+  it('pasa a presupuesto manual cuando el acabado no es compatible con la serie', () => {
+    const result = calculateQuotePrice(
+      input({ configuration: makeConfiguration({ finishId: 'finish-no-permitido' }) }),
+    )
+
+    expect(result).toMatchObject({
+      status: 'manual_quote_required',
+      reason: 'uncovered_configuration',
+      detail: {
+        kind: 'finish_not_allowed',
+        finishId: 'finish-no-permitido',
+        seriesCode: 'CI-100',
+      },
+    })
   })
 
   it('pasa a presupuesto manual cuando ninguna banda cubre la medida', () => {
@@ -171,17 +211,6 @@ describe('calculateQuotePrice', () => {
     })
   })
 
-  it('pasa a presupuesto manual cuando el acabado no es compatible con la serie', () => {
-    const result = calculateQuotePrice(
-      input({ configuration: makeConfiguration({ finishId: 'finish-no-permitido' }) }),
-    )
-
-    expect(result).toMatchObject({
-      status: 'manual_quote_required',
-      reason: 'uncovered_configuration',
-    })
-  })
-
   it('pasa a presupuesto manual cuando el accesorio no es compatible con la serie', () => {
     const result = calculateQuotePrice(
       input({ configuration: makeConfiguration({ accessoryIds: ['accessory-vidrio'] }) }),
@@ -190,6 +219,11 @@ describe('calculateQuotePrice', () => {
     expect(result).toMatchObject({
       status: 'manual_quote_required',
       reason: 'uncovered_configuration',
+      detail: {
+        kind: 'accessory_not_allowed',
+        accessoryId: 'accessory-vidrio',
+        seriesCode: 'CI-100',
+      },
     })
   })
 
@@ -204,6 +238,7 @@ describe('calculateQuotePrice', () => {
     expect(result).toMatchObject({
       status: 'manual_quote_required',
       reason: 'uncovered_configuration',
+      detail: { kind: 'color_not_allowed', colorId: 'color-otro' },
     })
   })
 

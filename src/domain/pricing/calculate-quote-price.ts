@@ -13,12 +13,12 @@
  *   4. El IVA se calcula sobre el subtotal; el total es subtotal + IVA.
  */
 
-import type { ManualQuoteReason } from '@/domain/catalog/manual-quote-reason'
 import type { DoorSeries } from '@/domain/catalog/series'
 import type { TariffVersion } from '@/domain/catalog/tariff-version'
 import { Money } from '@/domain/shared/money'
 
 import { assessConfigurationCompatibility } from './compatibility'
+import { manualQuoteReasonOf, type ManualQuoteDetail } from './manual-quote-detail'
 import type { PriceBreakdown, PriceLine, PriceResult } from './price-breakdown'
 import type { PriceModifier, PriceTable } from './price-table'
 import type { QuoteConfiguration } from './quote-configuration'
@@ -50,31 +50,25 @@ export function calculateQuotePrice(input: CalculateQuotePriceInput): PriceResul
   })
 
   if (compatibilityFailure !== null) {
-    return {
-      status: 'manual_quote_required',
-      reason: compatibilityFailure.reason,
-      detail: compatibilityFailure.detail,
-    }
+    return manualQuote(compatibilityFailure.detail)
   }
 
   if (tariff === null || !tariff.isInForceAt(input.instant)) {
-    return manualQuote('no_tariff_in_force', `La serie "${series.code}" no tiene tarifa vigente`)
+    return manualQuote({ kind: 'no_tariff_in_force', seriesCode: series.code })
   }
 
   if (priceTable === null || priceTable.tariffVersionId !== tariff.id) {
-    return manualQuote(
-      'no_tariff_in_force',
-      `La tarifa vigente de la serie "${series.code}" todavía no tiene precios cargados`,
-    )
+    return manualQuote({ kind: 'tariff_without_prices', seriesCode: series.code })
   }
 
   const basePrice = priceTable.basePriceFor(configuration.dimensions)
 
   if (basePrice === null) {
-    return manualQuote(
-      'uncovered_configuration',
-      `Ninguna banda de medida de la tarifa cubre ${configuration.dimensions.widthMm}×${configuration.dimensions.heightMm} mm`,
-    )
+    return manualQuote({
+      kind: 'no_size_band_covers_measurement',
+      widthMm: configuration.dimensions.widthMm,
+      heightMm: configuration.dimensions.heightMm,
+    })
   }
 
   return {
@@ -214,18 +208,26 @@ function assessSize(series: DoorSeries, configuration: QuoteConfiguration): Pric
   }
 
   if (assessment.requiresManualQuote) {
-    return manualQuote(
-      'size_exceeds_series_max',
-      `La medida ${configuration.dimensions.widthMm}×${configuration.dimensions.heightMm} mm supera el máximo de la serie "${series.code}" (${series.maxWidthMm}×${series.maxHeightMm} mm)`,
-    )
+    return manualQuote({
+      kind: 'size_above_series_max',
+      widthMm: configuration.dimensions.widthMm,
+      heightMm: configuration.dimensions.heightMm,
+      seriesCode: series.code,
+      maxWidthMm: series.maxWidthMm,
+      maxHeightMm: series.maxHeightMm,
+    })
   }
 
-  return manualQuote(
-    'uncovered_configuration',
-    `La medida ${configuration.dimensions.widthMm}×${configuration.dimensions.heightMm} mm está por debajo del mínimo de la serie "${series.code}" (${series.sizeRange.minWidthMm}×${series.sizeRange.minHeightMm} mm)`,
-  )
+  return manualQuote({
+    kind: 'size_below_series_min',
+    widthMm: configuration.dimensions.widthMm,
+    heightMm: configuration.dimensions.heightMm,
+    seriesCode: series.code,
+    minWidthMm: series.sizeRange.minWidthMm,
+    minHeightMm: series.sizeRange.minHeightMm,
+  })
 }
 
-function manualQuote(reason: ManualQuoteReason, detail: string): PriceResult {
-  return { status: 'manual_quote_required', reason, detail }
+function manualQuote(detail: ManualQuoteDetail): PriceResult {
+  return { status: 'manual_quote_required', reason: manualQuoteReasonOf(detail), detail }
 }

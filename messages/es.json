@@ -99,5 +99,16 @@
     "INVALID_QUOTE_TRANSITION": "Ese cambio de estado no está permitido en este presupuesto.",
     "INVALID_QUOTE_REFERENCE": "La referencia del presupuesto no tiene un formato válido.",
     "NOT_FOUND": "No hemos encontrado lo que buscas."
+  },
+  "ManualQuoteReasons": {
+    "size_above_series_max": "La medida {width}×{height} mm supera el máximo de la serie \"{series}\" ({maxWidth}×{maxHeight} mm)",
+    "size_below_series_min": "La medida {width}×{height} mm está por debajo del mínimo de la serie \"{series}\" ({minWidth}×{minHeight} mm)",
+    "finish_not_allowed": "El acabado \"{finish}\" no está disponible para la serie \"{series}\"",
+    "color_not_allowed": "El color \"{color}\" no pertenece al acabado elegido",
+    "accessory_not_allowed": "El accesorio \"{accessory}\" no está disponible para la serie \"{series}\"",
+    "no_tariff_in_force": "La serie \"{series}\" no tiene tarifa vigente",
+    "tariff_without_prices": "La tarifa vigente de la serie \"{series}\" todavía no tiene precios cargados",
+    "no_size_band_covers_measurement": "Ninguna banda de medida de la tarifa cubre {width}×{height} mm",
+    "customer_requested": "El cliente pide expresamente que le llamen"
   }
 }

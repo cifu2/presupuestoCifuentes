@@ -1,5 +1,6 @@
 import { createContainer } from '@/composition/container'
 import { errorResponse, jsonResponse, readJsonBody } from '@/app/api/_lib/http'
+import { withLocalizedManualQuoteDetail } from '@/app/api/_lib/manual-quote-response'
 import { configurationSchema } from '@/app/api/_lib/schemas'
 import { issueQuote } from '@/application/use-cases/issue-quote'
 
@@ -44,7 +45,11 @@ export async function POST(request: Request): Promise<Response> {
       },
     )
 
-    return jsonResponse(result, result.status === 'issued' ? 201 : 200)
+    if (result.status === 'manual_quote_required') {
+      return jsonResponse(withLocalizedManualQuoteDetail(result, body.data.locale), 200)
+    }
+
+    return jsonResponse(result, 201)
   } catch (error) {
     return errorResponse(error)
   }

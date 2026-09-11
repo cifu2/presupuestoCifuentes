@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { InvalidMeasurementError, ResourceNotFoundError } from '@/domain/shared/errors'
 
-import { makeTestWorld, makePriceInput } from '@/application/testing/fixtures'
+import { makeTestWorld, makePriceInput } from '@/infrastructure/testing/fixtures'
 import { calculatePrice } from './calculate-price'
 
 function deps(world: ReturnType<typeof makeTestWorld>) {

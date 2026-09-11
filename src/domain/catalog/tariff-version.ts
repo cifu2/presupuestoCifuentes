@@ -145,7 +145,11 @@ export function selectTariffInForce(
 
 /**
  * Invariante de catálogo: dos versiones publicadas de la misma serie no pueden solaparse.
- * Se comprueba al publicar desde el panel, antes de escribir en base de datos.
+ *
+ * **La debe llamar el flujo de publicación** (CIF-9) antes de escribir en base de datos; hoy
+ * todavía no está enganchada, así que la única defensa efectiva es la de lectura: si dos tarifas
+ * vigentes coinciden, `selectTariffInForce` lanza `AmbiguousTariffError` y la API responde 409
+ * (hallazgo N5 de CIF-78, documentado en `docs/api.md` y en el ADR-0013).
  */
 export function assertNoOverlappingPublishedTariffs(versions: readonly TariffVersion[]): void {
   const publishedBySeries = new Map<string, TariffVersion[]>()
