@@ -67,6 +67,9 @@ Detalle en [docs/architecture.md](docs/architecture.md). Los límites entre capa
 - [Definition of Done](docs/definition-of-done.md) — nadie da algo por terminado sin cumplirla
 - [Convenciones de código](docs/coding-conventions.md)
 - [Estrategia de pruebas](docs/testing-strategy.md)
+- [Despliegue, release y rollback](docs/despliegue.md)
+- [Variables de entorno y secretos](docs/variables-entorno.md)
+- [Base de datos, backups y monitorización](docs/operacion.md)
 - [Decisiones de negocio abiertas](docs/decisiones-negocio-abiertas.md) (propuesta al propietario)
 - [Contribuir](CONTRIBUTING.md)
 

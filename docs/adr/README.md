@@ -16,6 +16,7 @@ que supersede al anterior y se marca el antiguo como `Superseded por ADR-XXXX`.
 | [0006](0006-calidad-y-ci.md)                             | Tests, cobertura y puerta de E2E en CI                      | Aceptado |
 | [0007](0007-despliegue-vercel-github.md)                 | Despliegue en Vercel con el código en GitHub                | Aceptado |
 | [0008](0008-esquema-datos-catalogo.md)                   | Esquema de datos del catálogo y migraciones reversibles     | Aceptado |
+| [0009](0009-base-de-datos-gestionada-y-backups.md)       | Base de datos gestionada (Neon), backups y monitorización   | Aceptado |
 
 ## Cuándo hace falta un ADR
 

@@ -34,3 +34,7 @@ pnpm e2e      # si el cambio toca un flujo de usuario
 
 Lo hace Vercel desde GitHub (preview por PR, producción desde `main`); GitHub Actions solo ejecuta
 la calidad. Ver [ADR-0007](docs/adr/0007-despliegue-vercel-github.md).
+
+El procedimiento operativo (entornos, release, rollback y migraciones) está en
+[docs/despliegue.md](docs/despliegue.md); la configuración por entorno, en
+[docs/variables-entorno.md](docs/variables-entorno.md).
