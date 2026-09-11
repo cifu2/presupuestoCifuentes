@@ -64,6 +64,8 @@ jobs:
         run: ./scripts/secret-scan.test.sh
       - name: Test del paso de release (migraciones)
         run: ./scripts/release.test.sh
+      - name: Avisos del preflight de despliegue (ADMIN_API_TOKEN, CIF-123)
+        run: ./scripts/despliegue-preflight.test.sh
       - run: pnpm lint
       - run: pnpm typecheck
       - name: migraciones en la base de datos de test

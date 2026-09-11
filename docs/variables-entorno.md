@@ -12,7 +12,7 @@ apartado _Seguridad_).
 | `NEXT_PUBLIC_SITE_URL` | `https://<dominio-produccion>` | URL del deployment de preview    | `http://localhost:3000`     | Vercel (Production / Preview) y `.env.local` |
 | `CATALOG_DEMO_MODE`    | `false`                        | `false`                          | `false`                     | Vercel (opcional) y `.env.local`             |
 | `QUOTE_VALIDITY_DAYS`  | `30`                           | `30`                             | `30`                        | Vercel (opcional) y `.env.local`             |
-| `ADMIN_API_TOKEN`      | valor propio del despliegue    | valor propio del despliegue      | valor de desarrollo         | Vercel (opcional) y `.env.local`             |
+| `ADMIN_API_TOKEN`      | valor propio del despliegue    | no definida                      | valor de desarrollo         | Vercel (Production) y `.env.local`           |
 | `NODE_ENV`             | lo fija Vercel (`production`)  | lo fija Vercel (`production`)    | lo fija Next.js             | No se configura a mano                       |
 | `VERCEL_ENV`           | lo fija Vercel (`production`)  | lo fija Vercel (`preview`)       | no definida                 | No se configura a mano                       |
 
@@ -32,8 +32,28 @@ apartado _Seguridad_).
 - `ADMIN_API_TOKEN` es un secreto del API del panel: se envía como `Authorization: Bearer …` y se
   marca como _Sensitive_ en Vercel. Mientras no esté configurado, los endpoints de administración
   responden `503` y no quedan accesibles (guarda provisional de CIF-9/CIF-14, ver
-  [api.md](api.md)).
+  [api.md](api.md)). `scripts/despliegue-preflight.sh` marca `PENDIENTE` si falta en _Production_, y
+  `scripts/despliegue-preflight.test.sh` prueba ese aviso: la falta se detecta en la comprobación
+  periódica, no abriendo el panel (CIF-123).
 - `.env.example` solo contiene valores de ejemplo sin credenciales y sirve de plantilla local.
+
+### 1.1 Estado real del inventario (2026-09-12)
+
+Inventario de _Production_ y _Preview_ del proyecto `presupuesto-cifuentes` leído de la API de Vercel
+(metadatos, nunca valores):
+
+| Entorno       | Claves definidas                                         |
+| ------------- | -------------------------------------------------------- |
+| _Production_  | `DATABASE_URL` (Sensitive), `NEXT_PUBLIC_SITE_URL`       |
+| _Preview_     | `DATABASE_URL` (Sensitive)                               |
+| _Development_ | ninguna (las credenciales locales viven en `.env.local`) |
+
+`ADMIN_API_TOKEN` **no está definida en ningún entorno**, así que el API del panel responde `503`
+(`ADMIN_API_DISABLED`) en producción. La decisión es definirla **solo en _Production_** por ahora: el
+panel de administración todavía no tiene consumidor en _Preview_ (CIF-9) y una base de preview
+desechable no debe compartir el token de producción. El valor se emite y se propone al consejo en
+CIF-123 (nunca se escribe aquí); cuando se fije, y tras el despliegue que lo active, esta tabla deja
+de listar la ausencia y [api.md](api.md) pasa a describir `401` en lugar de `503`.
 
 ## 2. Reglas
 
@@ -171,4 +191,6 @@ scripts/despliegue-preflight.sh
 
 Informe de solo lectura (usuario del token, alcances, repositorio, protección de `main`, proyecto de
 Vercel, variables por entorno y accesibilidad de la base de datos). No imprime valores y devuelve 1
-si queda algo pendiente: es la primera parada cuando el despliegue no arranca.
+si queda algo pendiente: es la primera parada cuando el despliegue no arranca. Además de
+`DATABASE_URL`, exige `ADMIN_API_TOKEN` en _Production_ (sin ella el API del panel responde `503`,
+CIF-123).
