@@ -41,11 +41,19 @@ apartado _Seguridad_).
    runner (autenticación `trust`, solo `localhost`, base `cifuentes_test`) cuya `TEST_DATABASE_URL` es
    un valor de test sin credenciales reales; el job `e2e` no usa base de datos. Si un job necesitara
    un secreto de verdad, se añade como _secret_ de GitHub Actions, nunca como valor en claro.
-5. **Rotación:** si un valor se filtra (aparece en un log, en una captura o en un ticket), se rota en
-   su origen (Neon / Vercel) y se actualiza en Vercel; el incidente se anota sin reproducir el valor.
+5. **Rotación:** si un valor se filtra (aparece en un log, en una captura, en un comentario o en un
+   ticket) se considera comprometido y se rota en su origen (GitHub / Vercel / Neon), en el orden del
+   apartado 5.5 y de [ADR-0014](adr/0014-manejo-y-rotacion-de-secretos.md). Las credenciales de
+   larga duración se rotan además cada ≤ 90 días. El incidente se anota sin reproducir el valor.
 6. **Mínimo privilegio:** las credenciales de Neon que se inyectan en Vercel son las de la base de
    datos de la aplicación, no las de administración del proyecto. Las de administración (y los
    tokens de GitHub/Vercel) no están en Vercel: se usan solo desde el puesto de trabajo.
+7. **Herramientas que inspeccionan secretos:** solo pueden imprimir la regla, la ruta, la línea y el
+   recuento; **nunca** el valor, el texto coincidente ni el patrón expandido. Nada de `echo`,
+   `printf` o `set -x` sobre variables con credenciales, ni `curl -v`/`-i` con cabeceras de
+   autorización ([ADR-0014](adr/0014-manejo-y-rotacion-de-secretos.md)). El barrido canónico es
+   `scripts/secret-scan.sh`, con su test `scripts/secret-scan.test.sh`; el CI los ejecuta en la
+   puerta `calidad`.
 
 ## 3. Cómo añadir una variable nueva
 
@@ -127,9 +135,28 @@ Devuelve solo metadatos (nombre, alias, versión y modo de entrega); nunca el va
 
 ### 5.5 Rotación
 
-Si un valor aparece en un log, una captura, un comentario o un transcript de run, se considera
+Un valor que aparece en un log, una captura, un comentario o un transcript de run se considera
 filtrado: se rota en su origen (GitHub / Vercel / Neon), se actualiza el secreto en Paperclip y se
-anota el incidente **sin** reproducir el valor.
+anota el incidente **sin** reproducir el valor. Orden obligatorio ([ADR-0014](adr/0014-manejo-y-rotacion-de-secretos.md)):
+
+1. **Emitir** la credencial nueva en el proveedor. Los agentes no pueden crear ni actualizar secretos
+   de empresa; si un agente tiene la credencial vieja en su entorno, puede emitir la nueva por API y
+   entregarla con `POST /api/agents/me/secret-proposals` (el valor nunca se imprime ni se pega en un
+   comentario), donde queda pendiente de aprobación del consejo.
+2. **Registrar** el valor nuevo: interfaz de Paperclip → **Company settings → Secrets** → _Create
+   secret_ (o aprobar la propuesta del agente) y actualizar el binding del agente DevOps según la
+   tabla 5.1. El valor nuevo no se vuelve a mostrar.
+3. **Verificar** con el valor nuevo: `scripts/despliegue-preflight.sh` (no imprime valores) y un
+   despliegue de comprobación.
+4. **Revocar** la credencial vieja en el proveedor.
+5. **Verificar** que la vieja ya no sirve (con el token viejo, una llamada de lectura debe devolver 401) y anotar el incidente en la tarea, sin el valor. Sin este paso la rotación no está cerrada.
+6. **Comprobar** que el valor viejo no quedó en el repositorio ni en su historial:
+
+   ```bash
+   printf '%s\n' "$VALOR_VIEJO" | scripts/secret-scan.sh --no-patterns --values-stdin --history
+   ```
+
+Los `PAPERCLIP_API_KEY` son JWT **por run**: caducan con el run y no se rotan a mano (ADR-0014).
 
 ### 5.6 Comprobación periódica
 

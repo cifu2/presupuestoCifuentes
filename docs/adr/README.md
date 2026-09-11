@@ -21,6 +21,7 @@ que supersede al anterior y se marca el antiguo como `Superseded por ADR-XXXX`.
 | [0011](0011-politica-madurez-versiones.md)               | Política de madurez de versiones (pnpm y Dependabot)                 | Aceptado |
 | [0012](0012-politica-saltos-version-mayor.md)            | Política ante saltos de versión mayor (TypeScript 7, @types/node 26) | Aceptado |
 | [0013](0013-tarifas-modificadores-y-presupuestos.md)     | Desglose de tarifas, modificadores y precio congelado                | Aceptado |
+| [0014](0014-manejo-y-rotacion-de-secretos.md)            | Manejo, barrido y rotación de secretos de operación                  | Aceptado |
 
 ## Cuándo hace falta un ADR
 

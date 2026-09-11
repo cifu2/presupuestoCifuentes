@@ -58,6 +58,10 @@ jobs:
           done
       - name: shellcheck de los scripts de operación
         run: shellcheck scripts/*.sh
+      - name: Barrido de secretos (contrato de redacción, ADR-0014)
+        run: ./scripts/secret-scan.sh
+      - name: Test del contrato de redacción del barrido
+        run: ./scripts/secret-scan.test.sh
       - run: pnpm lint
       - run: pnpm typecheck
       - name: migraciones en la base de datos de test
