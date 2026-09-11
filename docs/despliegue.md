@@ -204,6 +204,8 @@ Dependabot abre PRs de dependencias contra `main` (`.github/dependabot.yml`) y e
 misma puerta requerida que cualquier otro cambio: `calidad` y `e2e` (apartado 2). No se fusiona un PR
 de dependencias con la puerta en rojo, igual que no se fusiona un cambio de la aplicación.
 
+La política está registrada en [ADR-0011 — Política de madurez de versiones](adr/0011-politica-madurez-versiones.md).
+
 La resolución del lockfile depende de dos ajustes que deben contar la misma política de madurez:
 
 - **pnpm** (`pnpm-workspace.yaml`, **no** el campo `pnpm` de `package.json`, que pnpm 11 ya no lee):
