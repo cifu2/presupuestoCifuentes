@@ -53,6 +53,17 @@ test('superar el tamaño máximo de la serie pasa a presupuesto manual', async (
   expect(body.reason).toBe('size_exceeds_series_max')
 })
 
+test('el motivo del presupuesto manual llega traducido al idioma pedido', async ({ request }) => {
+  const response = await request.post('/api/quotes/price', {
+    data: { ...CONFIGURATION, widthMm: 1500, locale: 'en' },
+  })
+  const body = await response.json()
+
+  expect(body.status).toBe('manual_quote_required')
+  expect(body.reason).toBe('size_exceeds_series_max')
+  expect(body.detail).toContain('exceeds the maximum size')
+})
+
 test('una serie sin tarifa vigente pasa a presupuesto manual', async ({ request }) => {
   const response = await request.post('/api/quotes/price', {
     data: { ...CONFIGURATION, seriesSlug: 'ci-400' },

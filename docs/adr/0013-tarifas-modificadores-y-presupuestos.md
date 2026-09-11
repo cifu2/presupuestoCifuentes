@@ -66,6 +66,15 @@ reversibles y una API estable para el configurador (CIF-7) y el panel (CIF-9).
   `/api/health` y `meta.mode` de la API lo hacen visible.
 - El contador de referencias es por año y sin huecos; si se superan 999 999 presupuestos en un año,
   hay que ampliar el formato (documentado y con test).
+- **El paso a presupuesto manual no devuelve texto de dominio.** `calculateQuotePrice` declara el
+  hecho tipado (`ManualQuoteDetail`) y el borde HTTP compone el `detail` traducido con el namespace
+  `ManualQuoteReasons` de `messages/<locale>.json` (ADR-0005). El motivo estable de la API sigue
+  siendo `reason`.
+- **El no solapamiento de tarifas publicadas aún no está enganchado a la publicación.**
+  `assertNoOverlappingPublishedTariffs` existe y está testeada, pero hoy la única defensa efectiva
+  es la de lectura: `selectTariffInForce` lanza `AmbiguousTariffError` y la API responde 409. Debe
+  invocarla el flujo de publicación del panel (CIF-9); hasta entonces solo queda documentado
+  (hallazgo N5 de CIF-78).
 - Se necesitan tests de integración con PostgreSQL real en CI: los añaden QA/DevOps (CIF-10/CIF-11).
 
 ## Alternativas consideradas

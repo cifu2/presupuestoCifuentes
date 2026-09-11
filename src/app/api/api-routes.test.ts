@@ -121,6 +121,23 @@ describe('POST /api/quotes/price', () => {
       status: 'manual_quote_required',
       reason: 'size_exceeds_series_max',
     })
+    // El `detail` va traducido al idioma pedido (hallazgo N1 de CIF-78).
+    expect(body.detail).toContain('1200×2100 mm supera el máximo')
+  })
+
+  it('traduce el motivo del presupuesto manual al inglés cuando locale=en', async () => {
+    const response = await post('/api/quotes/price', {
+      ...CONFIGURATION,
+      widthMm: 1200,
+      locale: 'en',
+    })
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.reason).toBe('size_exceeds_series_max')
+    expect(body.detail).toBe(
+      'The measurement 1200×2100 mm exceeds the maximum size of the "CI-100" series (1000×2200 mm)',
+    )
   })
 
   it('exige la serie y las medidas', async () => {
@@ -133,6 +150,19 @@ describe('POST /api/quotes/price', () => {
 })
 
 describe('POST /api/quotes y GET /api/quotes/[reference]', () => {
+  it('devuelve el motivo de presupuesto manual traducido, sin emitir presupuesto', async () => {
+    const response = await post('/api/quotes', {
+      ...CONFIGURATION,
+      widthMm: 1200,
+      locale: 'en',
+    })
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.status).toBe('manual_quote_required')
+    expect(body.detail).toContain('exceeds the maximum size')
+  })
+
   it('emite un presupuesto con precio congelado y lo devuelve por referencia', async () => {
     const created = await post('/api/quotes', { ...CONFIGURATION, locale: 'en' })
     const createdBody = await created.json()

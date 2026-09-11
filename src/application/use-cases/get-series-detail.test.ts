@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { ResourceNotFoundError } from '@/domain/shared/errors'
 
-import { makeTestWorld } from '@/application/testing/fixtures'
+import { makeTestWorld } from '@/infrastructure/testing/fixtures'
 import { getSeriesDetail } from './get-series-detail'
 
 function deps(world: ReturnType<typeof makeTestWorld>) {

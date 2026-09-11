@@ -1,5 +1,6 @@
 import { createContainer } from '@/composition/container'
 import { errorResponse, jsonResponse, readJsonBody } from '@/app/api/_lib/http'
+import { withLocalizedManualQuoteDetail } from '@/app/api/_lib/manual-quote-response'
 import { configurationSchema } from '@/app/api/_lib/schemas'
 import { calculatePrice } from '@/application/use-cases/calculate-price'
 
@@ -40,7 +41,11 @@ export async function POST(request: Request): Promise<Response> {
       },
     )
 
-    return jsonResponse(result)
+    return jsonResponse(
+      result.status === 'manual_quote_required'
+        ? withLocalizedManualQuoteDetail(result, body.data.locale)
+        : result,
+    )
   } catch (error) {
     return errorResponse(error)
   }

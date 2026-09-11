@@ -131,17 +131,17 @@ la respuesta.
 
 Cuerpo:
 
-| Campo          | Tipo                                    | Obligatorio | Descripción                          |
-| -------------- | --------------------------------------- | ----------- | ------------------------------------ |
-| `seriesSlug`   | string                                  | sí          | Slug de la serie (`ci-100`)          |
-| `widthMm`      | entero 1–10000                          | sí          | Ancho en mm                          |
-| `heightMm`     | entero 1–10000                          | sí          | Alto en mm                           |
-| `finishId`     | string \| null                          | no (`null`) | Acabado elegido                      |
-| `colorId`      | string \| null                          | no (`null`) | Color; exige `finishId`              |
-| `accessoryIds` | string[]                                | no (`[]`)   | Accesorios; sin repetidos            |
-| `extras`       | `installation`\|`shipping`\|`urgency`[] | no (`[]`)   | Extras contratados                   |
-| `discountCode` | string \| null                          | no (`null`) | Código de descuento (`PROMO10`)      |
-| `locale`       | `es\|en`                                | no (`es`)   | Idioma del desglose y de los motivos |
+| Campo          | Tipo                                    | Obligatorio | Descripción                                       |
+| -------------- | --------------------------------------- | ----------- | ------------------------------------------------- |
+| `seriesSlug`   | string                                  | sí          | Slug de la serie (`ci-100`)                       |
+| `widthMm`      | entero 1–10000                          | sí          | Ancho en mm                                       |
+| `heightMm`     | entero 1–10000                          | sí          | Alto en mm                                        |
+| `finishId`     | string \| null                          | no (`null`) | Acabado elegido                                   |
+| `colorId`      | string \| null                          | no (`null`) | Color; exige `finishId`                           |
+| `accessoryIds` | string[]                                | no (`[]`)   | Accesorios; sin repetidos                         |
+| `extras`       | `installation`\|`shipping`\|`urgency`[] | no (`[]`)   | Extras contratados                                |
+| `discountCode` | string \| null                          | no (`null`) | Código de descuento (`PROMO10`)                   |
+| `locale`       | `es\|en`                                | no (`es`)   | Idioma del desglose y del `detail` de los motivos |
 
 Respuesta con precio (`200`):
 
@@ -188,12 +188,25 @@ Respuesta sin precio automático (`200`), con el paso a presupuesto manual:
 }
 ```
 
-| `reason`                  | Significado                                                    |
-| ------------------------- | -------------------------------------------------------------- |
-| `size_exceeds_series_max` | La medida supera el tamaño máximo (o el mínimo) de la serie    |
-| `no_tariff_in_force`      | La serie no tiene tarifa publicada vigente o le faltan precios |
-| `uncovered_configuration` | Acabado, color, accesorio o banda no cubiertos por la serie    |
-| `customer_requested`      | El cliente pide expresamente que le llamen                     |
+| `reason`                  | Significado                                                                  |
+| ------------------------- | ---------------------------------------------------------------------------- |
+| `size_exceeds_series_max` | La medida supera el tamaño máximo de la serie                                |
+| `no_tariff_in_force`      | La serie no tiene tarifa publicada vigente o le faltan precios               |
+| `uncovered_configuration` | Acabado, color, accesorio, medida por debajo del mínimo o banda no cubiertos |
+| `customer_requested`      | El cliente pide expresamente que le llamen                                   |
+
+El `detail` va **traducido al `locale` pedido**: el dominio devuelve el hecho (`ManualQuoteDetail`)
+y el borde compone el texto con el namespace `ManualQuoteReasons` de `messages/<locale>.json`
+(ADR-0005). El motivo estable para ramificar en el cliente es siempre `reason`, nunca el texto.
+
+> **Mínimo y máximo no comparten motivo.** Por encima del máximo el motivo es
+> `size_exceeds_series_max`; por debajo del mínimo es `uncovered_configuration`
+> (sección "Reglas de cálculo", punto 1).
+
+> **Tarifas solapadas.** El catálogo no admite dos versiones publicadas vigentes a la vez. Hoy la
+> única defensa efectiva es la de lectura (`selectTariffInForce` → `AMBIGUOUS_TARIFF`, 409); la
+> comprobación de publicación (`assertNoOverlappingPublishedTariffs`) pertenece al flujo del panel
+> (CIF-9) y todavía no está enganchada (hallazgo N5 de CIF-78).
 
 ### Reglas de cálculo
 

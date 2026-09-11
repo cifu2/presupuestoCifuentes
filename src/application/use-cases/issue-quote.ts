@@ -8,6 +8,7 @@
 
 import type { Locale } from '@/domain/catalog/locale'
 import type { ManualQuoteReason } from '@/domain/catalog/manual-quote-reason'
+import type { ManualQuoteDetail } from '@/domain/pricing/manual-quote-detail'
 import type { QuoteExtra } from '@/domain/pricing/quote-configuration'
 import { Quote } from '@/domain/quote/quote'
 import { formatQuoteReference } from '@/domain/quote/quote-reference'
@@ -56,7 +57,8 @@ export type IssueQuoteOutput =
       readonly seriesId: string
       readonly seriesCode: string
       readonly reason: ManualQuoteReason
-      readonly detail: string
+      /** Hecho que provoca el paso a manual; el borde lo traduce con `ManualQuoteReasons.<kind>`. */
+      readonly detail: ManualQuoteDetail
     }
 
 export async function issueQuote(

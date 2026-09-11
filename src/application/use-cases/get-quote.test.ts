@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { ResourceNotFoundError } from '@/domain/shared/errors'
 
-import { makePriceInput, makeTestWorld } from '@/application/testing/fixtures'
+import { makePriceInput, makeTestWorld } from '@/infrastructure/testing/fixtures'
 import { getQuote } from './get-quote'
 import { issueQuote } from './issue-quote'
 

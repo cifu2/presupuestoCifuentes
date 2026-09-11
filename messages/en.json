@@ -99,5 +99,16 @@
     "INVALID_QUOTE_TRANSITION": "That status change is not allowed for this quote.",
     "INVALID_QUOTE_REFERENCE": "The quote reference has an invalid format.",
     "NOT_FOUND": "We could not find what you are looking for."
+  },
+  "ManualQuoteReasons": {
+    "size_above_series_max": "The measurement {width}×{height} mm exceeds the maximum size of the \"{series}\" series ({maxWidth}×{maxHeight} mm)",
+    "size_below_series_min": "The measurement {width}×{height} mm is below the minimum size of the \"{series}\" series ({minWidth}×{minHeight} mm)",
+    "finish_not_allowed": "The \"{finish}\" finish is not available for the \"{series}\" series",
+    "color_not_allowed": "The \"{color}\" colour does not belong to the chosen finish",
+    "accessory_not_allowed": "The \"{accessory}\" accessory is not available for the \"{series}\" series",
+    "no_tariff_in_force": "The \"{series}\" series has no tariff in force",
+    "tariff_without_prices": "The tariff in force for the \"{series}\" series does not have prices loaded yet",
+    "no_size_band_covers_measurement": "No size band of the tariff covers {width}×{height} mm",
+    "customer_requested": "The customer has expressly asked to be contacted"
   }
 }

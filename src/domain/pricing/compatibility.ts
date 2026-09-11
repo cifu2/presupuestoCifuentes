@@ -2,17 +2,17 @@
  * Reglas de compatibilidad serie ↔ configuración (ADR-0003).
  *
  * Si el acabado, el color o un accesorio no están cubiertos por la serie, no se inventa precio:
- * el resultado es presupuesto manual (`uncovered_configuration`).
+ * el resultado es presupuesto manual (`uncovered_configuration`). El dominio devuelve el **hecho**
+ * (`ManualQuoteDetail`), sin texto de usuario: el mensaje se compone en el borde (ADR-0005).
  */
 
 import type { DoorSeries } from '@/domain/catalog/series'
-import type { ManualQuoteReason } from '@/domain/catalog/manual-quote-reason'
 
+import type { ManualQuoteDetail } from './manual-quote-detail'
 import type { QuoteConfiguration } from './quote-configuration'
 
 export interface CompatibilityFailure {
-  readonly reason: ManualQuoteReason
-  readonly detail: string
+  readonly detail: ManualQuoteDetail
 }
 
 export interface CompatibilityInput {
@@ -30,8 +30,11 @@ export function assessConfigurationCompatibility(
 
   if (configuration.finishId !== null && !series.allowsFinish(configuration.finishId)) {
     return {
-      reason: 'uncovered_configuration',
-      detail: `El acabado "${configuration.finishId}" no está disponible para la serie "${series.code}"`,
+      detail: {
+        kind: 'finish_not_allowed',
+        finishId: configuration.finishId,
+        seriesCode: series.code,
+      },
     }
   }
 
@@ -40,10 +43,7 @@ export function assessConfigurationCompatibility(
     allowedColorIds !== null &&
     !allowedColorIds.includes(configuration.colorId)
   ) {
-    return {
-      reason: 'uncovered_configuration',
-      detail: `El color "${configuration.colorId}" no pertenece al acabado elegido`,
-    }
+    return { detail: { kind: 'color_not_allowed', colorId: configuration.colorId } }
   }
 
   const unsupportedAccessory = configuration.accessoryIds.find(
@@ -52,8 +52,11 @@ export function assessConfigurationCompatibility(
 
   if (unsupportedAccessory !== undefined) {
     return {
-      reason: 'uncovered_configuration',
-      detail: `El accesorio "${unsupportedAccessory}" no está disponible para la serie "${series.code}"`,
+      detail: {
+        kind: 'accessory_not_allowed',
+        accessoryId: unsupportedAccessory,
+        seriesCode: series.code,
+      },
     }
   }
 

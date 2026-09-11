@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { makePriceInput, makeTestWorld } from '@/application/testing/fixtures'
+import { makePriceInput, makeTestWorld } from '@/infrastructure/testing/fixtures'
 import { requestManualQuote } from './request-manual-quote'
 
 function deps(world: ReturnType<typeof makeTestWorld>) {
