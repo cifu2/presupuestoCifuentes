@@ -26,18 +26,13 @@ export async function generateMetadata({ params }: LocaleLayoutProps): Promise<M
   }
 
   const t = await getTranslations({ locale, namespace: 'Metadata' })
-  const languages = Object.fromEntries(
-    routing.locales.map((supported) => [supported, `/${supported}`] as const),
-  )
 
+  // La canónica y las alternativas dependen de la ruta: las declara cada página con
+  // `buildLocaleAlternates`. Aquí solo van los valores por defecto heredables.
   return {
     ...(env.NEXT_PUBLIC_SITE_URL ? { metadataBase: new URL(env.NEXT_PUBLIC_SITE_URL) } : {}),
     title: t('title'),
     description: t('description'),
-    alternates: {
-      canonical: `/${locale}`,
-      languages: { ...languages, 'x-default': `/${routing.defaultLocale}` },
-    },
   }
 }
 

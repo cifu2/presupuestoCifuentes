@@ -30,9 +30,10 @@ test('el idioma elegido se mantiene al recargar', async ({ page }) => {
   await expect(page.getByRole('heading', { level: 2, name: 'MVP scope' })).toBeVisible()
 })
 
-test('cada idioma declara alternativas para los buscadores', async ({ page }) => {
+test('cada idioma declara su canónica y alternativas para los buscadores', async ({ page }) => {
   await page.goto('/es')
 
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\/es$/)
   await expect(page.locator('link[rel="alternate"][hreflang="es"]')).toHaveAttribute(
     'href',
     /\/es$/,
@@ -41,4 +42,12 @@ test('cada idioma declara alternativas para los buscadores', async ({ page }) =>
     'href',
     /\/en$/,
   )
+  await expect(page.locator('link[rel="alternate"][hreflang="x-default"]')).toHaveAttribute(
+    'href',
+    /\/es$/,
+  )
+
+  await page.goto('/en')
+
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\/en$/)
 })

@@ -1,11 +1,25 @@
+import type { Metadata } from 'next'
+import { hasLocale } from 'next-intl'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 
+import { buildLocaleAlternates } from '@/i18n/alternates'
+import { routing } from '@/i18n/routing'
 import { LocaleSwitcher } from '@/ui/locale-switcher'
 
 const SCOPE_KEYS = ['configurator', 'tariffs', 'quote', 'admin'] as const
 
 type HomePageProps = {
   params: Promise<{ locale: string }>
+}
+
+export async function generateMetadata({ params }: HomePageProps): Promise<Metadata> {
+  const { locale } = await params
+
+  if (!hasLocale(routing.locales, locale)) {
+    return {}
+  }
+
+  return { alternates: buildLocaleAlternates('/', locale) }
 }
 
 export default async function HomePage({ params }: HomePageProps) {
