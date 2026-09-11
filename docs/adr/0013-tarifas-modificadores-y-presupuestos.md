@@ -1,7 +1,7 @@
 # ADR-0013 — Desglose de tarifas, modificadores y presupuestos con precio congelado
 
 - **Fecha:** 2026-09-11
-- **Estado:** Aceptado (pendiente de confirmación del CTO en la revisión de CIF-4)
+- **Estado:** Aceptado (CTO, revisión de CIF-4 — veredicto CIF-76)
 - **Decide:** Backend (CIF-4), revisa el CTO
 - **Ámbito:** motor de precios, esquema de datos y contrato de la API de catálogo
 
