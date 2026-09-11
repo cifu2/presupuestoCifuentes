@@ -62,6 +62,8 @@ jobs:
         run: ./scripts/secret-scan.sh
       - name: Test del contrato de redacción del barrido
         run: ./scripts/secret-scan.test.sh
+      - name: Test del paso de release (migraciones)
+        run: ./scripts/release.test.sh
       - run: pnpm lint
       - run: pnpm typecheck
       - name: migraciones en la base de datos de test

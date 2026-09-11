@@ -36,7 +36,14 @@ if [[ "$ASSUME_YES" -ne 1 ]]; then
 fi
 
 echo "== estado antes de migrar"
-DATABASE_URL="$PRODUCTION_DATABASE_URL" pnpm prisma migrate status
+# `prisma migrate status` termina con código 1 cuando hay migraciones pendientes, que es justo el
+# estado del que parte un release. No es un error y no debe abortar el paso: se informa y es
+# `migrate deploy` quien decide si algo está realmente mal.
+before_status=0
+DATABASE_URL="$PRODUCTION_DATABASE_URL" pnpm prisma migrate status || before_status=$?
+if [[ "$before_status" -ne 0 ]]; then
+  echo "(migrate status salió con $before_status; con migraciones pendientes es lo esperado)"
+fi
 
 echo "== aplicando migraciones (migrate deploy)"
 DATABASE_URL="$PRODUCTION_DATABASE_URL" pnpm prisma migrate deploy
