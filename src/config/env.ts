@@ -13,7 +13,7 @@ export const environmentFlag = z.preprocess(
   z.stringbool().default(false),
 )
 
-const envSchema = z.object({
+export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   VERCEL_ENV: z.enum(['production', 'preview', 'development']).optional(),
   DATABASE_URL: z.string().min(1).optional(),
@@ -22,6 +22,14 @@ const envSchema = z.object({
   QUOTE_VALIDITY_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   /** Fuerza el catálogo de demostración en memoria aunque haya `DATABASE_URL`. */
   CATALOG_DEMO_MODE: environmentFlag,
+  /**
+   * Token compartido del API del panel (provisional, CIF-9/CIF-14). Sin él, los endpoints de
+   * administración responden 503 y nunca quedan accesibles en abierto.
+   */
+  ADMIN_API_TOKEN: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().min(1).optional(),
+  ),
 })
 
 export type Env = z.infer<typeof envSchema>

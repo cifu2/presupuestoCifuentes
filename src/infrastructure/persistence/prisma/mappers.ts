@@ -51,6 +51,12 @@ const PRICING_STRATEGY: Record<$Enums.PricingStrategy, PricingStrategy> = {
   FIXED: 'fixed',
 }
 
+const PRICING_STRATEGY_TO_DB: Record<PricingStrategy, $Enums.PricingStrategy> = {
+  per_square_metre: 'PER_SQUARE_METRE',
+  size_bands: 'SIZE_BANDS',
+  fixed: 'FIXED',
+}
+
 const MODIFIER_KIND: Record<$Enums.ModifierKind, ModifierKind> = {
   FIXED: 'fixed',
   PER_UNIT: 'per_unit',
@@ -128,6 +134,9 @@ export const catalogStatusToDomain = (status: $Enums.CatalogStatus): CatalogStat
 
 export const catalogStatusToDb = (status: CatalogStatus): $Enums.CatalogStatus =>
   CATALOG_STATUS_TO_DB[status]
+
+export const pricingStrategyToDb = (strategy: PricingStrategy): $Enums.PricingStrategy =>
+  PRICING_STRATEGY_TO_DB[strategy]
 
 /** Texto multi-idioma a partir de `{ es, en }`; `null` si no hay ningún idioma válido. */
 export function localizedTextFromJson(value: Prisma.JsonValue | null): LocalizedText | null {

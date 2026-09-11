@@ -46,6 +46,8 @@ En errores de validación se añade `issues: [{ "path": "widthMm", "message": "�
 | `INVALID_MANUAL_QUOTE_TRANSITION` | 409  | Transición no permitida en una solicitud manual          |
 | `INVALID_QUOTE_TRANSITION`        | 409  | Transición de estado no permitida en un presupuesto      |
 | `INTERNAL_ERROR`                  | 500  | Error inesperado (nunca se devuelve el detalle)          |
+| `ADMIN_API_DISABLED`              | 503  | El API del panel no tiene `ADMIN_API_TOKEN` configurado  |
+| `UNAUTHORIZED`                    | 401  | Credenciales de administración ausentes o inválidas      |
 
 ## Modos de ejecución
 
@@ -203,10 +205,11 @@ y el borde compone el texto con el namespace `ManualQuoteReasons` de `messages/<
 > `size_exceeds_series_max`; por debajo del mínimo es `uncovered_configuration`
 > (sección "Reglas de cálculo", punto 1).
 
-> **Tarifas solapadas.** El catálogo no admite dos versiones publicadas vigentes a la vez. Hoy la
-> única defensa efectiva es la de lectura (`selectTariffInForce` → `AMBIGUOUS_TARIFF`, 409); la
-> comprobación de publicación (`assertNoOverlappingPublishedTariffs`) pertenece al flujo del panel
-> (CIF-9) y todavía no está enganchada (hallazgo N5 de CIF-78).
+> **Tarifas solapadas.** El catálogo no admite dos versiones publicadas vigentes a la vez. La
+> defensa en escritura es `assertNoOverlappingPublishedTariffs`, que el flujo de publicación
+> (`POST /api/admin/tariff-versions/:id/publish`) aplica **antes** de escribir: responde 409
+> `AMBIGUOUS_TARIFF` y no modifica la fila. `selectTariffInForce` (`AMBIGUOUS_TARIFF`, 409) se
+> mantiene como última red de lectura si dos versiones publicadas llegaran a coincidir.
 
 ### Reglas de cálculo
 
@@ -297,6 +300,31 @@ volviendo a calcular el precio; solo se acepta `customer_requested` sin recálcu
 
 Datos personales mínimos (nombre, email y, si se deja, teléfono) con la única finalidad de
 contactar; no se registran en logs.
+
+---
+
+## POST /api/admin/tariff-versions/:id/publish
+
+Publica una versión de tarifa del panel (ADR-0003). Es la única vía para que una tarifa dé precio
+automático: pasa el borrador a `published`, le pone `publishedAt` y la deja disponible al
+configurador.
+
+- `200` con `{ "data": { "id", "seriesId", "versionNumber", "status": "published", "strategy", "validFrom", "validUntil", "currency", "taxRatePercent", "publishedAt" } }`.
+- `404` `NOT_FOUND` si la versión no existe.
+- `409` `INVALID_CATALOG_TRANSITION` si la versión está archivada (hay que restaurarla a borrador).
+- `409` `AMBIGUOUS_TARIFF` si la versión se solapa con otra ya publicada de la misma serie. **No se
+  escribe nada**: la invariante `assertNoOverlappingPublishedTariffs` se comprueba en el caso de uso
+  antes del `INSERT`/`UPDATE`. Republicar una tarifa ya publicada es idempotente (no escribe).
+
+**Acceso.** El API del panel exige `Authorization: Bearer <ADMIN_API_TOKEN>`. Sin la variable
+configurada responde `503` `ADMIN_API_DISABLED` (nunca queda abierto) y con un token distinto
+responde `401` `UNAUTHORIZED`. Es una guarda **provisional** mientras CIF-9/CIF-14 cierran el acceso
+del propietario; la sesión real la sustituirá sin tocar los casos de uso.
+
+```bash
+curl -s -X POST http://localhost:3000/api/admin/tariff-versions/<id>/publish \
+  -H "Authorization: Bearer $ADMIN_API_TOKEN" | jq
+```
 
 ---
 

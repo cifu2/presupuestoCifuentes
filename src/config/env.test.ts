@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest'
 
-import { environmentFlag, resolveEnvironment } from './env'
+import { environmentFlag, envSchema, resolveEnvironment } from './env'
+
+describe('ADMIN_API_TOKEN', () => {
+  it('trata la cadena vacía como ausente (el API del panel queda en 503, no en abierto)', () => {
+    const schema = envSchema.shape.ADMIN_API_TOKEN
+
+    expect(schema.parse('')).toBeUndefined()
+    expect(schema.parse('   ')).toBeUndefined()
+  })
+
+  it('conserva un token real y rechaza valores no textuales', () => {
+    expect(envSchema.shape.ADMIN_API_TOKEN.parse('token-de-panel')).toBe('token-de-panel')
+    expect(envSchema.shape.ADMIN_API_TOKEN.safeParse(42).success).toBe(false)
+  })
+})
 
 describe('environmentFlag', () => {
   it('interpreta el texto "false" como false (hallazgo B1 de CIF-71)', () => {

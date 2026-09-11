@@ -70,11 +70,11 @@ reversibles y una API estable para el configurador (CIF-7) y el panel (CIF-9).
   hecho tipado (`ManualQuoteDetail`) y el borde HTTP compone el `detail` traducido con el namespace
   `ManualQuoteReasons` de `messages/<locale>.json` (ADR-0005). El motivo estable de la API sigue
   siendo `reason`.
-- **El no solapamiento de tarifas publicadas aún no está enganchado a la publicación.**
-  `assertNoOverlappingPublishedTariffs` existe y está testeada, pero hoy la única defensa efectiva
-  es la de lectura: `selectTariffInForce` lanza `AmbiguousTariffError` y la API responde 409. Debe
-  invocarla el flujo de publicación del panel (CIF-9); hasta entonces solo queda documentado
-  (hallazgo N5 de CIF-78).
+- **El no solapamiento de tarifas publicadas se comprueba antes de escribir.** El flujo de
+  publicación del panel (`publishTariffVersion`, `POST /api/admin/tariff-versions/:id/publish`)
+  carga las versiones de la serie y llama a `assertNoOverlappingPublishedTariffs` antes del
+  `INSERT`/`UPDATE`: si hay solape lanza `AmbiguousTariffError` y la API responde 409 sin tocar la
+  fila. `selectTariffInForce` se mantiene como última red de lectura.
 - Se necesitan tests de integración con PostgreSQL real en CI: los añaden QA/DevOps (CIF-10/CIF-11).
 
 ## Alternativas consideradas

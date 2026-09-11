@@ -10,6 +10,7 @@ import type { Accessory } from '@/domain/catalog/accessory'
 import type { Color } from '@/domain/catalog/color'
 import type { Finish } from '@/domain/catalog/finish'
 import type { DoorSeries } from '@/domain/catalog/series'
+import type { TariffVersion } from '@/domain/catalog/tariff-version'
 import type {
   AccessoryRepository,
   ColorRepository,
@@ -20,6 +21,7 @@ import type {
   TariffPricing,
   TariffPricingRepository,
 } from '@/application/ports/tariff-pricing-repository'
+import type { TariffVersionRepository } from '@/application/ports/tariff-version-repository'
 
 export interface CatalogStoreSnapshot {
   readonly series: readonly DoorSeries[]
@@ -27,6 +29,8 @@ export interface CatalogStoreSnapshot {
   readonly colors: readonly Color[]
   readonly accessories: readonly Accessory[]
   readonly pricing: readonly TariffPricing[]
+  /** Versiones de tarifa sin tabla de precios (borradores del panel); por defecto, las de `pricing`. */
+  readonly tariffVersions?: readonly TariffVersion[]
 }
 
 export class InMemoryCatalogStore {
@@ -34,7 +38,8 @@ export class InMemoryCatalogStore {
   readonly finishes: readonly Finish[]
   readonly colors: readonly Color[]
   readonly accessories: readonly Accessory[]
-  readonly pricing: readonly TariffPricing[]
+  readonly pricing: TariffPricing[]
+  private readonly versions: TariffVersion[]
 
   constructor(snapshot: CatalogStoreSnapshot) {
     this.series = [...snapshot.series]
@@ -42,6 +47,36 @@ export class InMemoryCatalogStore {
     this.colors = [...snapshot.colors]
     this.accessories = [...snapshot.accessories]
     this.pricing = [...snapshot.pricing]
+    this.versions =
+      snapshot.tariffVersions === undefined
+        ? this.pricing.map((entry) => entry.tariff)
+        : [...snapshot.tariffVersions]
+  }
+
+  findTariffVersion(id: string): TariffVersion | null {
+    return this.versions.find((version) => version.id === id) ?? null
+  }
+
+  listTariffVersions(): readonly TariffVersion[] {
+    return this.versions
+  }
+
+  /** Alta o actualización de una versión; si tiene tabla de precios, la mantiene enlazada. */
+  upsertTariffVersion(version: TariffVersion): void {
+    const index = this.versions.findIndex((candidate) => candidate.id === version.id)
+
+    if (index === -1) {
+      this.versions.push(version)
+    } else {
+      this.versions[index] = version
+    }
+
+    const pricingIndex = this.pricing.findIndex((entry) => entry.tariff.id === version.id)
+    const pricingEntry = this.pricing[pricingIndex]
+
+    if (pricingIndex !== -1 && pricingEntry !== undefined) {
+      this.pricing[pricingIndex] = { ...pricingEntry, tariff: version }
+    }
   }
 }
 
@@ -128,5 +163,21 @@ export class InMemoryTariffPricingRepository implements TariffPricingRepository 
 
   async listBySeriesId(seriesId: string): Promise<readonly TariffPricing[]> {
     return this.store.pricing.filter((entry) => entry.tariff.seriesId === seriesId)
+  }
+}
+
+export class InMemoryTariffVersionRepository implements TariffVersionRepository {
+  constructor(private readonly store: InMemoryCatalogStore) {}
+
+  async findById(id: string): Promise<TariffVersion | null> {
+    return this.store.findTariffVersion(id)
+  }
+
+  async listBySeriesId(seriesId: string): Promise<readonly TariffVersion[]> {
+    return this.store.listTariffVersions().filter((version) => version.seriesId === seriesId)
+  }
+
+  async save(version: TariffVersion): Promise<void> {
+    this.store.upsertTariffVersion(version)
   }
 }

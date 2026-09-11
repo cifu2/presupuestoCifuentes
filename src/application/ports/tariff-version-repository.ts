@@ -1,13 +1,16 @@
 /**
- * Puerto de tarifas versionadas (ADR-0003).
+ * Puerto de tarifas versionadas del panel (ADR-0003).
  *
- * El caso de uso no conoce Prisma: pide las versiones de una serie o directamente la vigente en
- * un instante, y decide con las reglas de dominio si hay precio automático o presupuesto manual.
+ * El caso de uso de publicación carga las versiones de la serie, aplica la invariante de
+ * no solapamiento del dominio y solo entonces persiste. El puerto no conoce Prisma.
  */
 
 import type { TariffVersion } from '@/domain/catalog/tariff-version'
 
 export interface TariffVersionRepository {
+  findById(id: string): Promise<TariffVersion | null>
+  /** Todas las versiones de la serie, en cualquier estado (borrador, publicada o archivada). */
   listBySeriesId(seriesId: string): Promise<readonly TariffVersion[]>
-  findInForceAt(seriesId: string, instant: Date): Promise<TariffVersion | null>
+  /** Crea la versión si no existe y la actualiza si ya está; nunca borra. */
+  save(version: TariffVersion): Promise<void>
 }

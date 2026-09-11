@@ -29,10 +29,13 @@ import type {
   TariffPricing,
   TariffPricingRepository,
 } from '@/application/ports/tariff-pricing-repository'
+import type { TariffVersionRepository } from '@/application/ports/tariff-version-repository'
 import {
+  catalogStatusToDb,
   groupCatalogTexts,
   localizedTextToJson,
   manualQuoteReasonToDb,
+  pricingStrategyToDb,
   quoteLineKindToDb,
   toAccessory,
   toColor,
@@ -299,6 +302,51 @@ export class PrismaTariffPricingRepository implements TariffPricingRepository {
       const pricing = toTariffPricing(toTariffVersion(row), row.priceTable)
 
       return pricing === null ? [] : [pricing]
+    })
+  }
+}
+
+export class PrismaTariffVersionRepository implements TariffVersionRepository {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async findById(id: string): Promise<TariffVersion | null> {
+    const row = await this.prisma.tariffVersion.findUnique({ where: { id } })
+
+    return row === null ? null : toTariffVersion(row)
+  }
+
+  async listBySeriesId(seriesId: string): Promise<readonly TariffVersion[]> {
+    const rows = await this.prisma.tariffVersion.findMany({
+      where: { seriesId },
+      orderBy: { versionNumber: 'asc' },
+    })
+
+    return rows.map(toTariffVersion)
+  }
+
+  async save(version: TariffVersion): Promise<void> {
+    const mutableFields = {
+      status: catalogStatusToDb(version.status),
+      strategy: pricingStrategyToDb(version.strategy),
+      validFrom: version.validity.validFrom,
+      validUntil: version.validity.validUntil,
+      taxRatePercent: version.taxRatePercent,
+      currency: version.currency,
+      notes: version.notes,
+      publishedAt: version.publishedAt,
+      updatedAt: version.updatedAt,
+    }
+
+    await this.prisma.tariffVersion.upsert({
+      where: { id: version.id },
+      create: {
+        id: version.id,
+        seriesId: version.seriesId,
+        versionNumber: version.versionNumber,
+        createdAt: version.createdAt,
+        ...mutableFields,
+      },
+      update: mutableFields,
     })
   }
 }
