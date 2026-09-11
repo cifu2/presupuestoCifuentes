@@ -27,9 +27,17 @@ export function assertValidDate(value: Date, field: string): void {
   }
 }
 
-const PERCENTAGE_PATTERN = /^(\d{1,3})(?:\.(\d{1,4}))?$/
+/**
+ * Dos decimales como máximo para que el valor del dominio coincida exactamente con la columna
+ * `tariff_version.tax_rate_percent NUMERIC(5,2)`. Con más decimales PostgreSQL redondearía en
+ * silencio y el dominio y la base de datos divergirían en un valor fiscal.
+ */
+const PERCENTAGE_PATTERN = /^(\d{1,3})(?:\.(\d{1,2}))?$/
 
-/** Valida un porcentaje en cadena decimal exacta, de 0 a 100, sin usar coma flotante. */
+/**
+ * Valida un porcentaje en cadena decimal exacta, de 0 a 100 con hasta dos decimales, sin usar
+ * coma flotante.
+ */
 export function assertPercentage(value: string, field: string): void {
   const match = PERCENTAGE_PATTERN.exec(value.trim())
 

@@ -48,15 +48,21 @@ describe('assertValidDate', () => {
 
 describe('assertPercentage', () => {
   it('acepta porcentajes exactos entre 0 y 100', () => {
-    for (const value of ['0', '21', '21.5', '100', '100.00', '0.0001']) {
+    for (const value of ['0', '21', '21.5', '21.57', '100', '100.00', '0.01']) {
       expect(() => assertPercentage(value, 'taxRatePercent')).not.toThrow()
     }
   })
 
   it('rechaza formatos no decimales', () => {
-    for (const value of ['', 'abc', '21,5', '1e3', '1000']) {
+    for (const value of ['', 'abc', '21,5', '1e3', '1000', '.5']) {
       expect(() => assertPercentage(value, 'taxRatePercent')).toThrow(InvalidValueError)
     }
+  })
+
+  it('rechaza más de dos decimales para no divergir de NUMERIC(5,2) en base de datos', () => {
+    expect(() => assertPercentage('21.567', 'taxRatePercent')).toThrow(InvalidValueError)
+    expect(() => assertPercentage('21.5678', 'taxRatePercent')).toThrow(InvalidValueError)
+    expect(() => assertPercentage('0.0001', 'taxRatePercent')).toThrow(InvalidValueError)
   })
 
   it('rechaza porcentajes por encima de 100', () => {

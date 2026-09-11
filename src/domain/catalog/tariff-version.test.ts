@@ -26,6 +26,7 @@ describe('TariffVersion', () => {
     expect(() => makeTariffVersion({ seriesId: '' })).toThrow(InvalidValueError)
     expect(() => makeTariffVersion({ versionNumber: 0 })).toThrow(InvalidValueError)
     expect(() => makeTariffVersion({ taxRatePercent: '21,5' })).toThrow(InvalidValueError)
+    expect(() => makeTariffVersion({ taxRatePercent: '21.567' })).toThrow(InvalidValueError)
     expect(() => makeTariffVersion({ taxRatePercent: '121' })).toThrow(InvalidValueError)
     expect(() => makeTariffVersion({ currency: '' })).toThrow(InvalidValueError)
   })

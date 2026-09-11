@@ -45,4 +45,10 @@ describe('LocalizedText', () => {
   it('exige el idioma por defecto para crear un texto', () => {
     expect(() => LocalizedText.of({ es: '   ' })).toThrow(InvalidCatalogTextError)
   })
+
+  it('exige el idioma por defecto aunque haya traducciones en otros idiomas', () => {
+    expect(() => LocalizedText.of({ es: '   ', en: 'Armoured door' })).toThrow(
+      InvalidCatalogTextError,
+    )
+  })
 })

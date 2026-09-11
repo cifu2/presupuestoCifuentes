@@ -32,7 +32,7 @@ export class LocalizedText {
       }
     }
 
-    if (translations.size === 0) {
+    if (!translations.has(DEFAULT_LOCALE)) {
       throw new InvalidCatalogTextError(
         `Todo texto de catálogo necesita al menos el idioma "${DEFAULT_LOCALE}"`,
       )
