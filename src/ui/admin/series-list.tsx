@@ -6,6 +6,7 @@ import { useState } from 'react'
 import type { Locale } from '@/domain/catalog/locale'
 
 import { Link } from '@/i18n/navigation'
+import { DoorIcon } from './panel-icons'
 import {
   formatMeasurementPair,
   formatVersionNumber,
@@ -14,7 +15,14 @@ import {
   type SortDirection,
   type SeriesSortKey,
 } from './panel-navigation'
-import { Badge, buttonClass, EmptyState, PageHeader, type BadgeTone } from './panel-primitives'
+import {
+  Badge,
+  buttonClass,
+  EmptyState,
+  HelpText,
+  PageHeader,
+  type BadgeTone,
+} from './panel-primitives'
 import { PanelError, PanelForbidden, PanelLoading } from './panel-states'
 import type { AdminPanelState, SeriesSummary } from './view-models'
 
@@ -58,9 +66,13 @@ export function SeriesList({
     )
   }
 
+  // La fase 1 es solo presentación: la escritura llega en CIF-243, así que la acción principal
+  // está deshabilitada y lo dice, en vez de quedarse en un botón muerto (hallazgo 2 de CIF-277).
+  const newSeriesHint = t('newSeriesHint')
+
   const header = (
     <PageHeader title={t('series.title')}>
-      <button type="button" className={buttonClass('primary')} disabled>
+      <button type="button" className={buttonClass('primary')} disabled title={newSeriesHint}>
         {t('newSeries')}
       </button>
     </PageHeader>
@@ -97,10 +109,15 @@ export function SeriesList({
     return (
       <div className="flex flex-col gap-6">
         {header}
-        <EmptyState icon="🚪" title={t('seriesEmpty')} help={t('seriesEmptyHelp')}>
-          <button type="button" className={buttonClass('primary')} disabled>
+        <EmptyState
+          icon={<DoorIcon className="size-8" />}
+          title={t('seriesEmpty')}
+          help={t('seriesEmptyHelp')}
+        >
+          <button type="button" className={buttonClass('primary')} disabled title={newSeriesHint}>
             {t('newSeries')}
           </button>
+          <HelpText>{newSeriesHint}</HelpText>
         </EmptyState>
       </div>
     )

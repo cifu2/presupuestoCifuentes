@@ -2,12 +2,13 @@
 
 import { useLocale, useTranslations } from 'next-intl'
 import { useSearchParams } from 'next/navigation'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import type { Locale } from '@/domain/catalog/locale'
 
 import { Link, usePathname } from '@/i18n/navigation'
 import { routing } from '@/i18n/routing'
+import { CloseIcon, MenuIcon } from './panel-icons'
 import { NAV_ITEMS, localeSwitchHref, resolveActiveSection } from './panel-navigation'
 import { Badge } from './panel-primitives'
 
@@ -97,9 +98,42 @@ export function PanelShell({
   const pathname = usePathname()
   const activeSection = resolveActiveSection(pathname)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const navRef = useRef<HTMLElement>(null)
+  const toggleRef = useRef<HTMLButtonElement>(null)
 
   const closeMenu = () => {
     setIsMenuOpen(false)
+  }
+
+  /**
+   * El menú móvil se comporta como el modal (`sistema-de-diseno` §5): al abrir, el foco entra en el
+   * primer enlace; `Esc` cierra y lo devuelve al botón que abrió (hallazgo 3 de CIF-277 → CIF-296).
+   */
+  useEffect(() => {
+    if (!isMenuOpen) {
+      return
+    }
+
+    navRef.current?.querySelector('a')?.focus()
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsMenuOpen(false)
+        toggleRef.current?.focus()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [isMenuOpen])
+
+  /** Cierre desde el scrim: además devuelve el foco al botón del menú. */
+  const closeMenuFromScrim = () => {
+    setIsMenuOpen(false)
+    toggleRef.current?.focus()
   }
 
   const sections = NAV_ITEMS.map((item) => (
@@ -119,10 +153,11 @@ export function PanelShell({
         {t('a11y.skip')}
       </a>
 
-      <header className="border-b border-border bg-surface">
+      <header className="relative z-40 border-b border-border bg-surface">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2">
           <div className="flex items-center gap-2">
             <button
+              ref={toggleRef}
               type="button"
               className={`inline-flex size-11 items-center justify-center rounded-control border border-border-strong text-brand-800 md:hidden ${FOCUS}`}
               aria-label={isMenuOpen ? t('a11y.closeMenu') : t('a11y.openMenu')}
@@ -132,7 +167,7 @@ export function PanelShell({
                 setIsMenuOpen((open) => !open)
               }}
             >
-              <span aria-hidden="true">☰</span>
+              {isMenuOpen ? <CloseIcon /> : <MenuIcon />}
             </button>
             <span className="font-bold text-brand-900">
               Cifuentes <span className="text-sm font-semibold text-brand-500">{t('appTag')}</span>
@@ -146,13 +181,25 @@ export function PanelShell({
       </header>
 
       {isMenuOpen ? (
-        <nav
-          id="nav-mobile"
-          aria-label={t('a11y.sidebarSections')}
-          className="border-b border-border bg-surface md:hidden"
-        >
-          <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-3">{sections}</div>
-        </nav>
+        <>
+          {/* Scrim `--color-scrim`, como el `::backdrop` del modal. Es una capa inerte: no lleva
+              rol ni nombre accesible (el teclado sale con `Esc`), y por eso el E2E lo busca por
+              `data-testid` en vez de por rol. */}
+          <div
+            data-testid="panel-nav-scrim"
+            aria-hidden="true"
+            className="fixed inset-0 z-30 bg-scrim md:hidden"
+            onClick={closeMenuFromScrim}
+          />
+          <nav
+            ref={navRef}
+            id="nav-mobile"
+            aria-label={t('a11y.sidebarSections')}
+            className="relative z-40 border-b border-border bg-surface md:hidden"
+          >
+            <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-3">{sections}</div>
+          </nav>
+        </>
       ) : null}
 
       <div className="mx-auto flex max-w-6xl gap-6 px-4 py-6">

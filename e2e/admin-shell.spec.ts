@@ -185,6 +185,47 @@ test.describe('shell del panel: responsive', () => {
   })
 })
 
+test.describe('shell del panel: menú móvil con scrim y foco (CIF-296)', () => {
+  test('abre con el foco en el primer enlace y `Esc` lo devuelve al botón', async ({ page }) => {
+    test.skip(!isMobile(page), 'el menú desplegable solo existe por debajo de 768 px')
+
+    await page.goto('/es/admin')
+    await page.getByRole('button', { name: 'Abrir menú' }).click()
+
+    const navigation = page.getByRole('navigation', { name: 'Secciones del panel' })
+
+    await expect(navigation).toBeVisible()
+    await expect(navigation.getByRole('link', { name: 'Series', exact: true })).toBeFocused()
+
+    // El scrim es la misma capa que el `::backdrop` del modal: el color se mide computado.
+    const scrim = page.getByTestId('panel-nav-scrim')
+
+    await expect(scrim).toBeVisible()
+    expect(await scrim.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe(
+      'rgba(23, 32, 42, 0.45)',
+    )
+
+    await page.keyboard.press('Escape')
+
+    await expect(scrim).toHaveCount(0)
+    await expect(navigation).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Abrir menú' })).toBeFocused()
+  })
+
+  test('el scrim cierra el menú al pulsarlo y devuelve el foco al botón', async ({ page }) => {
+    test.skip(!isMobile(page), 'el menú desplegable solo existe por debajo de 768 px')
+
+    await page.goto('/es/admin')
+    await page.getByRole('button', { name: 'Abrir menú' }).click()
+
+    // Se pulsa por debajo del panel desplegado: allí el scrim es quien recibe el clic.
+    await page.getByTestId('panel-nav-scrim').click({ position: { x: 12, y: 600 } })
+
+    await expect(page.getByRole('navigation', { name: 'Secciones del panel' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Abrir menú' })).toBeFocused()
+  })
+})
+
 test.describe('shell del panel: i18n y nombres accesibles (M2)', () => {
   test('el conmutador de idioma traduce la pantalla y los nombres accesibles', async ({ page }) => {
     await page.goto('/es/admin')

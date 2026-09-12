@@ -6,6 +6,7 @@ import { useState } from 'react'
 import type { Locale } from '@/domain/catalog/locale'
 
 import { AdminDialog } from './admin-dialog'
+import { WarningIcon } from './panel-icons'
 import { formatDay, formatVersionNumber, statusLabelKey } from './panel-navigation'
 import { Alert, Badge, buttonClass, Card, type BadgeTone } from './panel-primitives'
 import { PanelError, PanelForbidden, PanelLoading } from './panel-states'
@@ -57,7 +58,10 @@ export function TariffVersions({
     <div className="flex flex-col gap-4">
       <p className="text-sm text-ink-muted">{t(captionKey)}</p>
       <Alert tone="warning">
-        <span aria-hidden="true">⚠</span> {t('tariffs.frozen')}
+        <span className="flex items-center gap-2">
+          <WarningIcon className="size-4 shrink-0" />
+          <span>{t('tariffs.frozen')}</span>
+        </span>
       </Alert>
       {isEmpty ? (
         <p className="text-sm text-ink-muted">{t('tariffsEmpty')}</p>

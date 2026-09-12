@@ -64,6 +64,14 @@ Hechos verificados el 2026-09-12:
    CIF-55 sigue en 68/68; sin literales de texto ni de color; revisión de otro agente distinto del autor.
 10. **Sin datos de negocio reales.** Los fixtures de la fase 1 son datos de demostración; el repositorio
     no contiene series, tarifas, colores ni precios reales (ADR-0014 §1, ADR-0017 §2).
+11. **Polish de la fase 1 tras la validación en runtime (CIF-296).** Los tres hallazgos no bloqueantes de
+    CIF-277 se cierran dentro del mismo techo de la fase 1: los iconos del panel son **SVG** propios
+    (`src/ui/admin/panel-icons.tsx`) en lugar de emoji de plataforma —el color entra por `currentColor`
+    desde los tokens de `sistema-de-diseno` §2, nunca por un literal—; la CTA deshabilitada del vacío de
+    series declara que llegará con la edición (`CatalogAdmin.newSeriesHint`) en vez de quedarse en un
+    botón muerto; y el menú móvil usa el mismo patrón que el `Modal`/`Sheet`: scrim con
+    `--color-scrim`, foco al primer enlace al abrir y vuelta al botón al cerrar con `Esc` o con el
+    scrim. No se abre ninguna superficie de escritura: la CTA sigue deshabilitada.
 
 ## Consecuencias
 

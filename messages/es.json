@@ -161,6 +161,7 @@
       "viewSite": "Ver web ↗"
     },
     "newSeries": "+ Nueva serie",
+    "newSeriesHint": "Disponible al activar la edición.",
     "newTariffVersion": "+ Nueva versión",
     "placeholder": "Sección de ejemplo del prototipo.",
     "publish": "Publicar",

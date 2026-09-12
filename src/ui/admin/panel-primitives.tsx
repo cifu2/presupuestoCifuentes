@@ -92,20 +92,24 @@ export function HelpText({ children }: { children: ReactNode }) {
   return <p className="text-sm text-ink-muted">{children}</p>
 }
 
+/**
+ * El icono entra como nodo (`panel-icons.tsx`) para que el panel pinte SVG del sistema de diseño y
+ * no glifos de plataforma (CIF-296). Sigue siendo decorativo: el nombre accesible lo pone el título.
+ */
 export function EmptyState({
   icon,
   title,
   help,
   children,
 }: {
-  icon: string
+  icon: ReactNode
   title: string
   help: string
   children?: ReactNode
 }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-card border border-dashed border-border-strong bg-surface px-6 py-12 text-center">
-      <span aria-hidden="true" className="text-3xl">
+      <span aria-hidden="true" className="text-brand-400">
         {icon}
       </span>
       <p className="font-semibold text-brand-900">{title}</p>

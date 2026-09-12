@@ -161,6 +161,7 @@
       "viewSite": "View site ↗"
     },
     "newSeries": "+ New series",
+    "newSeriesHint": "Available once editing is enabled.",
     "newTariffVersion": "+ New version",
     "placeholder": "Sample section of the prototype.",
     "publish": "Publish",
