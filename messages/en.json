@@ -110,5 +110,9 @@
     "tariff_without_prices": "The tariff in force for the \"{series}\" series does not have prices loaded yet",
     "no_size_band_covers_measurement": "No size band of the tariff covers {width}×{height} mm",
     "customer_requested": "The customer has expressly asked to be contacted"
+  },
+  "Preview2D": {
+    "region": "2D preview of the configured door",
+    "colorUndefined": "Colour to be defined"
   }
 }
