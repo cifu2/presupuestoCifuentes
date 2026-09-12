@@ -630,4 +630,55 @@ describe('tope de intentos de entrega (CIF-186)', () => {
     expect(result.reason).toBe('none')
     expect(harness.sendCalls).toEqual([])
   })
+
+  it('informa de in_progress, no de incomplete, cuando esta petición envía a unos y otra tiene reclamados los demás (F1 de CIF-198)', async () => {
+    const harness = makeHarness()
+
+    // Otra petición tiene reclamada la entrega del cliente (reserva viva en su primer intento).
+    await harness.store.save(seedAttempts(harness, 1, { claimedAt: NOW }))
+
+    const result = await deliverQuote(harness.deps, {
+      reference: 'PC-2026-000001',
+      customer: CUSTOMER,
+    })
+
+    expect(result.status).toBe('in_progress')
+    expect(result.reason).toBe('none')
+    // El PDF se renderiza una vez y solo sale el aviso interno, que sí ha reclamado esta petición.
+    expect(result.pdfBytes).toBeGreaterThan(0)
+    expect(harness.renders()).toBe(1)
+    expect(harness.sendCalls).toEqual([SALES_MAILBOX])
+
+    // La entrega reclamada por la otra petición no se toca.
+    const stored = await harness.deps.quoteDeliveryRepository.findByKey(
+      quoteDeliveryKey(harness.quote.id, 1, CUSTOMER.email),
+    )
+
+    expect(stored?.status).toBe('pending')
+    expect(stored?.attempts).toBe(1)
+    expect(stored?.claimedAt).toEqual(NOW)
+  })
+
+  it('el reintento también informa de in_progress cuando envía a unos y otra petición tiene reclamados los demás (F1 de CIF-198)', async () => {
+    const harness = makeHarness()
+
+    await harness.store.save(seedAttempts(harness, 1, { claimedAt: NOW }))
+    await harness.store.save(
+      seedAttempts(harness, 1, { audience: 'internal', recipient: SALES_MAILBOX }),
+    )
+
+    const retried = await retryQuoteDeliveries(harness.deps, { reference: 'PC-2026-000001' })
+
+    expect(retried.status).toBe('in_progress')
+    expect(retried.reason).toBe('none')
+    expect(retried.pdfBytes).toBeGreaterThan(0)
+    expect(harness.sendCalls).toEqual([SALES_MAILBOX])
+
+    const stored = await harness.deps.quoteDeliveryRepository.findByKey(
+      quoteDeliveryKey(harness.quote.id, 1, CUSTOMER.email),
+    )
+
+    expect(stored?.attempts).toBe(1)
+    expect(stored?.claimedAt).toEqual(NOW)
+  })
 })

@@ -28,12 +28,16 @@ import { InMemoryQuoteDeliveryRepository } from '@/infrastructure/persistence/in
 const TOKEN = 'token-de-prueba-suficientemente-largo'
 const NOW = new Date('2026-09-12T09:00:00.000Z')
 const CUSTOMER = { name: 'Ana', email: 'ana@example.com' }
+const SALES_MAILBOX = 'comercial@example.com'
 
 vi.mock('@/config/env', () => ({
   env: { ADMIN_API_TOKEN: 'token-de-prueba-suficientemente-largo' },
 }))
 
 const spies = vi.hoisted(() => ({ rendered: 0, sent: [] as string[] }))
+
+/** Configuración mutable: permite alternar el buzón interno por test (F1 de CIF-198). */
+const state = vi.hoisted(() => ({ internalRecipients: [] as string[] }))
 
 const quote = Quote.issue({
   id: 'quote-1',
@@ -104,7 +108,7 @@ vi.mock('@/composition/container', () => ({
         isPending: false,
       },
       conditions: { es: ['Validez 30 días'], en: ['Valid for 30 days'] },
-      internalRecipients: [],
+      internalRecipients: state.internalRecipients,
       pendingFields: [],
     },
   }),
@@ -125,8 +129,11 @@ function deliver(token: string | null = TOKEN): Promise<Response> {
   ).then((request) => POST(request, { params: Promise.resolve({ reference: quote.reference }) }))
 }
 
-/** Siembra el intento 100 de la entrega del cliente: en vuelo (`claimedAt`) o ya cerrado. */
-async function seedAttempts(claimedAt: Date | null): Promise<void> {
+/** Siembra la entrega del cliente: en vuelo (`claimedAt`) o ya cerrada. */
+async function seedAttempts(
+  claimedAt: Date | null,
+  attempts = MAX_QUOTE_DELIVERY_ATTEMPTS,
+): Promise<void> {
   await deliveries.save(
     QuoteDelivery.create({
       id: 'delivery-1',
@@ -137,7 +144,7 @@ async function seedAttempts(claimedAt: Date | null): Promise<void> {
       recipient: CUSTOMER.email,
       customerName: CUSTOMER.name,
       status: claimedAt === null ? 'failed' : 'pending',
-      attempts: MAX_QUOTE_DELIVERY_ATTEMPTS,
+      attempts,
       providerMessageId: null,
       lastError: claimedAt === null ? 'email: proveedor caído' : null,
       createdAt: NOW,
@@ -186,6 +193,36 @@ describe('POST /api/quotes/:reference/delivery con el intento 100 en vuelo (CIF-
     expect(body.deliveries[0].lastError).toBe(QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED_REASON)
     expect(spies.rendered).toBe(0)
     expect(spies.sent).toEqual([])
+  })
+
+  it('responde 200 in_progress (no 502) cuando envía a unos destinatarios y otra petición tiene reclamado el cliente (F1 de CIF-198)', async () => {
+    spies.rendered = 0
+    spies.sent.length = 0
+    state.internalRecipients = [SALES_MAILBOX]
+    // El cliente lo tiene reclamado otra petición en su primer intento; el aviso interno es nuestro.
+    await seedAttempts(NOW, 1)
+
+    try {
+      const response = await deliver()
+      const body = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(body.status).toBe('in_progress')
+      expect(body.reason).toBe('none')
+      expect(body.pdfBytes).toBeGreaterThan(0)
+      expect(spies.sent).toEqual([SALES_MAILBOX])
+      expect(body.deliveries.map((delivery: { status: string }) => delivery.status).sort()).toEqual(
+        ['pending', 'sent'],
+      )
+
+      const stored = await deliveries.findByKey(quoteDeliveryKey(quote.id, 1, CUSTOMER.email))
+
+      expect(stored?.status).toBe('pending')
+      expect(stored?.attempts).toBe(1)
+      expect(stored?.claimedAt).toEqual(NOW)
+    } finally {
+      state.internalRecipients = []
+    }
   })
 
   it('sigue exigiendo el token del panel', async () => {
