@@ -13,8 +13,14 @@ test.describe('vista previa 2D del configurador', () => {
     await expect(page.getByRole('combobox', { name: 'Acabado' })).toBeVisible()
     await expect(page.getByRole('combobox', { name: 'Color' })).toBeVisible()
     await expect(page.getByRole('combobox', { name: 'Superficie' })).toBeVisible()
-    await expect(page.getByRole('spinbutton', { name: 'Ancho (mm)' })).toBeVisible()
-    await expect(page.getByRole('spinbutton', { name: 'Alto (mm)' })).toBeVisible()
+    const width = page.getByRole('spinbutton', { name: 'Ancho (mm)' })
+
+    await expect(width).toBeVisible()
+    await expect(width).toHaveAttribute('aria-describedby', 'preview-range')
+    await expect(page.getByRole('spinbutton', { name: 'Alto (mm)' })).toHaveAttribute(
+      'aria-describedby',
+      'preview-range',
+    )
     await expect(page.getByRole('radio', { name: 'Izquierda' })).toBeVisible()
     await expect(page.getByRole('checkbox', { name: 'Enmarcado perimetral' })).toBeVisible()
   })
@@ -26,7 +32,7 @@ test.describe('vista previa 2D del configurador', () => {
 
     await expect(preview(page)).toHaveAttribute(
       'aria-label',
-      'Vista previa: Acorazada de 1 hoja, 900 × 2030 mm, Lacado, RAL 7016 gris',
+      'Vista previa: Abatible 1 hoja, 900 × 2030 mm, Lacado, RAL 7016 gris',
     )
 
     await page.getByTestId('preview-color').selectOption('roble')
@@ -41,7 +47,7 @@ test.describe('vista previa 2D del configurador', () => {
 
     await expect(preview(page)).toHaveAttribute(
       'aria-label',
-      'Preview: Single-leaf armoured door, 900 × 2030 mm, Lacquered, RAL 7016 grey',
+      'Preview: Single-leaf hinged door, 900 × 2030 mm, Lacquered, RAL 7016 grey',
     )
   })
 
@@ -107,6 +113,99 @@ test.describe('vista previa 2D del configurador', () => {
     await expect(preview(page).locator('[data-shape-kind="strip"]').first()).toBeVisible()
     await expect(preview(page).locator('[data-shape-kind="moulding"]')).toHaveCount(2)
     await expect(preview(page).locator('[data-shape-kind="glazing"]')).toHaveCount(2)
+  })
+
+  test('fija el tono metal del tirador y el trazo sin relleno de la moldura (N1 de CIF-165)', async ({
+    page,
+  }) => {
+    await page.goto(CONFIGURATOR_PATH)
+
+    // H4: la hoja simple pinta el tirador en tono metal, como el arte v5.2 de Diseño.
+    await expect(preview(page).locator('[data-shape-kind="handle"]').first()).toHaveAttribute(
+      'fill',
+      'url(#metal)',
+    )
+
+    // H5: los tablones curvos generan molduras de contorno que nunca llevan relleno.
+    await page.getByTestId('preview-planking').selectOption('tablones-curvos-36')
+
+    const moulding = preview(page).locator('[data-shape-kind="moulding"]').first()
+
+    await expect(moulding).toHaveAttribute('fill', 'none')
+    await expect(moulding).toHaveAttribute('stroke', '#98a2ab')
+  })
+
+  test('el aviso de presupuesto manual cumple AA de contraste (D1 de CIF-165)', async ({
+    page,
+  }) => {
+    await page.goto(CONFIGURATOR_PATH)
+
+    await page.getByTestId('preview-width').fill('1300')
+
+    const alert = page.getByTestId('preview-out-of-range')
+
+    await expect(alert).toBeVisible()
+
+    const contrast = await alert.evaluate((element) => {
+      const channels = (value: string): number[] => (value.match(/\d+(\.\d+)?/g) ?? []).map(Number)
+      const luminance = ([r = 0, g = 0, b = 0]: number[]): number => {
+        const channel = (component: number): number => {
+          const scaled = component / 255
+
+          return scaled <= 0.03928 ? scaled / 12.92 : ((scaled + 0.055) / 1.055) ** 2.4
+        }
+
+        return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+      }
+
+      let node: Element | null = element
+      let background = 'rgb(255, 255, 255)'
+
+      while (node !== null) {
+        const candidate = getComputedStyle(node).backgroundColor
+        const parts = channels(candidate)
+
+        if (parts.length >= 3 && (parts[3] ?? 1) > 0) {
+          background = candidate
+          break
+        }
+
+        node = node.parentElement
+      }
+
+      const foreground = getComputedStyle(element).color
+      const light = Math.max(luminance(channels(foreground)), luminance(channels(background)))
+      const dark = Math.min(luminance(channels(foreground)), luminance(channels(background)))
+
+      return {
+        foreground,
+        background,
+        ratio: (light + 0.05) / (dark + 0.05),
+      }
+    })
+
+    expect(contrast.ratio, JSON.stringify(contrast)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  test('en el primer viewport conviven la vista previa y el primer control (D2 de CIF-165)', async ({
+    page,
+  }) => {
+    await page.goto(CONFIGURATOR_PATH)
+
+    const viewport = page.viewportSize()
+    const previewBox = await preview(page).boundingBox()
+    const firstControl = await page.getByTestId('preview-type').boundingBox()
+
+    expect(viewport).not.toBeNull()
+    expect(previewBox).not.toBeNull()
+    expect(firstControl).not.toBeNull()
+
+    const height = viewport?.height ?? 0
+
+    // La puerta se ve y el panel ya arrancó dentro del primer viewport: el bucle «toco → veo»
+    // existe también en móvil.
+    expect(previewBox?.y ?? height).toBeLessThan(height)
+    expect(firstControl?.y ?? height).toBeLessThan(height)
   })
 
   test('avisa cuando la medida supera el máximo de la serie (paso a presupuesto manual)', async ({

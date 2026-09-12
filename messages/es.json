@@ -113,6 +113,7 @@
   },
   "Preview2D": {
     "title": "Configurador de puertas",
+    "panelTitle": "Elige tu puerta",
     "intro": "Elige tipo, medidas, acabado y color: la vista previa 2D se actualiza al momento.",
     "previewTitle": "Vista previa",
     "region": "Vista previa 2D de la puerta configurada",
@@ -140,9 +141,9 @@
       "glazing": "Huecos de cristal"
     },
     "types": {
-      "abatible1Hoja": "Acorazada de 1 hoja",
-      "abatible2Hojas": "Acorazada de 2 hojas",
-      "entradaAcorazada": "Entrada acorazada",
+      "abatible1Hoja": "Abatible 1 hoja",
+      "abatible2Hojas": "Abatible 2 hojas",
+      "entradaAcorazada": "Acorazada de entrada",
       "pivotante1Hoja": "Pivotante de 1 hoja",
       "pivotante2Hoja": "Pivotante de 2 hojas"
     },

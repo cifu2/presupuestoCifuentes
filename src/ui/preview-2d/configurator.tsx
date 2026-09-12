@@ -167,7 +167,7 @@ export function Preview2DConfigurator(): React.JSX.Element {
         <h2 id="vista-previa" className="text-xl font-semibold text-brand-900">
           {t('previewTitle')}
         </h2>
-        <div className="mt-3 flex aspect-[3/4] items-center justify-center overflow-hidden rounded-lg bg-[#f7f7f5]">
+        <div className="mt-3 flex aspect-[3/4] max-h-[35vh] items-center justify-center overflow-hidden rounded-lg bg-[#f7f7f5] lg:max-h-none">
           <DoorPreview
             geometry={geometry}
             className="h-full w-full"
@@ -191,7 +191,7 @@ export function Preview2DConfigurator(): React.JSX.Element {
         >
           {t('summary.measurement', { width: widthMm, height: heightMm })}
         </p>
-        <p className="mt-1 text-sm text-brand-500" data-testid="preview-range">
+        <p id="preview-range" className="mt-1 text-sm text-brand-500" data-testid="preview-range">
           {t('summary.range', {
             minWidth: DEMO_SIZE_RANGE.minWidthMm,
             maxWidth: DEMO_SIZE_RANGE.maxWidthMm,
@@ -201,7 +201,7 @@ export function Preview2DConfigurator(): React.JSX.Element {
         </p>
         {withinSeriesRange ? null : (
           <p
-            className="mt-2 text-sm font-medium text-accent-500"
+            className="mt-2 rounded-md bg-accent-100 px-3 py-2 text-sm font-medium text-accent-700"
             role="alert"
             data-testid="preview-out-of-range"
           >
@@ -212,7 +212,7 @@ export function Preview2DConfigurator(): React.JSX.Element {
 
       <form className="lg:order-1" aria-labelledby="opciones-configurador">
         <h2 id="opciones-configurador" className="text-xl font-semibold text-brand-900">
-          {t('title')}
+          {t('panelTitle')}
         </h2>
         <p className="mt-2 text-sm text-brand-700">{t('summary.live')}</p>
 
@@ -251,6 +251,7 @@ export function Preview2DConfigurator(): React.JSX.Element {
                 id="ancho"
                 name="ancho"
                 data-testid="preview-width"
+                aria-describedby="preview-range"
                 className="rounded-md border border-brand-500/40 bg-white px-3 py-2"
                 type="number"
                 inputMode="numeric"
@@ -267,6 +268,7 @@ export function Preview2DConfigurator(): React.JSX.Element {
                 id="alto"
                 name="alto"
                 data-testid="preview-height"
+                aria-describedby="preview-range"
                 className="rounded-md border border-brand-500/40 bg-white px-3 py-2"
                 type="number"
                 inputMode="numeric"

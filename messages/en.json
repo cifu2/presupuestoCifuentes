@@ -113,6 +113,7 @@
   },
   "Preview2D": {
     "title": "Door configurator",
+    "panelTitle": "Choose your door",
     "intro": "Pick type, size, finish and colour: the 2D preview updates instantly.",
     "previewTitle": "Preview",
     "region": "2D preview of the configured door",
@@ -140,8 +141,8 @@
       "glazing": "Glass cut-outs"
     },
     "types": {
-      "abatible1Hoja": "Single-leaf armoured door",
-      "abatible2Hojas": "Double-leaf armoured door",
+      "abatible1Hoja": "Single-leaf hinged door",
+      "abatible2Hojas": "Double-leaf hinged door",
       "entradaAcorazada": "Armoured entrance door",
       "pivotante1Hoja": "Single-leaf pivot door",
       "pivotante2Hoja": "Double-leaf pivot door"
