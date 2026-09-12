@@ -37,6 +37,10 @@ export const HEALTH_PROBE_TIMEOUT_MS = 2000
  *
  * Solo `ok` (y `unconfigured`, sin base) cuentan como sanos: `unreachable` y `unmigrated` dejan el
  * estado en `degraded`, porque en ambos casos las rutas que tocan la base devolverían 500.
+ *
+ * El tope de tiempo **cancela** la consulta, no solo la espera: `healthProbe` recibe un
+ * `AbortSignal` que se aborta al agotarse `HEALTH_PROBE_TIMEOUT_MS`, de modo que el adaptador no
+ * deja la conexión del pool viva hasta que falle el socket.
  */
 export async function getSystemStatus({
   clock,
@@ -54,26 +58,38 @@ export async function getSystemStatus({
 }
 
 async function probeDatabase(healthProbe: HealthProbe): Promise<DatabaseHealth> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), HEALTH_PROBE_TIMEOUT_MS)
+
   try {
-    return await withTimeout(healthProbe.ping(), HEALTH_PROBE_TIMEOUT_MS)
+    const pinged = healthProbe.ping({ signal: controller.signal })
+
+    // La consulta cancelada puede rechazar después de que gane el tope: se marca como gestionada
+    // para que ese rechazo no se registre como no capturado.
+    pinged.catch(() => {})
+
+    return await Promise.race([pinged, aborted(controller.signal)])
   } catch {
     return 'unreachable'
+  } finally {
+    clearTimeout(timer)
   }
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('health probe timeout')), timeoutMs)
+/**
+ * Rechaza en cuanto la señal se aborta. El tope no espera a que el adaptador se dé por vencido:
+ * en cuanto se agota, la respuesta HTTP sale como `unreachable` y la cancelación viaja a la
+ * consulta por la misma señal.
+ */
+function aborted(signal: AbortSignal): Promise<never> {
+  return new Promise<never>((_resolve, reject) => {
+    const onAbort = () => reject(new Error('health probe timeout'))
 
-    promise.then(
-      (value) => {
-        clearTimeout(timer)
-        resolve(value)
-      },
-      (error: unknown) => {
-        clearTimeout(timer)
-        reject(error instanceof Error ? error : new Error('health probe failed'))
-      },
-    )
+    if (signal.aborted) {
+      onAbort()
+      return
+    }
+
+    signal.addEventListener('abort', onAbort, { once: true })
   })
 }

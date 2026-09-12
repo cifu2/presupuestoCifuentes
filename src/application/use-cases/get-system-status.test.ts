@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Clock } from '@/application/ports/clock'
-import type { DatabaseHealth, HealthProbe } from '@/application/ports/health-probe'
+import type {
+  DatabaseHealth,
+  HealthProbe,
+  HealthProbeOptions,
+} from '@/application/ports/health-probe'
 
 import { HEALTH_PROBE_TIMEOUT_MS, getSystemStatus } from './get-system-status'
 
@@ -12,6 +16,22 @@ const fixedClock = (isoDate: string): Clock => ({
 const CHECKED_AT = '2026-09-11T10:00:00.000Z'
 
 const probeReturning = (health: DatabaseHealth): HealthProbe => ({ ping: async () => health })
+
+/** Sonda que no responde nunca y deja ver la señal que le pasa el caso de uso. */
+function hangingProbe(): { healthProbe: HealthProbe; signal: () => AbortSignal | undefined } {
+  let received: AbortSignal | undefined
+
+  return {
+    healthProbe: {
+      ping: (options: HealthProbeOptions = {}) => {
+        received = options.signal
+
+        return new Promise<never>(() => {})
+      },
+    },
+    signal: () => received,
+  }
+}
 
 describe('getSystemStatus', () => {
   afterEach(() => {
@@ -65,10 +85,8 @@ describe('getSystemStatus', () => {
   it('trata una sonda que no responde en 2 s como unreachable', async () => {
     vi.useFakeTimers()
 
-    const pending = getSystemStatus({
-      clock: fixedClock(CHECKED_AT),
-      healthProbe: { ping: () => new Promise<never>(() => {}) },
-    })
+    const { healthProbe } = hangingProbe()
+    const pending = getSystemStatus({ clock: fixedClock(CHECKED_AT), healthProbe })
 
     await vi.advanceTimersByTimeAsync(HEALTH_PROBE_TIMEOUT_MS)
 
@@ -77,5 +95,53 @@ describe('getSystemStatus', () => {
       database: 'unreachable',
       checkedAt: CHECKED_AT,
     })
+  })
+
+  it('pasa a la sonda una señal de cancelación', async () => {
+    vi.useFakeTimers()
+
+    const { healthProbe, signal } = hangingProbe()
+    const pending = getSystemStatus({ clock: fixedClock(CHECKED_AT), healthProbe })
+
+    expect(signal()).toBeInstanceOf(AbortSignal)
+
+    await vi.advanceTimersByTimeAsync(HEALTH_PROBE_TIMEOUT_MS)
+    await pending
+  })
+
+  it('aborta la señal al agotarse el tope, para que el adaptador cancele la consulta', async () => {
+    vi.useFakeTimers()
+
+    const { healthProbe, signal } = hangingProbe()
+    const pending = getSystemStatus({ clock: fixedClock(CHECKED_AT), healthProbe })
+
+    expect(signal()?.aborted).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(HEALTH_PROBE_TIMEOUT_MS)
+
+    await expect(pending).resolves.toEqual({
+      status: 'degraded',
+      database: 'unreachable',
+      checkedAt: CHECKED_AT,
+    })
+    expect(signal()?.aborted).toBe(true)
+  })
+
+  it('no aborta la señal cuando la sonda responde dentro del tope', async () => {
+    let received: AbortSignal | undefined
+
+    const status = await getSystemStatus({
+      clock: fixedClock(CHECKED_AT),
+      healthProbe: {
+        ping: async (options: HealthProbeOptions = {}) => {
+          received = options.signal
+
+          return 'ok'
+        },
+      },
+    })
+
+    expect(status.status).toBe('ok')
+    expect(received?.aborted).toBe(false)
   })
 })

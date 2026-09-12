@@ -3,15 +3,25 @@
  *
  * El contenedor se sustituye por un doble para cubrir los cuatro estados sin base de datos real:
  * `ok` (200), `unreachable` (503), `unmigrated` (503) y `unconfigured` (200, modo demo).
+ *
+ * El último test sustituye el caso de uso para comprobar que el código HTTP sigue su `status` y no
+ * una regla propia del borde: `status` es la única fuente de verdad de la salud (CIF-451).
  */
 
 import { describe, expect, it, vi } from 'vitest'
 
 import type { DatabaseHealth, HealthProbe } from '@/application/ports/health-probe'
+import { getSystemStatus } from '@/application/use-cases/get-system-status'
 
 const { createContainer } = vi.hoisted(() => ({ createContainer: vi.fn() }))
 
 vi.mock('@/composition/container', () => ({ createContainer }))
+
+vi.mock('@/application/use-cases/get-system-status', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/application/use-cases/get-system-status')>()
+
+  return { ...actual, getSystemStatus: vi.fn(actual.getSystemStatus) }
+})
 
 const { GET, DEGRADED_STATUS } = await import('./route')
 
@@ -86,5 +96,22 @@ describe('GET /api/health', () => {
     expect(response.status).toBe(DEGRADED_STATUS)
     expect(rawBody).not.toContain('postgres')
     expect(rawBody).not.toContain('detalle-del-driver-no-debe-salir')
+  })
+
+  it('fija el código HTTP por el status del caso de uso, sin recalcularlo desde database', async () => {
+    createContainer.mockReturnValue(containerWith(probeReturning('ok')))
+    vi.mocked(getSystemStatus).mockResolvedValueOnce({
+      status: 'degraded',
+      database: 'unconfigured',
+      checkedAt: CHECKED_AT,
+    })
+
+    const response = await GET()
+    const body = await response.json()
+
+    // `database: unconfigured` es sano por sí solo: si el borde redecidiera la salud a partir de
+    // `database`, esta respuesta sería 200 y estaría contradiciendo al caso de uso.
+    expect(response.status).toBe(DEGRADED_STATUS)
+    expect(body).toMatchObject({ status: 'degraded', database: 'unconfigured' })
   })
 })

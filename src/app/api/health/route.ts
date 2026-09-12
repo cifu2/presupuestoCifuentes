@@ -7,14 +7,17 @@ import { env, resolveEnvironment } from '@/config/env'
 export const dynamic = 'force-dynamic'
 
 /**
- * Código HTTP de la sonda: 503 cuando la base está configurada pero no está sana, ya sea porque no
- * responde (`unreachable`) o porque responde sin esquema migrado (`unmigrated`).
+ * Código HTTP de la sonda: 503 cuando `getSystemStatus` no da el sistema por sano, es decir, cuando
+ * la base está configurada pero no está sana (no responde o responde sin esquema migrado).
+ *
+ * El borde HTTP no redecide la salud a partir de `database`: `status` del caso de uso es la única
+ * fuente de verdad (CIF-451). Así una regla nueva del caso de uso (otro modo de fallo, otro estado
+ * sano) no puede quedar contradicha por la ruta.
  */
 export const DEGRADED_STATUS = 503
 
 export async function GET(): Promise<NextResponse> {
   const { status, database, checkedAt } = await getSystemStatus(createContainer())
-  const degraded = database === 'unreachable' || database === 'unmigrated'
 
   return NextResponse.json(
     {
@@ -24,6 +27,6 @@ export async function GET(): Promise<NextResponse> {
       database,
       checkedAt,
     },
-    { status: degraded ? DEGRADED_STATUS : 200 },
+    { status: status === 'ok' ? 200 : DEGRADED_STATUS },
   )
 }

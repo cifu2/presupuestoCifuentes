@@ -43,8 +43,9 @@ Decisiones asociadas: [ADR-0007](adr/0007-despliegue-vercel-github.md) y
   - `unconfigured`: no hay `DATABASE_URL` (o `CATALOG_DEMO_MODE=true`). HTTP **200**.
   - `ok`: la base responde y tiene el esquema migrado (`_prisma_migrations` y `door_series`).
     HTTP **200**.
-  - `unreachable`: hay `DATABASE_URL` pero la consulta falla o no responde en **2 s**. HTTP **503**,
-    con `status: "degraded"`. El monitor de uptime se dispara aquí, que es justo lo que no ocurría
+  - `unreachable`: hay `DATABASE_URL` pero la consulta falla o no responde en **2 s**; al agotarse el
+    tope la consulta se **cancela**, no solo se deja de esperar. HTTP **503**, con
+    `status: "degraded"`. El monitor de uptime se dispara aquí, que es justo lo que no ocurría
     durante la avería del 2026-09-11 (ADR-0015).
   - `unmigrated`: hay `DATABASE_URL` y la base **responde**, pero no tiene el esquema de la
     aplicación o le falta el historial de migraciones. HTTP **503**, con `status: "degraded"`. Es la
