@@ -55,7 +55,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: cliente de Prisma
         run: pnpm db:generate
-      - run: pnpm format:check
       - name: Sintaxis de los scripts de operación
         run: |
           for script in scripts/*.sh; do
@@ -103,6 +102,13 @@ jobs:
         env:
           HEALTH_CHECK_REPORT: salud-http.log
         run: ./scripts/health-http-check.sh
+      # `format:check` va el último de la verificación a propósito (CIF-489). Cuando iba antes, un
+      # hallazgo de formato dejaba en `skipped` lint, tipos, unitarios, guardas de scripts, barrido de
+      # secretos y guardia de ramas: un espacio en blanco ocultaba toda la señal del job y obligaba a
+      # otro ciclo de CI para saber si había algo más. Al ser el último paso, los gates caros ya han
+      # corrido cuando el formato falla y el job sigue rojo. El orden lo fija la guarda de
+      # `src/config/ci-workflow.test.ts`.
+      - run: pnpm format:check
       - if: always()
         uses: actions/upload-artifact@v7
         with:
