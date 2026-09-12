@@ -32,6 +32,13 @@ const STATUS_BY_CODE: Record<DomainErrorCode, number> = {
   // Fallback defensivo: hoy los casos de uso de entrega filtran el agotamiento y responden 200 con
   // `attempts_exhausted`, así que este mapeo no se alcanza por HTTP (CIF-195, N2 de CIF-194).
   QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED: 409,
+  // Escritura de catálogo (CIF-126a). El `Record` es exhaustivo, así que los códigos nuevos del
+  // dominio se mapean aquí aunque los endpoints de escritura sean de CIF-243.
+  CONFLICT: 409,
+  SERIES_IN_USE: 409,
+  ITEM_IN_USE: 409,
+  EMPTY_PRICE_TABLE: 409,
+  TARIFF_NOT_EDITABLE: 409,
   NOT_FOUND: 404,
 }
 

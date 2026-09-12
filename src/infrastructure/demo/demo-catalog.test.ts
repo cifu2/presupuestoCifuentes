@@ -39,4 +39,31 @@ describe('catálogo de demostración', () => {
       }
     })
   })
+
+  it('todo borrador publicable lleva tabla de precios: sin ella no se publica (ADR-0027 §4)', () => {
+    // CIF-126a: publicar una versión sin tabla de precios da `EmptyPriceTableError` y deja la fila
+    // en borrador. Si un borrador publicable del catálogo de demostración se quedara sin tabla, el
+    // E2E de publicación (CIF-86) dejaría de cubrir el 200 sin que nada avisara.
+    const store = createDemoCatalogStore()
+    const versions = store.listTariffVersions()
+    const published = versions.filter((version) => version.isPublished())
+    const publishable = versions.filter(
+      (version) =>
+        !version.isPublished() &&
+        !published.some(
+          (other) =>
+            other.seriesId === version.seriesId && other.validity.overlaps(version.validity),
+        ),
+    )
+    const withPriceTable = new Set(store.pricing.map((entry) => entry.tariff.id))
+
+    expect(publishable.length).toBeGreaterThanOrEqual(2)
+
+    for (const version of publishable) {
+      expect(
+        withPriceTable.has(version.id),
+        `el borrador publicable ${version.id} no tiene tabla de precios y no se podría publicar`,
+      ).toBe(true)
+    }
+  })
 })

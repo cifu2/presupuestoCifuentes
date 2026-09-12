@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest'
 
 import {
   AmbiguousTariffError,
+  EmptyPriceTableError,
   InvalidCatalogTransitionError,
   ResourceNotFoundError,
 } from '@/domain/shared/errors'
 import { makeTariffVersion, TEST_NOW } from '@/domain/catalog/testing/factories'
 import { ValidityPeriod } from '@/domain/catalog/validity-period'
+import { makePriceTable } from '@/domain/pricing/testing/factories'
+import type { PriceTable } from '@/domain/pricing/price-table'
 
 import type { TariffVersionRepository } from '@/application/ports/tariff-version-repository'
 import { makeTestWorld, TEST_SERIES_ID, TEST_TARIFF_ID } from '@/infrastructure/testing/fixtures'
@@ -30,6 +33,14 @@ class CountingTariffVersionRepository implements TariffVersionRepository {
   async save(version: TariffVersion): Promise<void> {
     this.saved.push(version)
     await this.inner.save(version)
+  }
+
+  findPriceTableByVersionId(tariffVersionId: string): Promise<PriceTable | null> {
+    return this.inner.findPriceTableByVersionId(tariffVersionId)
+  }
+
+  savePriceTable(priceTable: PriceTable): Promise<void> {
+    return this.inner.savePriceTable(priceTable)
   }
 }
 
@@ -63,6 +74,7 @@ describe('publishTariffVersion', () => {
   it('publica un borrador sin solape y lo persiste', async () => {
     const { world, repository, deps } = setup()
     world.catalog.upsertTariffVersion(INDEPENDENT_DRAFT)
+    world.catalog.upsertPriceTable(makePriceTable({ tariffVersionId: INDEPENDENT_DRAFT.id }))
 
     const published = await publishTariffVersion(deps, { tariffVersionId: INDEPENDENT_DRAFT.id })
 
@@ -83,6 +95,19 @@ describe('publishTariffVersion', () => {
     expect(repository.saved).toEqual([])
     expect(world.catalog.findTariffVersion(OVERLAPPING_DRAFT.id)?.status).toBe('draft')
     expect(world.catalog.findTariffVersion(TEST_TARIFF_ID)?.status).toBe('published')
+  })
+
+  it('no publica un borrador sin tabla de precios y NO escribe (ADR-0027 §4)', async () => {
+    const { world, repository, deps } = setup()
+    world.catalog.upsertTariffVersion(INDEPENDENT_DRAFT)
+
+    await expect(
+      publishTariffVersion(deps, { tariffVersionId: INDEPENDENT_DRAFT.id }),
+    ).rejects.toThrow(EmptyPriceTableError)
+
+    expect(repository.saved).toEqual([])
+    expect(world.catalog.findTariffVersion(INDEPENDENT_DRAFT.id)?.status).toBe('draft')
+    expect(world.catalog.findTariffVersion(INDEPENDENT_DRAFT.id)?.publishedAt).toBeNull()
   })
 
   it('no toca la base de datos si la versión no existe', async () => {
