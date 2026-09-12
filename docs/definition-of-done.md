@@ -18,6 +18,36 @@
       aprueba. El autor no se auto-aprueba.
 - [ ] **4. CI en verde.** `calidad` y `e2e` (checks requeridos en `main`) pasan.
 
+## Cobertura del veredicto cuando el head se mueve
+
+Un veredicto de gate (revisión aprobada + `calidad` y `e2e` verdes) cubre el head revisado y **se
+extiende** al head posterior si y solo si se cumplen las tres condiciones:
+
+- **a. El delta no toca runtime.** Del head revisado al head nuevo el diff solo contiene `docs/**` y
+  ficheros `*.md` (la misma frontera que comprueba `scripts/docs-preview-guard.sh`). Quedan fuera
+  `src/`, `prisma/`, `e2e/`, `vercel.json`, `.github/workflows/` y los manifiestos de dependencias
+  (`package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`).
+- **b. La puerta sigue verde sobre el head nuevo.** `calidad` y `e2e (puerta obligatoria)` pasan en el
+  run del head nuevo.
+- **c. Identidad de árbol al fusionar.** El squash comprueba `tree(main) == tree(head revisado)`
+  ([ADR-0021](adr/0021-metodo-de-fusion-y-trazabilidad-squash.md) §2a).
+
+Si (a) no se cumple, el gate **se reabre** y QA revalida los puntos del DoD afectados: no vale invocar
+«era un merge de `main`».
+
+La extensión la dictamina el revisor original (QA) por defecto; el CTO solo si el revisor no puede
+correr (por ejemplo, con el runtime caído). La decisión se registra **en la tarea de Paperclip**, no
+solo en el mensaje del commit.
+
+Comprobación del delta de (a):
+
+```bash
+git diff --name-only <head-revisado>..<head-nuevo>
+```
+
+Esta regla no relaja la puerta obligatoria: tests, E2E y revisión de otro agente siguen siendo
+obligatorios. Precedente: PR #39 (CIF-346).
+
 ## Checklist por área
 
 ### Código
