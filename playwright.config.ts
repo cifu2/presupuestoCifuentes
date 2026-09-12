@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 
+import { assertE2eTargetsAreNotProduction } from './e2e/support/production-guard'
 import {
   E2E_ADMIN_BASE_URL,
   E2E_ADMIN_PANEL_PASSWORD,
@@ -11,6 +12,12 @@ import {
   E2E_SALES_MAILBOX,
 } from './e2e/support/servers'
 
+// Guarda de destino (CIF-525): aborta **al cargar la configuración** —antes de levantar servidores y
+// antes del primer test— si `E2E_BASE_URL` o `E2E_ADMIN_BASE_URL` apuntan a un host declarado como
+// producción (`e2e/support/production-guard.ts`). La suite escribe, así que producción no se usa como
+// banco de pruebas de E2E (ADR-0025 §5, ADR-0026 §7).
+assertE2eTargetsAreNotProduction()
+
 /**
  * Con `E2E_BASE_URL` la suite apunta a un entorno ya levantado y no arranca servidores propios. Sin
  * ella el E2E es **hermético**: sirve su propia build de producción en local y en CI, y no reutiliza
@@ -20,6 +27,9 @@ const externalEnvironment = process.env.E2E_BASE_URL !== undefined
 
 export default defineConfig({
   testDir: './e2e',
+  // Solo `*.spec.ts` son tests de Playwright. Los unitarios de `e2e/support/*.test.ts` (por ejemplo
+  // el de la guarda de destino) los ejecuta Vitest: sin este filtro, Playwright también los cargaría.
+  testMatch: ['**/*.spec.ts'],
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
