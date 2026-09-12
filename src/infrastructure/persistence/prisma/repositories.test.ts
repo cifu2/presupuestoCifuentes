@@ -896,7 +896,16 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
           allowFirstSend = resolve
         })
 
+        // Costura de un solo uso (CIF-420): solo la primera petición se detiene dentro de su envío.
+        // Si una segunda petición llegara a enviar —justo la regresión que este test caza— su envío
+        // no espera la puerta, que solo se libera más abajo tras `await second`. Así el doble envío
+        // se manifiesta como aserción sobre el estado de la segunda petición y sobre `doubles.sent`,
+        // no como timeout de 5 s.
+        let gateArmed = true
         const doubles = makeDoubles(async () => {
+          if (!gateArmed) return
+
+          gateArmed = false
           firstSendStarted()
           await firstSendGate
         })
