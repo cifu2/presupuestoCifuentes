@@ -27,7 +27,10 @@ import type { QuoteDocument } from '@/domain/quote/quote-document'
 import { ResourceNotFoundError, InvalidQuoteDeliveryError } from '@/domain/shared/errors'
 
 import type { EmailMessage, EmailSender } from '@/application/ports/email-sender'
-import type { QuoteDeliveryRepository } from '@/application/ports/quote-delivery-repository'
+import {
+  QUOTE_DELIVERY_CLAIM_LEASE_MS,
+  type QuoteDeliveryRepository,
+} from '@/application/ports/quote-delivery-repository'
 import type { QuoteDocumentSettings } from '@/application/ports/quote-document-settings'
 import type { QuotePdfRenderer } from '@/application/ports/quote-pdf-renderer'
 import type { QuoteRepository } from '@/application/ports/quote-repository'
@@ -444,7 +447,8 @@ describe('deliverQuote', () => {
 
 /**
  * Semilla de una entrega ya persistida con los intentos gastados: es el estado al que se llega tras
- * 100 fallos seguidos (CIF-186).
+ * 100 fallos seguidos (CIF-186). Con `claimedAt` se siembra el intento 100 **todavía en vuelo**:
+ * una entrega pendiente con la reserva viva (CIF-195).
  */
 function seedAttempts(
   harness: { readonly quote: Quote },
@@ -453,10 +457,12 @@ function seedAttempts(
     readonly audience?: QuoteDeliveryAudience
     readonly recipient?: string
     readonly lastError?: string
+    readonly claimedAt?: Date | null
   } = {},
 ): QuoteDelivery {
   const audience = options.audience ?? 'customer'
   const recipient = options.recipient ?? CUSTOMER.email
+  const claimedAt = options.claimedAt ?? null
 
   return QuoteDelivery.create({
     id: `delivery-${audience}-seed`,
@@ -466,14 +472,14 @@ function seedAttempts(
     audience,
     recipient,
     customerName: audience === 'customer' ? CUSTOMER.name : null,
-    status: 'failed',
+    status: claimedAt === null ? 'failed' : 'pending',
     attempts,
     providerMessageId: null,
-    lastError: options.lastError ?? 'email: proveedor caído',
+    lastError: claimedAt === null ? (options.lastError ?? 'email: proveedor caído') : null,
     createdAt: NOW,
     updatedAt: NOW,
     sentAt: null,
-    claimedAt: null,
+    claimedAt,
   })
 }
 
@@ -546,5 +552,82 @@ describe('tope de intentos de entrega (CIF-186)', () => {
     expect(retried.status).toBe('attempts_exhausted')
     expect(harness.sendCalls).toEqual([SALES_MAILBOX])
     expect(retried.deliveries.map((delivery) => delivery.status)).toEqual(['failed', 'sent'])
+  })
+
+  it('no declara agotada una entrega cuyo último intento sigue en vuelo (CIF-195)', async () => {
+    const harness = makeHarness({ internalRecipients: [] })
+
+    await harness.store.save(seedAttempts(harness, MAX_QUOTE_DELIVERY_ATTEMPTS, { claimedAt: NOW }))
+
+    const result = await deliverQuote(harness.deps, {
+      reference: 'PC-2026-000001',
+      customer: CUSTOMER,
+    })
+
+    expect(result.status).toBe('in_progress')
+    expect(result.reason).toBe('none')
+    expect(result.pdfBytes).toBe(0)
+    expect(harness.renders()).toBe(0)
+    expect(harness.sendCalls).toEqual([])
+
+    // La reserva sigue viva y la entrega no se cierra como fallida mientras se envía.
+    const stored = await harness.deps.quoteDeliveryRepository.findByKey(
+      quoteDeliveryKey(harness.quote.id, 1, CUSTOMER.email),
+    )
+
+    expect(stored?.status).toBe('pending')
+    expect(stored?.claimedAt).toEqual(NOW)
+  })
+
+  it('el reintento tampoco declara agotada la entrega en vuelo (CIF-195)', async () => {
+    const harness = makeHarness({ internalRecipients: [] })
+
+    await harness.store.save(seedAttempts(harness, MAX_QUOTE_DELIVERY_ATTEMPTS, { claimedAt: NOW }))
+
+    const retried = await retryQuoteDeliveries(harness.deps, { reference: 'PC-2026-000001' })
+
+    expect(retried.status).toBe('in_progress')
+    expect(retried.reason).toBe('none')
+    expect(harness.renders()).toBe(0)
+    expect(harness.sendCalls).toEqual([])
+  })
+
+  it('cierra como agotada la entrega cuando su reserva ya caducó (CIF-195)', async () => {
+    const harness = makeHarness({ internalRecipients: [] })
+    const expired = new Date(NOW.getTime() - QUOTE_DELIVERY_CLAIM_LEASE_MS - 1)
+
+    await harness.store.save(
+      seedAttempts(harness, MAX_QUOTE_DELIVERY_ATTEMPTS, { claimedAt: expired }),
+    )
+
+    const result = await deliverQuote(harness.deps, {
+      reference: 'PC-2026-000001',
+      customer: CUSTOMER,
+    })
+
+    expect(result.status).toBe('attempts_exhausted')
+    expect(result.reason).toBe('attempts_exhausted')
+    expect(harness.sendCalls).toEqual([])
+    expect(result.deliveries[0]?.lastError).toBe(QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED_REASON)
+  })
+
+  it('prioriza in_progress sobre agotado cuando otro destinatario sigue en vuelo (CIF-195)', async () => {
+    const harness = makeHarness()
+
+    // El cliente agotó sus intentos (reserva caducada); el aviso interno sigue enviándose en el 100.
+    await harness.store.save(seedAttempts(harness, MAX_QUOTE_DELIVERY_ATTEMPTS))
+    await harness.store.save(
+      seedAttempts(harness, MAX_QUOTE_DELIVERY_ATTEMPTS, {
+        audience: 'internal',
+        recipient: SALES_MAILBOX,
+        claimedAt: NOW,
+      }),
+    )
+
+    const result = await retryQuoteDeliveries(harness.deps, { reference: 'PC-2026-000001' })
+
+    expect(result.status).toBe('in_progress')
+    expect(result.reason).toBe('none')
+    expect(harness.sendCalls).toEqual([])
   })
 })

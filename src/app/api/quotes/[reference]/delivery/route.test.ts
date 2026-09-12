@@ -1,9 +1,10 @@
 /**
- * Test del borde HTTP del reintento de entrega cuando la entrega agotó sus intentos (CIF-186).
+ * Test del borde HTTP de la entrega del presupuesto cuando su último intento está en vuelo
+ * (CIF-195).
  *
- * Antes, el intento 101 rompía la invariante de `attempts` y el endpoint respondía
- * `400 INVALID_VALUE`, dejando la entrega atascada. Ahora responde `200` con el estado terminal y
- * el motivo persistido, sin renderizar ni enviar nada.
+ * Una petición concurrente que llegue mientras el intento 100 sigue enviándose no puede responder
+ * `attempts_exhausted`: esa salida invita a emitir una versión nueva y duplicaría el correo en curso
+ * (ADR-0004 §6). Debe informar de `in_progress` y no tocar la reserva.
  */
 
 import { describe, expect, it, vi } from 'vitest'
@@ -20,12 +21,13 @@ import {
   MAX_QUOTE_DELIVERY_ATTEMPTS,
   QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED_REASON,
   QuoteDelivery,
+  quoteDeliveryKey,
 } from '@/domain/quote/quote-delivery'
 import { InMemoryQuoteDeliveryRepository } from '@/infrastructure/persistence/in-memory/quote-delivery-store'
 
 const TOKEN = 'token-de-prueba-suficientemente-largo'
 const NOW = new Date('2026-09-12T09:00:00.000Z')
-const CUSTOMER_EMAIL = 'ana@example.com'
+const CUSTOMER = { name: 'Ana', email: 'ana@example.com' }
 
 vi.mock('@/config/env', () => ({
   env: { ADMIN_API_TOKEN: 'token-de-prueba-suficientemente-largo' },
@@ -110,16 +112,21 @@ vi.mock('@/composition/container', () => ({
 
 const { POST } = await import('./route')
 
-function retry(token: string | null = TOKEN): Promise<Response> {
+function deliver(token: string | null = TOKEN): Promise<Response> {
   return Promise.resolve(
-    new Request('http://localhost/api/quotes/PC-2026-000001/delivery/retry', {
+    new Request('http://localhost/api/quotes/PC-2026-000001/delivery', {
       method: 'POST',
-      headers: token === null ? {} : { authorization: `Bearer ${token}` },
+      headers: {
+        'content-type': 'application/json',
+        ...(token === null ? {} : { authorization: `Bearer ${token}` }),
+      },
+      body: JSON.stringify({ customer: CUSTOMER }),
     }),
   ).then((request) => POST(request, { params: Promise.resolve({ reference: quote.reference }) }))
 }
 
-async function seedAttempts(attempts: number, claimedAt: Date | null = null): Promise<void> {
+/** Siembra el intento 100 de la entrega del cliente: en vuelo (`claimedAt`) o ya cerrado. */
+async function seedAttempts(claimedAt: Date | null): Promise<void> {
   await deliveries.save(
     QuoteDelivery.create({
       id: 'delivery-1',
@@ -127,10 +134,10 @@ async function seedAttempts(attempts: number, claimedAt: Date | null = null): Pr
       quoteReference: quote.reference,
       version: 1,
       audience: 'customer',
-      recipient: CUSTOMER_EMAIL,
-      customerName: 'Ana',
+      recipient: CUSTOMER.email,
+      customerName: CUSTOMER.name,
       status: claimedAt === null ? 'failed' : 'pending',
-      attempts,
+      attempts: MAX_QUOTE_DELIVERY_ATTEMPTS,
       providerMessageId: null,
       lastError: claimedAt === null ? 'email: proveedor caído' : null,
       createdAt: NOW,
@@ -141,61 +148,48 @@ async function seedAttempts(attempts: number, claimedAt: Date | null = null): Pr
   )
 }
 
-describe('POST /api/quotes/:reference/delivery/retry con los intentos agotados (CIF-186)', () => {
-  it('responde 200 con el estado terminal y el motivo, en vez de 400 INVALID_VALUE', async () => {
+describe('POST /api/quotes/:reference/delivery con el intento 100 en vuelo (CIF-195)', () => {
+  it('responde 200 in_progress y no toca la reserva, en vez de attempts_exhausted', async () => {
     spies.rendered = 0
     spies.sent.length = 0
-    await seedAttempts(MAX_QUOTE_DELIVERY_ATTEMPTS)
+    await seedAttempts(NOW)
 
-    const response = await retry()
-    const body = await response.json()
-
-    expect(response.status).toBe(200)
-    expect(body.status).toBe('attempts_exhausted')
-    expect(body.reason).toBe('attempts_exhausted')
-    expect(body.pdfBytes).toBe(0)
-    expect(body.deliveries[0].status).toBe('failed')
-    expect(body.deliveries[0].attempts).toBe(MAX_QUOTE_DELIVERY_ATTEMPTS)
-    expect(body.deliveries[0].lastError).toBe(QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED_REASON)
-    expect(spies.rendered).toBe(0)
-    expect(spies.sent).toEqual([])
-  })
-
-  it('responde in_progress, no attempts_exhausted, si el intento 100 sigue en vuelo (CIF-195)', async () => {
-    spies.rendered = 0
-    spies.sent.length = 0
-    await seedAttempts(MAX_QUOTE_DELIVERY_ATTEMPTS, NOW)
-
-    const response = await retry()
+    const response = await deliver()
     const body = await response.json()
 
     expect(response.status).toBe(200)
     expect(body.status).toBe('in_progress')
     expect(body.reason).toBe('none')
+    expect(body.pdfBytes).toBe(0)
     expect(body.deliveries[0].status).toBe('pending')
     expect(body.deliveries[0].attempts).toBe(MAX_QUOTE_DELIVERY_ATTEMPTS)
-    expect(body.deliveries[0].lastError).toBeNull()
+    expect(spies.rendered).toBe(0)
+    expect(spies.sent).toEqual([])
+
+    const stored = await deliveries.findByKey(quoteDeliveryKey(quote.id, 1, CUSTOMER.email))
+
+    expect(stored?.status).toBe('pending')
+    expect(stored?.claimedAt).toEqual(NOW)
+  })
+
+  it('sigue respondiendo attempts_exhausted cuando la reserva ya caducó', async () => {
+    spies.rendered = 0
+    spies.sent.length = 0
+    await seedAttempts(null)
+
+    const response = await deliver()
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.status).toBe('attempts_exhausted')
+    expect(body.reason).toBe('attempts_exhausted')
+    expect(body.deliveries[0].lastError).toBe(QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED_REASON)
     expect(spies.rendered).toBe(0)
     expect(spies.sent).toEqual([])
   })
 
-  it('deja pasar el último intento disponible para que el envío no se bloquee antes de tiempo', async () => {
-    spies.rendered = 0
-    spies.sent.length = 0
-    await seedAttempts(MAX_QUOTE_DELIVERY_ATTEMPTS - 1)
-
-    const response = await retry()
-    const body = await response.json()
-
-    expect(response.status).toBe(200)
-    expect(body.status).toBe('delivered')
-    expect(body.deliveries[0].attempts).toBe(MAX_QUOTE_DELIVERY_ATTEMPTS)
-    expect(body.deliveries[0].status).toBe('sent')
-    expect(spies.sent).toEqual([CUSTOMER_EMAIL])
-  })
-
   it('sigue exigiendo el token del panel', async () => {
-    const response = await retry(null)
+    const response = await deliver(null)
 
     expect(response.status).toBe(401)
   })

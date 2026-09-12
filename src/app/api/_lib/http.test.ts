@@ -5,6 +5,7 @@ import {
   ResourceNotFoundError,
   AmbiguousTariffError,
   InvalidValueError,
+  QuoteDeliveryAttemptsExhaustedError,
 } from '@/domain/shared/errors'
 
 import { errorResponse, readJsonBody } from './http'
@@ -23,6 +24,15 @@ describe('errorResponse', () => {
     expect(value.status).toBe(400)
     expect(await notFound.json()).toEqual({
       error: { code: 'NOT_FOUND', message: 'no está' },
+    })
+  })
+
+  it('mapea el agotamiento de intentos de entrega a 409 (fallback defensivo, CIF-195)', async () => {
+    const response = errorResponse(new QuoteDeliveryAttemptsExhaustedError('sin intentos'))
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({
+      error: { code: 'QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED', message: 'sin intentos' },
     })
   })
 

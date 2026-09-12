@@ -29,6 +29,8 @@ const STATUS_BY_CODE: Record<DomainErrorCode, number> = {
   INVALID_QUOTE_REFERENCE: 400,
   INVALID_QUOTE_DELIVERY: 400,
   INVALID_QUOTE_DELIVERY_TRANSITION: 409,
+  // Fallback defensivo: hoy los casos de uso de entrega filtran el agotamiento y responden 200 con
+  // `attempts_exhausted`, así que este mapeo no se alcanza por HTTP (CIF-195, N2 de CIF-194).
   QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED: 409,
   NOT_FOUND: 404,
 }

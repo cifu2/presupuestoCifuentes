@@ -190,16 +190,23 @@ async function settleExhausted(
   deliveries: readonly QuoteDelivery[],
   at: Date,
 ): Promise<readonly QuoteDelivery[]> {
-  const exhausted = deliveries.filter(
-    (delivery) =>
-      delivery.isExhausted() && !delivery.hasActiveClaim(at, QUOTE_DELIVERY_CLAIM_LEASE_MS),
-  )
+  const exhausted = deliveries.filter((delivery) => isSettledExhausted(delivery, at))
 
   return Promise.all(
     exhausted.map((delivery) =>
       save(deps, delivery.markFailed(QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED_REASON, at)),
     ),
   )
+}
+
+/**
+ * `true` solo si la entrega agotó sus intentos y ningún intento la tiene reclamada todavía. Con la
+ * reserva viva el envío sigue en vuelo: tratarlo como terminal haría que una petición concurrente
+ * respondiera `attempts_exhausted` y empujara al operador a emitir una versión nueva, duplicando el
+ * correo que se está enviando (ADR-0004 §6, CIF-195).
+ */
+function isSettledExhausted(delivery: QuoteDelivery, now: Date): boolean {
+  return delivery.isExhausted() && !delivery.hasActiveClaim(now, QUOTE_DELIVERY_CLAIM_LEASE_MS)
 }
 
 async function requireQuote(repository: QuoteRepository, reference: string): Promise<Quote> {
@@ -345,8 +352,15 @@ async function runDeliveries(
   const { claimed: toSend, observed: deliveries } = prepared
 
   if (toSend.length === 0) {
+    const at = deps.clock.now()
     const allSent = deliveries.length > 0 && deliveries.every((delivery) => delivery.isSent())
-    const exhausted = deliveries.some((delivery) => delivery.isExhausted())
+    // Una entrega con la reserva viva todavía se está enviando: no es terminal. Si alguna sigue en
+    // vuelo, la petición informa de `in_progress` para no empujar al operador a emitir una versión
+    // nueva —y duplicar el correo que en ese momento se envía— (ADR-0004 §6, CIF-195).
+    const inFlight = deliveries.some((delivery) =>
+      delivery.hasActiveClaim(at, QUOTE_DELIVERY_CLAIM_LEASE_MS),
+    )
+    const exhausted = !inFlight && deliveries.some((delivery) => isSettledExhausted(delivery, at))
 
     return {
       status: allSent ? 'already_delivered' : exhausted ? 'attempts_exhausted' : 'in_progress',
@@ -413,13 +427,27 @@ async function runDeliveries(
 
   const deliveriesAfter = merge(deliveries, sent)
   const allSent = deliveriesAfter.every((item) => item.isSent())
+  // Un envío ajeno que sigue en vuelo (reserva viva) manda sobre el estado terminal: mientras no
+  // acabe, responder `attempts_exhausted` invitaría a emitir una versión nueva y duplicaría el
+  // correo en curso (ADR-0004 §6, CIF-195). Los envíos ya resueltos por esta petición no cuentan:
+  // `markSent`/`markFailed` liberan su reserva.
+  const inFlight = deliveriesAfter.some((item) =>
+    item.hasActiveClaim(at, QUOTE_DELIVERY_CLAIM_LEASE_MS),
+  )
   // Una entrega agotada no se reintenta: su estado es terminal aunque el resto se haya enviado.
-  const exhausted = deliveriesAfter.some((item) => item.isExhausted())
-  const terminal = !allSent && exhausted && reason === 'none'
+  const exhausted = deliveriesAfter.some((item) => isSettledExhausted(item, at))
+  const terminal = !allSent && !inFlight && exhausted && reason === 'none'
+  const inProgress = !allSent && !terminal && inFlight && reason === 'none'
 
   return {
-    status: allSent ? 'delivered' : terminal ? 'attempts_exhausted' : 'incomplete',
-    reason: allSent ? 'none' : terminal ? 'attempts_exhausted' : reason,
+    status: allSent
+      ? 'delivered'
+      : inProgress
+        ? 'in_progress'
+        : terminal
+          ? 'attempts_exhausted'
+          : 'incomplete',
+    reason: allSent || inProgress ? 'none' : terminal ? 'attempts_exhausted' : reason,
     quoteReference: quote.reference,
     version,
     pdfBytes: pdf.byteLength,
