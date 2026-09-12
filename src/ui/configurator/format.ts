@@ -28,18 +28,25 @@ export function formatMoney(amount: string, currency: string, locale: string): s
   const digits = fraction.padEnd(2, '0').slice(0, 2)
 
   try {
-    const grouped = `${sign}${new Intl.NumberFormat(locale).format(BigInt(integer))}`
+    const grouped = new Intl.NumberFormat(locale).format(BigInt(integer))
+    // El patrón se toma del importe con el mismo signo para que `Intl` coloque el menos donde
+    // corresponde al idioma (`-1.234,50 €` en `es`, `-€1,234.50` en `en`).
     const pattern = new Intl.NumberFormat(locale, {
       style: 'currency',
       currency,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).formatToParts(1234.56)
+    }).formatToParts(sign === '-' ? -1234.56 : 1234.56)
+
+    // `Intl` trocea el entero en cada límite de agrupación (`en`: `1`, `,`, `234`), así que la
+    // parte entera agrupada se emite **una sola vez**; sustituir todas las partes `integer`
+    // duplicaba la magnitud del importe (`€718718.20` en lugar de `€718.20`, CIF-345).
+    const firstInteger = pattern.findIndex((part) => part.type === 'integer')
 
     return pattern
-      .map((part) => {
+      .map((part, index) => {
         if (part.type === 'integer') {
-          return grouped
+          return index === firstInteger ? grouped : ''
         }
 
         if (part.type === 'group') {
