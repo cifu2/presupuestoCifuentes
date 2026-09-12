@@ -159,7 +159,7 @@ export function Preview2DConfigurator(): React.JSX.Element {
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-8">
       <section
         aria-labelledby="vista-previa"
         className="lg:order-2 lg:sticky lg:top-6 lg:self-start"
@@ -167,7 +167,15 @@ export function Preview2DConfigurator(): React.JSX.Element {
         <h2 id="vista-previa" className="text-xl font-semibold text-brand-900">
           {t('previewTitle')}
         </h2>
-        <div className="mt-3 flex aspect-[3/4] max-h-[35vh] items-center justify-center overflow-hidden rounded-lg bg-[#f7f7f5] lg:max-h-none">
+        {/*
+          `w-full`: la tarjeta llena la columna y el SVG letterboxea dentro (`preserveAspectRatio`
+          `xMidYMid meet`), en vez de encogerse al 60 % del ancho cuando el alto lo recorta el
+          presupuesto de móvil (nota N3 de CIF-167).
+        */}
+        <div
+          data-testid="preview-card"
+          className="mt-2 flex aspect-[3/4] max-h-[34vh] w-full items-center justify-center overflow-hidden rounded-lg bg-[#f7f7f5] lg:mt-3 lg:max-h-none"
+        >
           <DoorPreview
             geometry={geometry}
             className="h-full w-full"
@@ -184,20 +192,12 @@ export function Preview2DConfigurator(): React.JSX.Element {
           />
         </div>
         <p
-          className="mt-3 text-sm font-medium text-brand-700"
+          className="mt-2 text-sm font-medium text-brand-700 lg:mt-3"
           role="status"
           aria-live="polite"
           data-testid="preview-measurement"
         >
           {t('summary.measurement', { width: widthMm, height: heightMm })}
-        </p>
-        <p id="preview-range" className="mt-1 text-sm text-brand-500" data-testid="preview-range">
-          {t('summary.range', {
-            minWidth: DEMO_SIZE_RANGE.minWidthMm,
-            maxWidth: DEMO_SIZE_RANGE.maxWidthMm,
-            minHeight: DEMO_SIZE_RANGE.minHeightMm,
-            maxHeight: DEMO_SIZE_RANGE.maxHeightMm,
-          })}
         </p>
         {withinSeriesRange ? null : (
           <p
@@ -216,7 +216,7 @@ export function Preview2DConfigurator(): React.JSX.Element {
         </h2>
         <p className="mt-2 text-sm text-brand-700">{t('summary.live')}</p>
 
-        <div className="mt-6 flex flex-col gap-6">
+        <div className="mt-4 flex flex-col gap-6 lg:mt-6">
           <div className="flex flex-col gap-2">
             <label className="text-sm font-semibold text-brand-900" htmlFor="tipo">
               {t('form.type')}
@@ -279,6 +279,18 @@ export function Preview2DConfigurator(): React.JSX.Element {
                 onChange={(event) => setHeightMm(number(event.target.value, heightMm))}
               />
             </label>
+            {/*
+              El rango de la serie describe a los dos campos de medida: vive con ellos y no entre la
+              tarjeta y el primer control, donde empujaba el formulario bajo el pliegue en móvil.
+            */}
+            <p id="preview-range" className="text-sm text-brand-500" data-testid="preview-range">
+              {t('summary.range', {
+                minWidth: DEMO_SIZE_RANGE.minWidthMm,
+                maxWidth: DEMO_SIZE_RANGE.maxWidthMm,
+                minHeight: DEMO_SIZE_RANGE.minHeightMm,
+                maxHeight: DEMO_SIZE_RANGE.maxHeightMm,
+              })}
+            </p>
           </fieldset>
 
           <fieldset className="flex flex-col gap-3">

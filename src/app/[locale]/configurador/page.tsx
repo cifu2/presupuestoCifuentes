@@ -32,9 +32,9 @@ export default async function ConfiguratorPage({ params }: ConfiguratorPageProps
   const t = await getTranslations('Preview2D')
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-col gap-8 px-6 py-12">
+    <main className="mx-auto flex max-w-5xl flex-col gap-8 px-6 py-6 lg:py-12">
       <header className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold text-brand-900">{t('title')}</h1>
+        <h1 className="text-2xl font-bold text-brand-900 lg:text-3xl">{t('title')}</h1>
         <p className="text-brand-700">{t('intro')}</p>
       </header>
       <Preview2DConfigurator />

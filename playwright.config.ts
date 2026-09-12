@@ -33,6 +33,18 @@ export default defineConfig({
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'movil', use: { ...devices['Pixel 7'] } },
+    // Perfiles móviles cortos de la nota N3 de CIF-167: con la UI del navegador por encima, el
+    // primer control quedaba bajo el pliegue. Fijan el criterio de D2 con holgura junto al Pixel 7.
+    {
+      name: 'movil-corto',
+      use: { ...devices['Pixel 7'], viewport: { width: 393, height: 727 } },
+      testMatch: /door-preview-2d\.spec\.ts/,
+    },
+    {
+      name: 'movil-minimo',
+      use: { ...devices['Pixel 7'], viewport: { width: 360, height: 640 } },
+      testMatch: /door-preview-2d\.spec\.ts/,
+    },
   ],
   // Dos servidores con la misma build porque la guarda del API del panel depende del entorno:
   // sin `ADMIN_API_TOKEN` responde 503 y con él 401 (CIF-86). Playwright los arranca **en orden** y
