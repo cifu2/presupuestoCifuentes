@@ -63,6 +63,41 @@ En errores de validación se añade `issues: [{ "path": "widthMm", "message": "�
 
 ---
 
+## GET /api/health
+
+Sonda del monitor de uptime (ADR-0009 §5). Es la única ruta que no depende del catálogo: comprueba
+de verdad que la base responde **y** que tiene el esquema migrado (`to_regclass('_prisma_migrations')`
+y `to_regclass('door_series')`, en una sola consulta con un tope de 2 s) sin exponer nunca la cadena
+de conexión ni credenciales en la respuesta o en los logs.
+
+```json
+{
+  "status": "ok",
+  "service": "cifuentes-presupuestos",
+  "environment": "production",
+  "database": "ok",
+  "checkedAt": "2026-09-12T08:00:00.000Z"
+}
+```
+
+| `database`     | Condición                                                                                | HTTP  | `status`   |
+| -------------- | ---------------------------------------------------------------------------------------- | ----- | ---------- |
+| `ok`           | la base responde y tiene el esquema migrado (`_prisma_migrations` y `door_series`)       | `200` | `ok`       |
+| `unreachable`  | `DATABASE_URL` definida pero la consulta falla o supera 2 s                              | `503` | `degraded` |
+| `unmigrated`   | la base responde pero no tiene el esquema de la aplicación o el historial de migraciones | `503` | `degraded` |
+| `unconfigured` | sin `DATABASE_URL`, o `CATALOG_DEMO_MODE=true`                                           | `200` | `ok`       |
+
+`environment` sale de `VERCEL_ENV ?? NODE_ENV`. En modo demo la sonda no toca ninguna base y por
+diseño nunca responde `503` (ADR-0015 §5).
+
+`unmigrated` cubre el modo de fallo del incidente del 2026-09-11 (ADR-0015, hechos 1-2: la base de
+producción no tenía `_prisma_migrations`). Se corrige aplicando las migraciones contra esa base
+(`prisma migrate deploy`, ADR-0015 §6). La sonda comprueba **presencia** de esquema e historial, no
+compara migración a migración con `prisma/migrations`: una migración pendiente o a medias se
+verifica con `prisma migrate status` en la puerta de release (ver [despliegue.md](despliegue.md)).
+
+---
+
 ## GET /api/catalog/series
 
 Series publicadas, ordenadas por `sortOrder`.
