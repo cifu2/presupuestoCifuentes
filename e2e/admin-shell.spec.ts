@@ -42,6 +42,24 @@ function isMobile(page: Page): boolean {
 }
 
 /**
+ * El foco está dentro del menú móvil: en uno de sus enlaces o en el botón que lo abre. Es la
+ * comprobación que pide el patrón de `sistema-de-diseno` §5: mientras el menú está abierto, el
+ * contenido que tapa el scrim no recibe el foco.
+ */
+async function focusIsInMenu(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const active = document.activeElement
+    const menu = document.getElementById('nav-mobile')
+
+    if (active === null || menu === null) {
+      return false
+    }
+
+    return menu.contains(active) || active.getAttribute('aria-controls') === 'nav-mobile'
+  })
+}
+
+/**
  * Navegación principal del panel: en escritorio es el `aside` siempre visible (su nombre accesible
  * vive en el `aside`, no en el `nav` interior); en móvil hay que abrir el menú desplegable.
  */
@@ -181,7 +199,12 @@ test.describe('shell del panel: responsive', () => {
       await expect(sidebar.getByRole('link', { name: section })).toBeVisible()
     }
 
-    await expect(sidebar.getByRole('link', { name: 'Ver web ↗' })).toBeVisible()
+    // «Ver web» ya no lleva el pictograma ↗ en el catálogo de mensajes (H1 de CIF-300 → CIF-311): la
+    // affordance la pinta un SVG decorativo que no entra en el nombre accesible ni en el texto.
+    const viewSite = sidebar.getByRole('link', { name: 'Ver web' })
+
+    await expect(viewSite).toBeVisible()
+    await expect(viewSite.locator('svg[aria-hidden="true"]')).toHaveCount(1)
   })
 })
 
@@ -222,6 +245,39 @@ test.describe('shell del panel: menú móvil con scrim y foco (CIF-296)', () => 
     await page.getByTestId('panel-nav-scrim').click({ position: { x: 12, y: 600 } })
 
     await expect(page.getByRole('navigation', { name: 'Secciones del panel' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Abrir menú' })).toBeFocused()
+  })
+
+  test('contiene el foco: tabular no alcanza el contenido que tapa el scrim', async ({ page }) => {
+    test.skip(!isMobile(page), 'el menú desplegable solo existe por debajo de 768 px')
+
+    await page.goto('/es/admin')
+    await page.getByRole('button', { name: 'Abrir menú' }).click()
+
+    const navigation = page.getByRole('navigation', { name: 'Secciones del panel' })
+
+    await expect(navigation.getByRole('link', { name: 'Series', exact: true })).toBeFocused()
+
+    // Recorrido medido por QA (H2 de CIF-300): con seis secciones, el 7.º tabulador salía del menú y
+    // caía en la tabla tapada («Estado» → «Nombre▲» → «Medidas máx.»). Dos vueltas completas cubren
+    // también el salto del último enlace al botón y de ahí al primero.
+    for (let step = 0; step < 14; step += 1) {
+      await page.keyboard.press('Tab')
+
+      expect(await focusIsInMenu(page)).toBe(true)
+    }
+
+    // Hacia atrás tampoco: `Shift+Tab` desde el primer enlace da la vuelta al ciclo.
+    for (let step = 0; step < 3; step += 1) {
+      await page.keyboard.press('Shift+Tab')
+
+      expect(await focusIsInMenu(page)).toBe(true)
+    }
+
+    // `Esc` sigue cerrando y devolviendo el foco al botón, como en CIF-296.
+    await page.keyboard.press('Escape')
+
+    await expect(navigation).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Abrir menú' })).toBeFocused()
   })
 })

@@ -11,6 +11,7 @@ import { SUPPORTED_LOCALES, type Locale } from '@/domain/catalog/locale'
 
 import { CatalogLanguages } from './catalog-languages'
 import { createFixtureAdminCatalogReader } from './fixtures/admin-catalog.fixtures'
+import { ExternalIcon } from './panel-icons'
 import { SeriesDetailView } from './series-detail'
 import { SeriesList } from './series-list'
 import { TariffVersions } from './tariff-versions'
@@ -139,6 +140,15 @@ describe('shell del panel: iconos SVG del sistema de diseño (CIF-296)', () => {
     expect(tariffs).toContain('El precio queda congelado al emitir el presupuesto')
     expect(PICTOGRAPHS.test(forbidden)).toBe(false)
     expect(PICTOGRAPHS.test(tariffs)).toBe(false)
+  })
+
+  it('la flecha de «Ver web» es SVG decorativo y no vuelve a pintar el pictograma (H1 de CIF-311)', () => {
+    const markup = render('es', <ExternalIcon />)
+
+    expect(markup).toContain('<svg')
+    expect(markup).toContain('aria-hidden="true"')
+    expect(markup).toContain('focusable="false"')
+    expect(PICTOGRAPHS.test(markup)).toBe(false)
   })
 })
 
