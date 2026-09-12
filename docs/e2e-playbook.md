@@ -31,18 +31,18 @@ Proyectos: `chromium` (Desktop Chrome) y `movil` (Pixel 7). Todo flujo nuevo se 
 
 ## Mapa de flujos críticos → specs
 
-| #   | Flujo crítico                                                      | Spec y estado                                                             |
-| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| 1   | Configurar una puerta y obtener el precio automático correcto      | API: `e2e/catalog-api.spec.ts` (rama de CIF-4) · UI pendiente de CIF-7    |
-| 2   | Superar el tamaño máximo de una serie y pasar a presupuesto manual | API: `e2e/catalog-api.spec.ts` (rama de CIF-4) · UI pendiente de CIF-7    |
-| 3   | Actualizar un precio en el panel y verlo en el configurador        | Pendiente: depende del panel (CIF-9)                                      |
-| 4   | Emitir presupuesto, descargar el PDF y enviarlo por email          | Emisión: `e2e/catalog-api.spec.ts` · PDF/email pendientes (CIF-4/CIF-14)  |
-| 5   | Cambiar de idioma y comprobar configurador, PDF y email traducidos | Interfaz: `e2e/i18n.spec.ts` · presupuesto multi-idioma pendiente (CIF-4) |
-| —   | Vista previa 2D del configurador                                   | Pendiente: depende de la vista 2D (CIF-6)                                 |
-| —   | Panel de administración (catálogo y precios)                       | Pendiente: depende del panel (CIF-9)                                      |
-| —   | API de publicación de tarifas del panel (503/401/404/200/409)      | API: `e2e/admin-tariff-publish.spec.ts` · en verde                        |
-| —   | Acceso al panel: sin sesión no se entra; con sesión sí (CIF-241)   | UI: `e2e/admin-auth.spec.ts` · en verde                                   |
-| —   | Home, salud del sistema y selector de idioma                       | `e2e/smoke.spec.ts`, `e2e/i18n.spec.ts` · en verde                        |
+| #   | Flujo crítico                                                      | Spec y estado                                                                                                                                                                                     |
+| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Configurar una puerta y obtener el precio automático correcto      | API: `e2e/catalog-api.spec.ts` (rama de CIF-4) · UI pendiente de CIF-7                                                                                                                            |
+| 2   | Superar el tamaño máximo de una serie y pasar a presupuesto manual | API: `e2e/catalog-api.spec.ts` (rama de CIF-4) · UI pendiente de CIF-7                                                                                                                            |
+| 3   | Actualizar un precio en el panel y verlo en el configurador        | Pendiente: depende del panel (CIF-9)                                                                                                                                                              |
+| 4   | Emitir presupuesto, descargar el PDF y enviarlo por email          | `e2e/quote-delivery.spec.ts`: emisión y PDF en el servidor público · email en el de administración (CI) · preview: solo camino público ([ADR-0025](adr/0025-validacion-via-envio-por-entorno.md)) |
+| 5   | Cambiar de idioma y comprobar configurador, PDF y email traducidos | Interfaz: `e2e/i18n.spec.ts` · presupuesto multi-idioma pendiente (CIF-4)                                                                                                                         |
+| —   | Vista previa 2D del configurador                                   | Pendiente: depende de la vista 2D (CIF-6)                                                                                                                                                         |
+| —   | Panel de administración (catálogo y precios)                       | Pendiente: depende del panel (CIF-9)                                                                                                                                                              |
+| —   | API de publicación de tarifas del panel (503/401/404/200/409)      | API: `e2e/admin-tariff-publish.spec.ts` · en verde                                                                                                                                                |
+| —   | Acceso al panel: sin sesión no se entra; con sesión sí (CIF-241)   | UI: `e2e/admin-auth.spec.ts` · en verde                                                                                                                                                           |
+| —   | Home, salud del sistema y selector de idioma                       | `e2e/smoke.spec.ts`, `e2e/i18n.spec.ts` · en verde                                                                                                                                                |
 
 Un flujo es **puerta obligatoria en cuanto tiene spec**: su spec debe pasar en el CI antes de
 fusionar. Los flujos pendientes se añaden en el mismo PR que trae la funcionalidad (DoD, punto 2).
@@ -92,9 +92,11 @@ Por eso la suite levanta dos servidores con la misma build:
   esa sesión sin `Bearer`, el cierre de sesión la borra y sin credenciales el API responde `401`.
 - Playwright arranca los `webServer` **en orden** y espera a que cada uno responda, así que solo el
   primero compila; el segundo sirve la misma build. El CI no cambia: sigue bastando `pnpm e2e`.
-- Contra un entorno ya desplegado hay que definir `E2E_BASE_URL` (servidor sin token) y
-  `E2E_ADMIN_BASE_URL` (servidor con token). Si falta el segundo, la suite levantaría un servidor
-  local de administración.
+- Contra un entorno ya desplegado solo se ejercita el **camino público**: se define `E2E_BASE_URL` y
+  **no** se definen credenciales de panel, porque no se despliegan en preview
+  ([ADR-0025](adr/0025-validacion-via-envio-por-entorno.md) §2-§3). Los specs con credencial —los que
+  hacen `test.use({ baseURL: E2E_ADMIN_BASE_URL })`— corren en el servidor de administración de CI,
+  nunca contra un despliegue: el token de pruebas solo vale para el servidor que levanta la suite.
 - `e2e/admin-tariff-publish.spec.ts` (CIF-86/CIF-87) cubre `503` —también con un id inexistente,
   para demostrar que la guarda corre antes que cualquier otra comprobación—, `401` (sin cabecera y
   con token incorrecto), `404 NOT_FOUND` con un id que no es UUID y con un UUID válido inexistente
@@ -104,6 +106,26 @@ Por eso la suite levanta dos servidores con la misma build:
   UUID canónicos (`0192f1b0-…`) porque el borde valida el `:id`; el spec usa los de las series
   CI-100 y CI-400. Los borradores que siembra el catálogo demo son el mínimo para cubrirlo sin
   panel: crear el borrador **desde la interfaz** llega con CIF-9 (flujo 3).
+
+## Alcance por entorno: qué se valida en el preview y qué en CI (ADR-0025)
+
+**El preview del PR valida el camino público; los flujos detrás de una credencial de administración
+se validan en CI**, con el token de pruebas y el catálogo de demostración de la propia suite
+([ADR-0025](adr/0025-validacion-via-envio-por-entorno.md)). `ADMIN_API_TOKEN` no se despliega en
+_Preview_, así que su `503 ADMIN_API_DISABLED` es el comportamiento **esperado y comprobado**, no un
+fallo que haya que reportar.
+
+| Flujo                                             | CI (`pnpm e2e`)                | Preview del PR           | Producción                     |
+| ------------------------------------------------- | ------------------------------ | ------------------------ | ------------------------------ |
+| Emitir presupuesto y descargar el PDF             | `e2e/quote-delivery.spec.ts`   | Sí (`201` y PDF `200`)   | Sí                             |
+| Entrega protegida (email) y reintento             | Sí, servidor de administración | No: `503` por diseño     | Smoke del propietario (CIF-14) |
+| Guarda del API del panel: `503`/`401`/`404`/`409` | Sí, servidor de administración | Solo el `503` en cerrado | Sí                             |
+
+- **El token de pruebas nunca se usa contra un despliegue.** Solo vale para el servidor que levanta la
+  propia suite; contra un preview no hay credencial de administración y no debe haberla.
+- **Sin `RESEND_FROM` y `RESEND_API_KEY` no hay envío real**: la entrega la ejerce el adaptador de
+  consola (ADR-0004 §4), así que un preview «en vivo» no probaría ningún correo. El envío real se
+  comprueba en producción tras el release, con la configuración del propietario (CIF-14).
 
 ## Base de datos en CI
 

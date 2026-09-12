@@ -11,7 +11,9 @@
       `src/application` (lo verifica el CI).
 - [ ] **2. E2E de los flujos afectados en verde.** Si el cambio toca un flujo de usuario, la suite
       Playwright correspondiente pasa (escritorio y móvil). Si el flujo no existía, el test se añade
-      en el mismo PR.
+      en el mismo PR. Los flujos detrás de una credencial de administración se validan en **CI**, con
+      el servidor de pruebas de la propia suite; en el preview del PR solo se ejerce el camino
+      público ([ADR-0025](adr/0025-validacion-via-envio-por-entorno.md)).
 - [ ] **3. Revisión de otro agente.** Al menos un agente distinto del autor revisa el PR y lo
       aprueba. El autor no se auto-aprueba.
 - [ ] **4. CI en verde.** `calidad` y `e2e` (checks requeridos en `main`) pasan.
@@ -44,6 +46,9 @@
 - [ ] El presupuesto se persiste **antes** de generar el PDF o enviar el email (ADR-0004).
 - [ ] Un fallo de PDF/email no pierde el presupuesto y se puede reintentar sin duplicar envíos.
 - [ ] El PDF y el email salen en el idioma guardado en el presupuesto.
+- [ ] La entrega y el reintento se prueban con el adaptador de email de pruebas en CI (servidor de
+      administración); no se exigen en el preview del PR, que solo valida emisión y descarga del PDF
+      ([ADR-0025](adr/0025-validacion-via-envio-por-entorno.md)).
 
 ### Seguridad y privacidad
 
