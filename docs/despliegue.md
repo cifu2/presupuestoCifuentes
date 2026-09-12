@@ -42,15 +42,19 @@ servidores propios en ningún entorno ([ADR-0007](adr/0007-despliegue-vercel-git
 3. La configuración del proyecto de Vercel (framework Next.js, `pnpm build`, Node de `.nvmrc`) se
    detecta sola y no se duplica en el repositorio. El `vercel.json` versionado solo declara qué ramas
    **no** generan despliegue (`git.deploymentEnabled`, [ADR-0019](adr/0019-cuota-despliegues-vercel.md)):
-   `dependabot/**` y `archive/**`. Nunca lleva configuración de build y su contenido está fijado por
-   `src/config/vercel-config.test.ts`.
+   `dependabot/**`, `archive/**` y `docs/**`. Nunca lleva configuración de build y su contenido está
+   fijado por `src/config/vercel-config.test.ts`.
 
 ### Flujo de un cambio
 
-1. Rama de feature desde `main` (`feat/...`, `fix/...`, `docs/...`).
+1. Rama de feature desde `main` (`feat/...`, `fix/...`, `docs/...`). Una rama `docs/**` **no genera
+   preview** (apartado 4), así que solo vale para cambios que tocan `docs/**` y ficheros `*.md`: si el
+   diff toca código, usa `feat/**`, `fix/**`, `ci/**` o `chore/**` para conservar el preview. Lo
+   comprueba `scripts/docs-preview-guard.sh` en el job `calidad`.
 2. PR contra `main` con la plantilla `.github/pull_request_template.md`.
 3. Vercel publica el **preview** del PR y comenta la URL; el CI arranca `calidad` (formato, sintaxis
-   y `shellcheck` de `scripts/`, lint, tipos y unitarios) y `e2e`.
+   y `shellcheck` de `scripts/`, guardia de contenido de ramas `docs/**`, lint, tipos y unitarios) y
+   `e2e`.
 4. Revisión de otro agente distinto del autor. QA valida el flujo en la URL de preview.
 5. Con CI en verde y aprobación, se fusiona a `main`.
 6. Vercel despliega **producción** desde `main` automáticamente.
@@ -132,13 +136,15 @@ las 01:01Z ya había un hueco. La decisión de fondo está en
    `curl -fsS https://<dominio-produccion>/api/health` responde `200` con `status: "ok"`. Mientras eso
    no ocurra, producción no corresponde a `main`.
 5. **Anotar en la tarea de Paperclip** la hora, el commit, el resultado y si hubo que reintentar. Si el
-   reintento vuelve a fallar, DevOps lo escala al CTO con el consumo medido (ADR-0019, punto 6).
+   reintento vuelve a fallar, DevOps lo escala al CEO con el consumo medido (ADR-0019, punto 6).
 
 **Reglas de consumo** ([ADR-0019](adr/0019-cuota-despliegues-vercel.md)): un push crea un preview, así
 que los cambios de una rama se agrupan y se empujan cuando están listos para revisión, no en cada
 iteración; no se relanza un despliegue si el del mismo commit ya está en cola o listo; y las ramas
-`dependabot/**` y `archive/**` no generan preview (`git.deploymentEnabled` en `vercel.json`). Las
-ramas con código, incluidas `docs/**`, conservan su preview: QA valida el PR ahí.
+`dependabot/**`, `archive/**` y `docs/**` no generan preview (`git.deploymentEnabled` en
+`vercel.json`). `docs/**` solo puede prescindir de él porque `scripts/docs-preview-guard.sh` (job
+`calidad`) falla si su diff sale de `docs/**` y `**/*.md`; el resto de ramas con código conservan su
+preview, que es donde QA valida el PR.
 
 ## 5. Rollback
 
