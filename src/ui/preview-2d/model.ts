@@ -86,8 +86,12 @@ export type Planking =
   | 'duelas-verticales'
   | 'duelas-horizontales'
 
-export type PreviewPaintPattern =
-  'sheen' | 'grain' | 'anodized' | 'metalFinish' | 'glass' | 'metal' | 'wall'
+/**
+ * Patrón de pintura que el modelo puede emitir. Se deriva del orden canónico
+ * (`PATTERN_SPEC_ORDER`): hay una sola lista de `kind`s, así que no puede existir un patrón que se
+ * pinte y falte en el `<defs>` (H3 de CIF-261).
+ */
+export type PreviewPaintPattern = (typeof PATTERN_SPEC_ORDER)[number]
 
 export type PreviewTone =
   'base' | 'frame' | 'glass' | 'metal' | 'shadow' | 'wall' | 'danger' | 'second'
@@ -204,8 +208,6 @@ export type PreviewPatternPaint =
 export interface PreviewPatternSpec {
   readonly kind: PreviewPaintPattern
   readonly id: string
-  readonly veins: number
-  readonly seed: number
   /** Definición del `<defs>`; el componente solo la serializa (B2/§4). */
   readonly paint: PreviewPatternPaint
 }
@@ -247,22 +249,14 @@ export const DEMO_COLOR_HEX = {
   robleRustico: '#B98A54',
 } as const
 
-const PATTERN_KINDS: readonly PreviewPaintPattern[] = [
-  'sheen',
-  'grain',
-  'anodized',
-  'metalFinish',
-  'glass',
-  'metal',
-  'wall',
-]
-
 /**
  * Orden canónico de `patternSpecs`, que es el orden en el que el componente emitía el `<defs>` en
  * `main @ 8b63b39`. Fijarlo en el modelo mantiene el SVG idéntico byte a byte al trasladar la
- * pintura (hallazgo 7/A2 de CIF-240).
+ * pintura (hallazgo 7/A2 de CIF-240) y es la única lista de `kind`s del módulo: `PreviewPaintPattern`
+ * se deriva de ella, así que un patrón nuevo no puede quedarse fuera del `<defs>` en silencio
+ * (H3 de CIF-261).
  */
-const PATTERN_SPEC_ORDER: readonly PreviewPaintPattern[] = [
+export const PATTERN_SPEC_ORDER = [
   'sheen',
   'glass',
   'metal',
@@ -270,7 +264,7 @@ const PATTERN_SPEC_ORDER: readonly PreviewPaintPattern[] = [
   'metalFinish',
   'anodized',
   'grain',
-]
+] as const
 
 /** Nº de vetas del veteado procedural (`grain`, §4). */
 const GRAIN_VEINS = 12
@@ -474,21 +468,16 @@ export function buildPreviewGeometry(config: PreviewConfig): PreviewGeometry {
   const seed = hashString(config.colorCode || 'x')
   let insertAt = 0
 
+  /**
+   * Declara el patrón la primera vez que una forma lo usa y devuelve su `url(#…)`. `kind` está
+   * acotado por `PATTERN_SPEC_ORDER`, así que no hay rama de descarte silencioso: todo patrón
+   * pintado acaba en el `<defs>` (H3 de CIF-261).
+   */
   const patternFill = (kind: PreviewPaintPattern): string => {
-    if (!PATTERN_KINDS.includes(kind)) {
-      return 'none'
-    }
-
     if (!patternSpecs.has(kind)) {
       const veins = kind === 'grain' ? GRAIN_VEINS : 0
 
-      patternSpecs.set(kind, {
-        kind,
-        id: kind,
-        veins,
-        seed,
-        paint: patternPaint(kind, veins, seed),
-      })
+      patternSpecs.set(kind, { kind, id: kind, paint: patternPaint(kind, veins, seed) })
     }
 
     return `url(#${kind})`

@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  PATTERN_SPEC_ORDER,
   PREVIEW_SHAPE_KINDS,
   TIPOS_2D_MVP,
   TIPOS_2D_REFERENCIA,
   buildPreviewGeometry,
   clamp,
   type DoorType,
+  type FinishKind,
   type GlassAperture,
   type PreviewConfig,
   type PreviewGeometry,
@@ -597,6 +599,62 @@ describe('modelo 2D · pintura de los patrones (B2/§4, hallazgo 7 de CIF-240)',
     expect(
       specOf({ finishKind: 'decorado-madera', colorCode: 'RAL 9010' }, 'grain')?.paint,
     ).not.toEqual(paint)
+  })
+
+  it('el orden canónico no repite ningún kind (H3)', () => {
+    expect(new Set(PATTERN_SPEC_ORDER).size).toBe(PATTERN_SPEC_ORDER.length)
+  })
+
+  it('todo kind de patternSpecs pertenece al orden canónico y respeta su orden (H3)', () => {
+    const finishes: readonly FinishKind[] = [
+      'lacado',
+      'chapa-natural',
+      'decorado-madera',
+      'aluminio',
+      'anodizado',
+      'acero',
+      'corten',
+      'sin-acabado',
+    ]
+    const configs: readonly Partial<PreviewConfig>[] = [
+      ...ALL_TYPES.map((type) => ({ type })),
+      ...finishes.map((finishKind) => ({ finishKind })),
+      { type: 'corredera', finishKind: 'chapa-natural', twoToneFrame: true, moulding: true },
+      { colorHex: null, colorCode: 'a-definir', withinSeriesRange: false },
+      {
+        type: 'garaje-seccional',
+        finishKind: 'anodizado',
+        glazing: 'total',
+        ventilation: 'inferior',
+      },
+    ]
+    const failures: string[] = []
+
+    for (const overrides of configs) {
+      const geometry = geometryOf(overrides)
+      const kinds = geometry.patternSpecs.map((spec) => spec.kind)
+      const positions = kinds.map((kind) => PATTERN_SPEC_ORDER.indexOf(kind))
+      const label = JSON.stringify(overrides)
+
+      if (new Set(kinds).size !== kinds.length) {
+        failures.push(`${label}: patternSpecs repite kinds (${kinds.join(', ')})`)
+      }
+
+      if (
+        positions.some((position) => position < 0) ||
+        positions.some((p, i) => i > 0 && p < (positions[i - 1] ?? 0))
+      ) {
+        failures.push(`${label}: ${kinds.join(', ')} no sigue ${PATTERN_SPEC_ORDER.join(', ')}`)
+      }
+
+      for (const shape of geometry.shapes) {
+        if (shape.paint.pattern !== null && !kinds.includes(shape.paint.pattern)) {
+          failures.push(`${label}: la forma ${shape.kind} usa ${shape.paint.pattern} sin <defs>`)
+        }
+      }
+    }
+
+    expect(failures).toEqual([])
   })
 })
 

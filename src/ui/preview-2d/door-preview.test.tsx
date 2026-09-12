@@ -67,9 +67,16 @@ const MARKUP_BASELINE: Record<string, string> = {
 const defsOf = (markup: string): string =>
   markup.slice(markup.indexOf('<defs>'), markup.indexOf('</defs>') + '</defs>'.length)
 
-/** El único cambio permitido es el relleno del texto de color indefinido (hex → token). */
-const withoutColorLabel = (markup: string): string =>
-  markup.replace(/<text[\s\S]*?<\/text>/, '<text/>')
+const LEGACY_LABEL_FILL = ' fill="#5b6773"'
+const TOKEN_LABEL_FILL = ' style="fill:var(--color-ink-muted)"'
+
+/**
+ * El único cambio permitido es el relleno del texto de color indefinido (hex → token). Se normaliza
+ * **solo ese atributo**, no el elemento `<text>`: así el congelado del SVG completo sigue cubriendo
+ * `x`, `y`, `text-anchor` y `font-size` del texto, además del relleno (H2 de CIF-261).
+ */
+const normalizeColorLabelFill = (markup: string): string =>
+  markup.replaceAll(LEGACY_LABEL_FILL, TOKEN_LABEL_FILL)
 
 describe('DoorPreview', () => {
   it('pinta un SVG accesible con el viewBox del modelo', () => {
@@ -156,8 +163,8 @@ describe('DoorPreview', () => {
     const failures: string[] = []
 
     for (const name of ['baseLacado', 'sinAcabado']) {
-      const markup = withoutColorLabel(render(BASELINE_CASES[name]))
-      const expected = withoutColorLabel(MARKUP_BASELINE[name] ?? '')
+      const markup = normalizeColorLabelFill(render(BASELINE_CASES[name]))
+      const expected = normalizeColorLabelFill(MARKUP_BASELINE[name] ?? '')
 
       if (markup !== expected) {
         failures.push(`${name}:\n  actual   ${markup}\n  esperado ${expected}`)
@@ -165,6 +172,15 @@ describe('DoorPreview', () => {
     }
 
     expect(failures).toEqual([])
+  })
+
+  it('congela la geometría y la tipografía del texto de color indefinido (H2)', () => {
+    const expected = normalizeColorLabelFill(MARKUP_BASELINE.sinAcabado ?? '')
+    const markup = normalizeColorLabelFill(render(BASELINE_CASES.sinAcabado))
+
+    expect(expected).toContain('<text x="412.5" y="1015" text-anchor="middle"')
+    expect(expected).toContain('font-size="26.55"')
+    expect(markup).toBe(expected)
   })
 
   it('pinta el texto de color indefinido con el token de la UI, sin hex propio (A2)', () => {
