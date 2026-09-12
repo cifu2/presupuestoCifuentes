@@ -27,6 +27,7 @@ que supersede al anterior y se marca el antiguo como `Superseded por ADR-XXXX`.
 | [0018](0018-contrato-tokens-diseno-y-override-global.md)  | Contrato de 42 tokens de diseño y override global de radios y sombras  | Aceptado |
 | [0019](0019-cuota-despliegues-vercel.md)                  | Cuota de despliegues de Vercel: reintento y ramas sin preview          | Aceptado |
 | [0020](0020-configurador-data-driven-y-gate-de-diseno.md) | El configurador es data-driven: el catálogo no es un gate de diseño    | Aceptado |
+| [0021](0021-metodo-de-fusion-y-trazabilidad-squash.md)    | Método de fusión (squash) y trazabilidad del gate en `main`            | Aceptado |
 
 ## Cuándo hace falta un ADR
 
