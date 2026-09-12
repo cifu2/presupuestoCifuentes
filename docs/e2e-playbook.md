@@ -14,35 +14,36 @@ la puerta obligatoria en [definition-of-done.md](definition-of-done.md).
 | Solo un proyecto                   | `pnpm e2e -- --project=movil`        |
 | Instalar Chromium                  | `pnpm e2e:install`                   |
 
-La suite levanta **dos** servidores con la misma build de producción: el principal en `E2E_PORT`
-(3000) y el de administración en `E2E_ADMIN_PORT` (3001, ver
-[Guarda del API del panel](#guarda-del-api-del-panel-dos-servidores)). El primero compila
-(`pnpm build`) y el segundo arranca (`pnpm start`) sobre esa misma build, porque Playwright los
-levanta en orden y espera a que el anterior esté listo.
+La suite levanta **tres** servidores con la misma build de producción: el principal en `E2E_PORT`
+(3000), el de administración en `E2E_ADMIN_PORT` (3001) y el del catálogo vacío en `E2E_EMPTY_PORT`
+(3002, ver [Servidores de la suite](#servidores-de-la-suite)). El primero compila (`pnpm build`) y los
+demás arrancan (`pnpm start`) sobre esa misma build, porque Playwright los levanta en orden y espera a
+que el anterior esté listo.
 
 En local el E2E **no reutiliza** `pnpm dev`: sirve el bundle de producción para que el resultado sea
 el mismo que en CI. Si tienes el servidor de desarrollo ocupando el 3000, arranca el E2E en otro
-puerto —`E2E_PORT=3210 pnpm e2e`, que usa el 3210 y el 3211— o páralo antes. Contra un entorno
-desplegado: `E2E_BASE_URL=https://... pnpm e2e`, definiendo también `E2E_ADMIN_BASE_URL` (ver
-[Guarda del API del panel](#guarda-del-api-del-panel-dos-servidores); nunca contra producción con
-datos de cliente).
+puerto —`E2E_PORT=3210 pnpm e2e`, que usa el 3210, el 3211 y el 3212— o páralo antes. Contra un
+entorno desplegado: `E2E_BASE_URL=https://... pnpm e2e`, definiendo también `E2E_ADMIN_BASE_URL` y
+`E2E_EMPTY_BASE_URL` (ver [Servidores de la suite](#servidores-de-la-suite); nunca contra producción
+con datos de cliente).
 
 Proyectos: `chromium` (Desktop Chrome) y `movil` (Pixel 7). Todo flujo nuevo se cubre en ambos.
 
 ## Mapa de flujos críticos → specs
 
-| #   | Flujo crítico                                                      | Spec y estado                                                                                                                                                                                     |
-| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Configurar una puerta y obtener el precio automático correcto      | API: `e2e/catalog-api.spec.ts` (rama de CIF-4) · UI pendiente de CIF-7                                                                                                                            |
-| 2   | Superar el tamaño máximo de una serie y pasar a presupuesto manual | API: `e2e/catalog-api.spec.ts` (rama de CIF-4) · UI pendiente de CIF-7                                                                                                                            |
-| 3   | Actualizar un precio en el panel y verlo en el configurador        | Pendiente: depende del panel (CIF-9)                                                                                                                                                              |
-| 4   | Emitir presupuesto, descargar el PDF y enviarlo por email          | `e2e/quote-delivery.spec.ts`: emisión y PDF en el servidor público · email en el de administración (CI) · preview: solo camino público ([ADR-0025](adr/0025-validacion-via-envio-por-entorno.md)) |
-| 5   | Cambiar de idioma y comprobar configurador, PDF y email traducidos | Interfaz: `e2e/i18n.spec.ts` · presupuesto multi-idioma pendiente (CIF-4)                                                                                                                         |
-| —   | Vista previa 2D del configurador                                   | Pendiente: depende de la vista 2D (CIF-6)                                                                                                                                                         |
-| —   | Panel de administración (catálogo y precios)                       | Pendiente: depende del panel (CIF-9)                                                                                                                                                              |
-| —   | API de publicación de tarifas del panel (503/401/404/200/409)      | API: `e2e/admin-tariff-publish.spec.ts` · en verde                                                                                                                                                |
-| —   | Acceso al panel: sin sesión no se entra; con sesión sí (CIF-241)   | UI: `e2e/admin-auth.spec.ts` · en verde                                                                                                                                                           |
-| —   | Home, salud del sistema y selector de idioma                       | `e2e/smoke.spec.ts`, `e2e/i18n.spec.ts` · en verde                                                                                                                                                |
+| #   | Flujo crítico                                                        | Spec y estado                                                                                                                                                                                     |
+| --- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Configurar una puerta y obtener el precio automático correcto        | API: `e2e/catalog-api.spec.ts` (rama de CIF-4) · UI pendiente de CIF-7                                                                                                                            |
+| 2   | Superar el tamaño máximo de una serie y pasar a presupuesto manual   | API: `e2e/catalog-api.spec.ts` (rama de CIF-4) · UI pendiente de CIF-7                                                                                                                            |
+| 3   | Actualizar un precio en el panel y verlo en el configurador          | Pendiente: depende del panel (CIF-9)                                                                                                                                                              |
+| 4   | Emitir presupuesto, descargar el PDF y enviarlo por email            | `e2e/quote-delivery.spec.ts`: emisión y PDF en el servidor público · email en el de administración (CI) · preview: solo camino público ([ADR-0025](adr/0025-validacion-via-envio-por-entorno.md)) |
+| 5   | Cambiar de idioma y comprobar configurador, PDF y email traducidos   | Interfaz: `e2e/i18n.spec.ts` · presupuesto multi-idioma pendiente (CIF-4)                                                                                                                         |
+| —   | Vista previa 2D del configurador                                     | Pendiente: depende de la vista 2D (CIF-6)                                                                                                                                                         |
+| —   | Panel de administración (catálogo y precios)                         | Pendiente: depende del panel (CIF-9)                                                                                                                                                              |
+| —   | API de publicación de tarifas del panel (503/401/404/200/409)        | API: `e2e/admin-tariff-publish.spec.ts` · en verde                                                                                                                                                |
+| —   | Acceso al panel: sin sesión no se entra; con sesión sí (CIF-241)     | UI: `e2e/admin-auth.spec.ts` · en verde                                                                                                                                                           |
+| —   | Home, salud del sistema y selector de idioma                         | `e2e/smoke.spec.ts`, `e2e/i18n.spec.ts` · en verde                                                                                                                                                |
+| —   | Catálogo vacío: el configurador avisa de que no hay series (CIF-436) | UI: `e2e/catalog-empty.spec.ts`, en `es` y `en`, contra el servidor de catálogo vacío · en verde                                                                                                  |
 
 Un flujo es **puerta obligatoria en cuanto tiene spec**: su spec debe pasar en el CI antes de
 fusionar. Los flujos pendientes se añaden en el mismo PR que trae la funcionalidad (DoD, punto 2).
@@ -51,6 +52,9 @@ fusionar. Los flujos pendientes se añaden en el mismo PR que trae la funcionali
 
 - Cada test prepara y limpia su propio estado; nunca depende del orden de ejecución.
 - E2E de API y de UI: catálogo de demostración en memoria (`CATALOG_DEMO_MODE`), sin base de datos.
+- El estado **sin catálogo** no se puede observar en el servidor principal: arranca siempre con las
+  cuatro series del fixture. Lo sirve el tercer servidor con `CATALOG_DEMO_EMPTY=true`, que siembra el
+  catálogo de demostración vacío (`e2e/catalog-empty.spec.ts`, CIF-436).
 - El catálogo de demostración siembra dos **borradores** de tarifa para el E2E de publicación: uno
   con vigencia futura (publicarlo no cambia el precio vigente de su serie) y otro que solapa con la
   tarifa publicada de la suya. No tienen tabla de precios, así que publicarlos no altera ningún
@@ -62,7 +66,7 @@ fusionar. Los flujos pendientes se añaden en el mismo PR que trae la funcionali
   contactos de prueba usan siempre el dominio reservado (`@example.com`).
 - Medidas, precios y acabados de prueba salen de las factorías del dominio, no de literales sueltos.
 
-## Guardas del panel: dos servidores
+## Servidores de la suite
 
 Las dos guardas del panel **fallan cerradas** sin configuración, y sus estados no se pueden observar
 en el mismo proceso:
@@ -73,16 +77,18 @@ en el mismo proceso:
   válida, y `POST /api/admin/session` responde `503 ADMIN_ACCESS_DISABLED` si el servidor no tiene
   `ADMIN_SESSION_SECRET` ni `ADMIN_PANEL_PASSWORD`.
 
-Por eso la suite levanta dos servidores con la misma build:
+Por eso la suite levanta tres servidores con la misma build:
 
-| Servidor       | Puerto                  | Credenciales del panel                | Specs que lo usan                                                         |
-| -------------- | ----------------------- | ------------------------------------- | ------------------------------------------------------------------------- |
-| principal      | `E2E_PORT` (3000)       | todas vacías → guardas deshabilitadas | el resto de la suite, `503` del API y acceso deshabilitado                |
-| administración | `E2E_ADMIN_PORT` (3001) | token y sesión de pruebas             | `401`, `200` al publicar, `409 AMBIGUOUS_TARIFF` y acceso del propietario |
+| Servidor       | Puerto                  | Entorno del servidor             | Specs que lo usan                                                         |
+| -------------- | ----------------------- | -------------------------------- | ------------------------------------------------------------------------- |
+| principal      | `E2E_PORT` (3000)       | guardas del panel deshabilitadas | el resto de la suite, `503` del API y acceso deshabilitado                |
+| administración | `E2E_ADMIN_PORT` (3001) | token y sesión de pruebas        | `401`, `200` al publicar, `409 AMBIGUOUS_TARIFF` y acceso del propietario |
+| catálogo vacío | `E2E_EMPTY_PORT` (3002) | `CATALOG_DEMO_EMPTY=true`        | `catalog-empty` en `es` y `en` (CIF-436)                                  |
 
 - Puertos y credenciales se centralizan en `e2e/support/servers.ts`; el spec cambia de servidor con
-  `test.use({ baseURL: E2E_ADMIN_BASE_URL })`. Se ajustan con `E2E_ADMIN_PORT`,
-  `E2E_ADMIN_BASE_URL`, `E2E_ADMIN_TOKEN`, `E2E_ADMIN_SESSION_SECRET` y `E2E_ADMIN_PANEL_PASSWORD`.
+  `test.use({ baseURL: E2E_ADMIN_BASE_URL })` o navegando a `E2E_EMPTY_BASE_URL`. Se ajustan con
+  `E2E_ADMIN_PORT`, `E2E_ADMIN_BASE_URL`, `E2E_ADMIN_TOKEN`, `E2E_ADMIN_SESSION_SECRET`,
+  `E2E_ADMIN_PANEL_PASSWORD`, `E2E_EMPTY_PORT` y `E2E_EMPTY_BASE_URL`.
 - El token, el secreto de sesión y la credencial por defecto **no son secretos**: son valores de
   pruebas que viven en el repositorio y solo sirven contra el servidor que levanta la propia suite.
   Nunca se usan los valores reales de un despliegue.
@@ -91,7 +97,12 @@ Por eso la suite levanta dos servidores con la misma build:
   el panel, el propietario entra con su credencial —cookie `HttpOnly`, `SameSite=Lax`—, el API acepta
   esa sesión sin `Bearer`, el cierre de sesión la borra y sin credenciales el API responde `401`.
 - Playwright arranca los `webServer` **en orden** y espera a que cada uno responda, así que solo el
-  primero compila; el segundo sirve la misma build. El CI no cambia: sigue bastando `pnpm e2e`.
+  primero compila; los demás sirven la misma build. El CI no cambia: sigue bastando `pnpm e2e`.
+- `e2e/catalog-empty.spec.ts` (CIF-436) cubre el estado sin catálogo —el previo a la carga del
+  propietario, que en producción puede durar días o semanas (ADR-0015 §7, ADR-0026 §3)— en los dos
+  idiomas: el aviso `catalog-empty` con su copy, la ausencia de selector, precio y formulario, y la
+  API pública devolviendo cero series. El copy se escribe literal en el spec para que un cambio de
+  texto lo haga caer también aquí, además del unitario `configurator-render.test.tsx` (CIF-430).
 - Contra un entorno ya desplegado solo se ejercita el **camino público**: se define `E2E_BASE_URL` y
   **no** se definen credenciales de panel, porque no se despliegan en preview
   ([ADR-0025](adr/0025-validacion-via-envio-por-entorno.md) §2-§3). Los specs con credencial —los que

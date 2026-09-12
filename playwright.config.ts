@@ -7,6 +7,8 @@ import {
   E2E_ADMIN_SESSION_SECRET,
   E2E_ADMIN_TOKEN,
   E2E_BASE_URL,
+  E2E_EMPTY_BASE_URL,
+  E2E_EMPTY_PORT,
   E2E_PORT,
   E2E_SALES_MAILBOX,
 } from './e2e/support/servers'
@@ -37,11 +39,12 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'movil', use: { ...devices['Pixel 7'] } },
   ],
-  // Dos servidores con la misma build porque la guarda del API del panel depende del entorno:
-  // sin `ADMIN_API_TOKEN` responde 503 y con él 401 (CIF-86). Playwright los arranca **en orden** y
-  // espera a que el primero esté listo, así que solo el primero compila y el segundo reutiliza el
-  // build. Sirven el bundle de producción también en local: el E2E no depende de `pnpm dev`, que no
-  // admite dos servidores en el mismo directorio.
+  // Tres servidores con la misma build porque los estados que cubren dependen del entorno: la guarda
+  // del API del panel responde 503 sin `ADMIN_API_TOKEN` y 401 con él (CIF-86), y el catálogo de
+  // demostración vacío solo se sirve con `CATALOG_DEMO_EMPTY` (CIF-436). Playwright los arranca **en
+  // orden** y espera a que el anterior esté listo, así que solo el primero compila y los demás
+  // reutilizan el build. Sirven el bundle de producción también en local: el E2E no depende de
+  // `pnpm dev`, que no admite varios servidores en el mismo directorio.
   webServer: [
     {
       command: `pnpm build && pnpm start --port ${E2E_PORT}`,
@@ -73,6 +76,19 @@ export default defineConfig({
         QUOTE_INTERNAL_RECIPIENTS: E2E_SALES_MAILBOX,
       },
       url: E2E_ADMIN_BASE_URL,
+      reuseExistingServer: externalEnvironment,
+      timeout: 240_000,
+    },
+    {
+      command: `pnpm start --port ${E2E_EMPTY_PORT}`,
+      // El estado sin catálogo es el que ve el propietario antes de cargar la primera serie y puede
+      // durar días o semanas (ADR-0015 §7, ADR-0026 §3); el servidor principal siempre arranca con
+      // las cuatro series del fixture, así que el vacío se sirve aquí, sin PostgreSQL (CIF-436).
+      env: {
+        CATALOG_DEMO_MODE: 'true',
+        CATALOG_DEMO_EMPTY: 'true',
+      },
+      url: E2E_EMPTY_BASE_URL,
       reuseExistingServer: externalEnvironment,
       timeout: 240_000,
     },

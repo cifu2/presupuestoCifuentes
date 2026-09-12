@@ -88,8 +88,8 @@ export interface Container {
   readonly quoteDocumentSettings: QuoteDocumentSettings
 }
 
-function createDemoContainer(): Container {
-  const catalog = createDemoCatalogStore()
+function createDemoContainer(options: { readonly empty: boolean }): Container {
+  const catalog = createDemoCatalogStore({ empty: options.empty })
   const quotes = new InMemoryQuoteStore()
 
   return {
@@ -167,14 +167,21 @@ let cachedKey: string | null = null
 
 export function createContainer(): Container {
   const useDemo = env.CATALOG_DEMO_MODE || !env.DATABASE_URL
-  const key = useDemo ? 'demo' : `prisma:${env.DATABASE_URL}`
+  // El catálogo de demostración vacío solo existe en modo demostración: con el catálogo real la
+  // variable se ignora por completo (`createPrismaContainer`, CIF-436).
+  const emptyDemoCatalog = env.CATALOG_DEMO_EMPTY
+  const key = useDemo
+    ? `demo:${emptyDemoCatalog ? 'empty' : 'seeded'}`
+    : `prisma:${env.DATABASE_URL}`
 
   if (cached !== null && cachedKey === key) {
     return cached
   }
 
   cached =
-    useDemo || !env.DATABASE_URL ? createDemoContainer() : createPrismaContainer(env.DATABASE_URL)
+    useDemo || !env.DATABASE_URL
+      ? createDemoContainer({ empty: emptyDemoCatalog })
+      : createPrismaContainer(env.DATABASE_URL)
   cachedKey = key
 
   return cached

@@ -35,6 +35,15 @@ export const envSchema = z.object({
   /** Fuerza el catálogo de demostración en memoria aunque haya `DATABASE_URL`. */
   CATALOG_DEMO_MODE: environmentFlag,
   /**
+   * Siembra **vacío** el catálogo de demostración: cero series, acabados, colores y accesorios. Es
+   * el estado que ve el propietario antes de dar de alta la primera serie (ADR-0015 §7, ADR-0026 §3)
+   * y el que sirve el E2E hermético para observarlo de extremo a extremo sin PostgreSQL (CIF-436).
+   *
+   * Solo tiene efecto **dentro** del modo demostración (`CATALOG_DEMO_MODE=true` o sin
+   * `DATABASE_URL`): con el catálogo real se ignora, así que en _Production_ no cambia nada.
+   */
+  CATALOG_DEMO_EMPTY: environmentFlag,
+  /**
    * Token compartido del API del panel (provisional, CIF-9/CIF-14). Sin él, los endpoints de
    * administración responden 503 y nunca quedan accesibles en abierto.
    */
