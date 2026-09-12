@@ -17,14 +17,6 @@ interface ManualQuoteDetailByKind {
     readonly maxWidthMm: number
     readonly maxHeightMm: number
   }
-  /** La medida no llega al mínimo de la serie: la configuración queda sin cubrir. */
-  readonly size_below_series_min: {
-    readonly widthMm: number
-    readonly heightMm: number
-    readonly seriesCode: string
-    readonly minWidthMm: number
-    readonly minHeightMm: number
-  }
   readonly finish_not_allowed: {
     readonly finishId: string
     readonly seriesCode: string
@@ -58,7 +50,6 @@ export type ManualQuoteDetail = {
 
 export const MANUAL_QUOTE_DETAIL_KINDS = [
   'size_above_series_max',
-  'size_below_series_min',
   'finish_not_allowed',
   'color_not_allowed',
   'accessory_not_allowed',
@@ -70,7 +61,6 @@ export const MANUAL_QUOTE_DETAIL_KINDS = [
 
 const REASON_BY_KIND = {
   size_above_series_max: 'size_exceeds_series_max',
-  size_below_series_min: 'uncovered_configuration',
   finish_not_allowed: 'uncovered_configuration',
   color_not_allowed: 'uncovered_configuration',
   accessory_not_allowed: 'uncovered_configuration',

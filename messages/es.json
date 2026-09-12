@@ -103,7 +103,6 @@
   },
   "ManualQuoteReasons": {
     "size_above_series_max": "La medida {width}×{height} mm supera el máximo de la serie \"{series}\" ({maxWidth}×{maxHeight} mm)",
-    "size_below_series_min": "La medida {width}×{height} mm está por debajo del mínimo de la serie \"{series}\" ({minWidth}×{minHeight} mm)",
     "finish_not_allowed": "El acabado \"{finish}\" no está disponible para la serie \"{series}\"",
     "color_not_allowed": "El color \"{color}\" no pertenece al acabado elegido",
     "accessory_not_allowed": "El accesorio \"{accessory}\" no está disponible para la serie \"{series}\"",
@@ -124,6 +123,7 @@
       "measurement": "{width} × {height} mm",
       "range": "Medidas admitidas de la serie: {minWidth}–{maxWidth} mm de ancho y {minHeight}–{maxHeight} mm de alto.",
       "outOfRange": "La medida supera el tamaño máximo de la serie: pasa a presupuesto manual.",
+      "belowMinimum": "La medida no llega al mínimo de la serie.",
       "live": "El precio lo calcula el servidor con el catálogo y la tarifa vigentes."
     },
     "form": {
@@ -176,6 +176,7 @@
     }
   },
   "Configurator": {
+    "belowMinimum": "El {dimension} mínimo de la serie es {min} mm.",
     "intro": "Elige serie, tipo, medidas, acabado, color y accesorios. El precio se calcula en el servidor y se actualiza en vivo.",
     "catalog": {
       "retry": "Reintentar",
@@ -189,6 +190,10 @@
         "not_integer": "Escribe la medida en milímetros, con números enteros.",
         "below_minimum": "La medida mínima es 1 mm.",
         "above_maximum": "La medida máxima es 10.000 mm."
+      },
+      "dimensions": {
+        "width": "ancho",
+        "height": "alto"
       },
       "manualNotice": "Esta medida no recibe precio automático: pasará a presupuesto manual."
     },

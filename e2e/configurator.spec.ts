@@ -500,3 +500,157 @@ test('el aviso de catálogo ofrece reintentar sin cambiar de serie', async ({ pa
   await expect(page.getByTestId('accessories-empty')).toBeVisible()
   expect(calls).toBeGreaterThan(1)
 })
+
+test.describe('conformidad de diseño (CIF-211)', () => {
+  test('por debajo del mínimo es error inline, sin precio ni CTA manual (D1)', async ({
+    page,
+    request,
+  }) => {
+    await page.goto(CONFIGURATOR_PATH)
+
+    await page.getByTestId('preview-width').fill('500')
+
+    await expect(page.getByTestId('width-below-minimum')).toHaveText(
+      'El ancho mínimo de la serie es 600 mm.',
+    )
+    await expect(page.getByTestId('preview-width')).toHaveAttribute('aria-invalid', 'true')
+    await expect(page.getByTestId('preview-width')).toHaveAttribute(
+      'aria-describedby',
+      'preview-range ancho-minimo',
+    )
+    await expect(page.getByTestId('preview-out-of-range')).toHaveText(
+      'La medida no llega al mínimo de la serie.',
+    )
+    await expect(page.getByTestId('price-idle')).toBeVisible()
+    await expect(page.getByTestId('price-total')).toHaveCount(0)
+    await expect(page.getByTestId('price-manual')).toHaveCount(0)
+    await expect(page.getByTestId('manual-quote-reason')).toHaveCount(0)
+    await expect(page.getByTestId('contact-form')).toHaveCount(0)
+    await expect(page.getByTestId('request-quote')).toHaveCount(0)
+
+    // El API responde error de validación, no presupuesto manual (ADR-0022).
+    const api = await request.post('/api/quotes/price', {
+      data: { seriesSlug: 'ci-100', widthMm: 500, heightMm: 2100, locale: 'es' },
+    })
+
+    expect(api.status()).toBe(400)
+    expect((await api.json()).error.code).toBe('INVALID_MEASUREMENT')
+
+    // Al corregir la medida vuelve el precio y desaparece el error.
+    await page.getByTestId('preview-width').fill('700')
+    await expect(page.getByTestId('width-below-minimum')).toHaveCount(0)
+    await expect(page.getByTestId('price-total')).toBeVisible()
+  })
+
+  test('si un eje supera el máximo y otro no llega al mínimo, conviven (D1)', async ({ page }) => {
+    await page.goto(CONFIGURATOR_PATH)
+
+    await page.getByTestId('preview-width').fill('1300')
+    await page.getByTestId('preview-height').fill('1700')
+
+    await expect(page.getByTestId('height-below-minimum')).toBeVisible()
+    await expect(page.getByTestId('preview-out-of-range')).toContainText('supera el tamaño máximo')
+    await expect(page.getByTestId('price-manual')).toBeVisible()
+    await expect(page.getByTestId('manual-quote-reason')).toContainText('supera el máximo')
+  })
+
+  test('el foco visible usa el token de acento (E1)', async ({ page }) => {
+    await page.goto(CONFIGURATOR_PATH)
+
+    const width = page.getByTestId('preview-width')
+
+    await width.focus()
+
+    const outline = await width.evaluate((element) => {
+      const style = getComputedStyle(element)
+
+      return `${style.outlineWidth} ${style.outlineStyle} ${style.outlineColor} / ${style.outlineOffset}`
+    })
+
+    expect(outline).toContain('2px solid rgb(184, 134, 11)')
+    expect(outline).toContain('/ 2px')
+  })
+
+  test('los objetivos táctiles llegan a 44 px en móvil y 40 px en escritorio (E5)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(CONFIGURATOR_PATH)
+    await expect(page.getByTestId('price-total')).toBeVisible()
+
+    const targets = [
+      page.getByTestId('configurator-series'),
+      page.getByTestId('preview-width'),
+      page.getByTestId('preview-finish'),
+      page.getByTestId('request-quote'),
+      page.getByTestId('preview-moulding').locator('..'),
+      page.getByTestId('preview-hinge-side-derecha').locator('..'),
+    ]
+
+    for (const target of targets) {
+      const box = await target.boundingBox()
+
+      expect(box).not.toBeNull()
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44)
+    }
+
+    await page.setViewportSize({ width: 1366, height: 900 })
+
+    const desktop = await page.getByTestId('preview-width').boundingBox()
+
+    expect(desktop?.height ?? 0).toBeGreaterThanOrEqual(40)
+  })
+
+  test('el botón de envío expone el estado de envío con aria-busy (E6)', async ({ page }) => {
+    await page.goto(CONFIGURATOR_PATH)
+    await expect(page.getByTestId('price-total')).toBeVisible()
+
+    await page.getByTestId('request-quote').click()
+    await fillContact(page)
+
+    await page.route('**/api/quotes', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      await route.continue()
+    })
+
+    const submit = page.getByTestId('contact-submit')
+
+    await submit.click()
+
+    await expect(submit).toHaveAttribute('aria-busy', 'true')
+    await expect(page.getByTestId('quote-issued')).toBeVisible()
+  })
+
+  test('el precio se mantiene a la vista: barra fija en móvil y tarjeta sticky en escritorio (G3)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(CONFIGURATOR_PATH)
+    await expect(page.getByTestId('price-total')).toBeVisible()
+
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+
+    const panel = page.getByTestId('price-status').locator('..')
+
+    expect(await panel.evaluate((element) => getComputedStyle(element).position)).toBe('fixed')
+
+    const mobileBox = await page.getByTestId('price-total').boundingBox()
+
+    expect(mobileBox?.y ?? -1).toBeGreaterThanOrEqual(0)
+    expect((mobileBox?.y ?? 10_000) + (mobileBox?.height ?? 0)).toBeLessThanOrEqual(844)
+
+    await page.setViewportSize({ width: 1366, height: 900 })
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+
+    expect(
+      await panel.evaluate((element) =>
+        element.parentElement === null ? null : getComputedStyle(element.parentElement).position,
+      ),
+    ).toBe('sticky')
+
+    const desktopBox = await page.getByTestId('price-total').boundingBox()
+
+    expect(desktopBox?.y ?? -1).toBeGreaterThanOrEqual(0)
+    expect(desktopBox?.y ?? 10_000).toBeLessThan(900)
+  })
+})

@@ -119,8 +119,9 @@ export class DoorSeries {
   }
 
   /**
-   * `true` cuando la medida obliga a presupuesto manual: supera el máximo de la serie (o no
-   * llega al mínimo permitido). El configurador lo usa para no ofrecer precio automático.
+   * `true` cuando la medida obliga a presupuesto manual: supera el máximo de la serie. El
+   * configurador lo usa para no ofrecer precio automático. Por debajo del mínimo no hay
+   * presupuesto manual: es un error de validación (ADR-0022).
    */
   requiresManualQuoteFor(dimensions: Dimensions): boolean {
     const assessment = this.sizeRange.assess(dimensions)

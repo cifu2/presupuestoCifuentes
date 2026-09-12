@@ -62,6 +62,44 @@
 }
 
 body {
-  background-color: #f7f7f5;
+  background-color: var(--color-surface-muted);
   color: var(--color-brand-900);
+}
+
+/* E1 (sistema-de-diseno §6): foco visible propio, nunca el del navegador. */
+:focus-visible {
+  outline: 2px solid var(--color-accent-500);
+  outline-offset: 2px;
+}
+
+/*
+ * E5 (prototipos-y-flujos §7): objetivos táctiles ≥44 px en móvil/tablet y ≥40 px en escritorio.
+ * Se aplica solo al configurador (`.configurator-touch`) y a las casillas y radios a través de su
+ * `label`: agrandar la caja del control deformaría el dibujo nativo del check.
+ */
+.configurator-touch :is(input:not([type='checkbox']):not([type='radio']), select, textarea, button),
+.configurator-touch label:has(> input[type='checkbox']),
+.configurator-touch label:has(> input[type='radio']) {
+  min-height: 44px;
+}
+
+@media (min-width: 1024px) {
+  .configurator-touch
+    :is(input:not([type='checkbox']):not([type='radio']), select, textarea, button),
+  .configurator-touch label:has(> input[type='checkbox']),
+  .configurator-touch label:has(> input[type='radio']) {
+    min-height: 40px;
+  }
+}
+
+/* E4 (sistema-de-diseno §6): nada de movimiento no esencial si el sistema lo pide. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

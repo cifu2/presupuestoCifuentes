@@ -307,6 +307,24 @@ export function isWithinSeriesRange(
   return assessSelectionSize(selection, sizeRange)?.status === 'within_range'
 }
 
+/**
+ * D1: por debajo del mínimo **no** hay presupuesto manual; es un error inline por campo. Separa qué
+ * eje incumple para marcar `aria-invalid` y pintar el error bajo el campo que toca.
+ */
+export function belowMinimumAxes(assessment: SizeAssessment | null): {
+  readonly width: boolean
+  readonly height: boolean
+} {
+  if (assessment?.status !== 'out_of_range') {
+    return { width: false, height: false }
+  }
+
+  return {
+    width: assessment.violations.includes('width_below_minimum'),
+    height: assessment.violations.includes('height_below_minimum'),
+  }
+}
+
 /** Cuerpo exacto de `POST /api/quotes/price` y `POST /api/quotes` (docs/api.md). */
 export interface ConfigurationRequestBody {
   readonly seriesSlug: string

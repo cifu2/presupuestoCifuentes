@@ -25,8 +25,9 @@ El catálogo y los precios son **datos**, no código ([ADR-0020](adr/0020-config
    `pivotante-2-hojas`): solo afecta al dibujo. El paso a presupuesto manual lo dispara la medida, no
    el tipo (ADR-0016).
 3. **Medidas** en milímetros enteros (1–10.000): se validan al teclear con las mismas invariantes del
-   dominio (`Dimensions`, `SizeRange`). Una medida por encima del máximo —o por debajo del mínimo— de la
-   serie no recibe precio automático: aviso inmediato y paso a presupuesto manual.
+   dominio (`Dimensions`, `SizeRange`). Una medida por encima del máximo de la serie no recibe precio
+   automático y pasa a presupuesto manual; una medida por **debajo del mínimo** es un error de
+   validación inline (`Configurator.belowMinimum`), sin precio y sin CTA manual (ADR-0022).
 4. **Acabado, color y accesorios** del catálogo publicado; al cambiar de acabado el color se recoloca
    al primero de ese acabado, porque un color pertenece siempre a un acabado.
 5. **Extras** (instalación, portes, entrega urgente) y **código de descuento**: entran en el cálculo del
