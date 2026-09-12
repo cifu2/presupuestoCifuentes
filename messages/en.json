@@ -123,7 +123,8 @@
     "INVALID_QUOTE_REFERENCE": "The quote reference has an invalid format.",
     "NOT_FOUND": "We could not find what you are looking for.",
     "INVALID_QUOTE_DELIVERY": "The quote delivery is not valid",
-    "INVALID_QUOTE_DELIVERY_TRANSITION": "The quote delivery cannot change state"
+    "INVALID_QUOTE_DELIVERY_TRANSITION": "The quote delivery cannot change state",
+    "QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED": "The delivery ran out of attempts: send a new quote version to retry it."
   },
   "ManualQuoteReasons": {
     "size_above_series_max": "The measurement {width}×{height} mm exceeds the maximum size of the \"{series}\" series ({maxWidth}×{maxHeight} mm)",

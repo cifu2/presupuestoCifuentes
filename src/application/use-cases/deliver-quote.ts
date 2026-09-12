@@ -17,6 +17,7 @@
 
 import { InvalidQuoteDeliveryError, ResourceNotFoundError } from '@/domain/shared/errors'
 import {
+  QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED_REASON,
   QuoteDelivery,
   quoteDeliveryKey,
   type QuoteDeliveryAudience,
@@ -33,7 +34,10 @@ import type { Quote } from '@/domain/quote/quote'
 import type { Clock } from '@/application/ports/clock'
 import type { IdGenerator } from '@/application/ports/id-generator'
 import type { EmailSender, EmailAttachment } from '@/application/ports/email-sender'
-import type { QuoteDeliveryRepository } from '@/application/ports/quote-delivery-repository'
+import {
+  QUOTE_DELIVERY_CLAIM_LEASE_MS,
+  type QuoteDeliveryRepository,
+} from '@/application/ports/quote-delivery-repository'
 import type { QuotePdfRenderer } from '@/application/ports/quote-pdf-renderer'
 import type { QuoteRepository } from '@/application/ports/quote-repository'
 import type { QuoteDocumentSettings } from '@/application/ports/quote-document-settings'
@@ -53,9 +57,15 @@ export interface DeliverQuoteDeps extends ComposeQuoteDocumentDeps {
 }
 
 export type DeliverQuoteStatus =
-  'delivered' | 'already_delivered' | 'in_progress' | 'incomplete' | 'nothing_to_retry'
+  | 'delivered'
+  | 'already_delivered'
+  | 'in_progress'
+  | 'incomplete'
+  | 'nothing_to_retry'
+  | 'attempts_exhausted'
 
-export type DeliverQuoteReason = 'none' | 'pdf_render_failed' | 'email_send_failed'
+export type DeliverQuoteReason =
+  'none' | 'pdf_render_failed' | 'email_send_failed' | 'attempts_exhausted'
 
 export interface QuoteDeliveryOutput {
   readonly id: string
@@ -150,6 +160,10 @@ export async function retryQuoteDeliveries(
   const claimed: QuoteDelivery[] = []
 
   for (const candidate of candidates) {
+    if (candidate.isExhausted()) {
+      continue
+    }
+
     const outcome = await claimDelivery(deps, candidate.startAttempt(at))
 
     if (outcome.claimed !== null) {
@@ -157,7 +171,35 @@ export async function retryQuoteDeliveries(
     }
   }
 
-  return runDeliveries(deps, quote, version, customer, { claimed, observed })
+  // Las entregas que agotaron sus intentos no se reintentan: se cierran como fallidas con un motivo
+  // legible para que el operador sepa que hay que emitir una versión nueva (CIF-186).
+  const settled = await settleExhausted(deps, candidates, at)
+
+  return runDeliveries(deps, quote, version, customer, {
+    claimed,
+    observed: merge(observed, settled),
+  })
+}
+
+/**
+ * Cierra como fallidas las entregas que agotaron sus intentos y no tienen un envío en curso. No
+ * toca la que otra petición simultánea tiene reclamada: esa decide su resultado (F1 de CIF-175).
+ */
+async function settleExhausted(
+  deps: DeliverQuoteDeps,
+  deliveries: readonly QuoteDelivery[],
+  at: Date,
+): Promise<readonly QuoteDelivery[]> {
+  const exhausted = deliveries.filter(
+    (delivery) =>
+      delivery.isExhausted() && !delivery.hasActiveClaim(at, QUOTE_DELIVERY_CLAIM_LEASE_MS),
+  )
+
+  return Promise.all(
+    exhausted.map((delivery) =>
+      save(deps, delivery.markFailed(QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED_REASON, at)),
+    ),
+  )
 }
 
 async function requireQuote(repository: QuoteRepository, reference: string): Promise<Quote> {
@@ -217,6 +259,16 @@ async function prepareDeliveries(
 
     if (existing !== null && existing.isSent()) {
       observed.push(existing)
+
+      continue
+    }
+
+    if (existing !== null && existing.isExhausted()) {
+      // Agotó sus intentos: no se puede reclamar. Se deja constancia del motivo y se informa del
+      // estado terminal; para volver a entregar hay que pedir una versión nueva (CIF-186).
+      const settled = await settleExhausted(deps, [existing], at)
+
+      observed.push(settled[0] ?? existing)
 
       continue
     }
@@ -294,10 +346,11 @@ async function runDeliveries(
 
   if (toSend.length === 0) {
     const allSent = deliveries.length > 0 && deliveries.every((delivery) => delivery.isSent())
+    const exhausted = deliveries.some((delivery) => delivery.isExhausted())
 
     return {
-      status: allSent ? 'already_delivered' : 'in_progress',
-      reason: 'none',
+      status: allSent ? 'already_delivered' : exhausted ? 'attempts_exhausted' : 'in_progress',
+      reason: exhausted && !allSent ? 'attempts_exhausted' : 'none',
       quoteReference: quote.reference,
       version,
       pdfBytes: 0,
@@ -360,10 +413,13 @@ async function runDeliveries(
 
   const deliveriesAfter = merge(deliveries, sent)
   const allSent = deliveriesAfter.every((item) => item.isSent())
+  // Una entrega agotada no se reintenta: su estado es terminal aunque el resto se haya enviado.
+  const exhausted = deliveriesAfter.some((item) => item.isExhausted())
+  const terminal = !allSent && exhausted && reason === 'none'
 
   return {
-    status: allSent ? 'delivered' : 'incomplete',
-    reason: allSent ? 'none' : reason,
+    status: allSent ? 'delivered' : terminal ? 'attempts_exhausted' : 'incomplete',
+    reason: allSent ? 'none' : terminal ? 'attempts_exhausted' : reason,
     quoteReference: quote.reference,
     version,
     pdfBytes: pdf.byteLength,

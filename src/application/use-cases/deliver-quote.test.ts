@@ -16,6 +16,13 @@ import {
 } from '@/domain/catalog/testing/factories'
 import { makeBreakdown, makeConfiguration } from '@/domain/pricing/testing/factories'
 import { Quote } from '@/domain/quote/quote'
+import {
+  MAX_QUOTE_DELIVERY_ATTEMPTS,
+  QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED_REASON,
+  QuoteDelivery,
+  quoteDeliveryKey,
+  type QuoteDeliveryAudience,
+} from '@/domain/quote/quote-delivery'
 import type { QuoteDocument } from '@/domain/quote/quote-document'
 import { ResourceNotFoundError, InvalidQuoteDeliveryError } from '@/domain/shared/errors'
 
@@ -432,5 +439,112 @@ describe('deliverQuote', () => {
 
     expect(harness.sendCalls).toEqual([CUSTOMER.email])
     expect(harness.store.size()).toBe(1)
+  })
+})
+
+/**
+ * Semilla de una entrega ya persistida con los intentos gastados: es el estado al que se llega tras
+ * 100 fallos seguidos (CIF-186).
+ */
+function seedAttempts(
+  harness: { readonly quote: Quote },
+  attempts: number,
+  options: {
+    readonly audience?: QuoteDeliveryAudience
+    readonly recipient?: string
+    readonly lastError?: string
+  } = {},
+): QuoteDelivery {
+  const audience = options.audience ?? 'customer'
+  const recipient = options.recipient ?? CUSTOMER.email
+
+  return QuoteDelivery.create({
+    id: `delivery-${audience}-seed`,
+    quoteId: harness.quote.id,
+    quoteReference: harness.quote.reference,
+    version: 1,
+    audience,
+    recipient,
+    customerName: audience === 'customer' ? CUSTOMER.name : null,
+    status: 'failed',
+    attempts,
+    providerMessageId: null,
+    lastError: options.lastError ?? 'email: proveedor caído',
+    createdAt: NOW,
+    updatedAt: NOW,
+    sentAt: null,
+    claimedAt: null,
+  })
+}
+
+describe('tope de intentos de entrega (CIF-186)', () => {
+  it('reintentar una entrega agotada responde con el estado terminal y su motivo, sin enviar nada', async () => {
+    const harness = makeHarness({ internalRecipients: [] })
+
+    await harness.store.save(seedAttempts(harness, MAX_QUOTE_DELIVERY_ATTEMPTS))
+
+    const retried = await retryQuoteDeliveries(harness.deps, { reference: 'PC-2026-000001' })
+
+    expect(retried.status).toBe('attempts_exhausted')
+    expect(retried.reason).toBe('attempts_exhausted')
+    expect(retried.pdfBytes).toBe(0)
+    expect(harness.renders()).toBe(0)
+    expect(harness.sendCalls).toEqual([])
+    expect(retried.deliveries[0]?.attempts).toBe(MAX_QUOTE_DELIVERY_ATTEMPTS)
+    expect(retried.deliveries[0]?.lastError).toBe(QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED_REASON)
+
+    // El motivo queda persistido: el panel lo lee de la fila, no solo de esta respuesta.
+    const stored = await harness.deps.quoteDeliveryRepository.findByKey(
+      quoteDeliveryKey(harness.quote.id, 1, CUSTOMER.email),
+    )
+
+    expect(stored?.lastError).toBe(QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED_REASON)
+    expect(stored?.status).toBe('failed')
+  })
+
+  it('la entrega por email de un presupuesto agotado tampoco lanza: informa del estado terminal', async () => {
+    const harness = makeHarness({ internalRecipients: [] })
+
+    await harness.store.save(seedAttempts(harness, MAX_QUOTE_DELIVERY_ATTEMPTS))
+
+    const result = await deliverQuote(harness.deps, {
+      reference: 'PC-2026-000001',
+      customer: CUSTOMER,
+    })
+
+    expect(result.status).toBe('attempts_exhausted')
+    expect(result.reason).toBe('attempts_exhausted')
+    expect(harness.renders()).toBe(0)
+    expect(harness.sendCalls).toEqual([])
+  })
+
+  it('permite el último intento disponible y lo registra como enviado', async () => {
+    const harness = makeHarness({ internalRecipients: [] })
+
+    await harness.store.save(seedAttempts(harness, MAX_QUOTE_DELIVERY_ATTEMPTS - 1))
+
+    const retried = await retryQuoteDeliveries(harness.deps, { reference: 'PC-2026-000001' })
+
+    expect(retried.status).toBe('delivered')
+    expect(retried.deliveries[0]?.attempts).toBe(MAX_QUOTE_DELIVERY_ATTEMPTS)
+    expect(retried.deliveries[0]?.status).toBe('sent')
+    expect(harness.sendCalls).toEqual([CUSTOMER.email])
+  })
+
+  it('reintenta al destinatario que no agotó sus intentos y cierra el que sí', async () => {
+    const harness = makeHarness({ failEmailsTo: [SALES_MAILBOX] })
+
+    // El cliente agotó sus intentos; el aviso interno conserva intentos disponibles.
+    await harness.store.save(seedAttempts(harness, MAX_QUOTE_DELIVERY_ATTEMPTS))
+    await harness.store.save(
+      seedAttempts(harness, 1, { audience: 'internal', recipient: SALES_MAILBOX }),
+    )
+
+    harness.failEmails.clear()
+    const retried = await retryQuoteDeliveries(harness.deps, { reference: 'PC-2026-000001' })
+
+    expect(retried.status).toBe('attempts_exhausted')
+    expect(harness.sendCalls).toEqual([SALES_MAILBOX])
+    expect(retried.deliveries.map((delivery) => delivery.status)).toEqual(['failed', 'sent'])
   })
 })

@@ -311,6 +311,9 @@ envía. Un fallo **no pierde** el presupuesto.
   `status: "already_delivered"` cuando ya se había enviado a todos (no se reenvía nada).
   `status: "in_progress"` cuando **otra petición simultánea** tiene el envío reclamado: esta no
   envía nada y devuelve el estado real de cada entrega.
+  `status: "attempts_exhausted"` cuando la entrega de ese destinatario ya gastó su tope de intentos
+  (100, `MAX_QUOTE_DELIVERY_ATTEMPTS`): no se renderiza ni se envía nada y el motivo queda en
+  `lastError`. Para volver a entregarla hay que pedir una **versión nueva** del documento.
 - `502` `{ "status": "incomplete", "reason": "pdf_render_failed" | "email_send_failed", … }` si algo
   falló; el detalle por destinatario va en `deliveries` (`status`: `pending` | `sent` | `failed`,
   con `attempts` y `lastError`). El presupuesto sigue emitido y se reintenta.
@@ -328,6 +331,12 @@ variable responde `503` `ADMIN_API_DISABLED` y con credenciales incorrectas `401
 una acción con coste y superficie de abuso, así que queda detrás de la guarda provisional
 (CIF-9/CIF-14) hasta que el propietario decida quién la lanza.
 
+**Tope de intentos.** Una entrega admite como máximo `MAX_QUOTE_DELIVERY_ATTEMPTS` (100) intentos.
+Al agotarlos queda **fallida y terminal**: no se reintenta sola, no se puede reclamar y el motivo
+(`Se agotaron los 100 intentos de envío; envía una nueva versión del documento para reintentarlo`)
+se guarda en `lastError`. Así un fallo permanente no reintenta para siempre. Volver a entregar el
+mismo destinatario exige emitir una versión nueva del documento, que estrena contador.
+
 ## POST /api/quotes/:reference/delivery/retry
 
 Reintenta las entregas pendientes o fallidas del presupuesto. Las ya enviadas **no** se reenvían.
@@ -336,6 +345,10 @@ Cuerpo opcional `{ "version": 1 }` para acotar el reintento a una versión del d
 - `200` `{ "status": "delivered", … }` si el reintento salió bien.
 - `200` `{ "status": "nothing_to_retry", … }` si no quedaba nada por enviar (no renderiza el PDF).
 - `200` `{ "status": "in_progress", … }` si otra petición simultánea tiene reclamadas las entregas.
+- `200` `{ "status": "attempts_exhausted", "reason": "attempts_exhausted", … }` si alguna entrega
+  gastó sus intentos sin enviarse: se cierra como `failed` con el motivo legible y no se renderiza ni
+  se envía nada. Es un estado terminal, no un error de validación: la salida es pedir una versión
+  nueva del documento.
 - `502` `{ "status": "incomplete", … }` si vuelve a fallar.
 
 El documento del reintento conserva los datos del cliente aunque su entrega ya se haya enviado y

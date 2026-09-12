@@ -123,7 +123,8 @@
     "INVALID_QUOTE_REFERENCE": "La referencia del presupuesto no tiene un formato válido.",
     "NOT_FOUND": "No hemos encontrado lo que buscas.",
     "INVALID_QUOTE_DELIVERY": "La entrega del presupuesto no es válida",
-    "INVALID_QUOTE_DELIVERY_TRANSITION": "La entrega del presupuesto no puede cambiar de estado"
+    "INVALID_QUOTE_DELIVERY_TRANSITION": "La entrega del presupuesto no puede cambiar de estado",
+    "QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED": "La entrega agotó sus intentos: envía una nueva versión del presupuesto para reintentarla."
   },
   "ManualQuoteReasons": {
     "size_above_series_max": "La medida {width}×{height} mm supera el máximo de la serie \"{series}\" ({maxWidth}×{maxHeight} mm)",
