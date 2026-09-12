@@ -55,6 +55,15 @@ const files = SOURCES.flatMap((directory) => readSources(directory, SOURCE_EXTEN
 const styleFiles = SOURCES.flatMap((directory) => readSources(directory, STYLE_EXTENSIONS))
 
 /**
+ * Único fichero del panel autorizado a conocer la capa de aplicación y la raíz de composición:
+ * el punto de intercambio documentado en ADR-0023 §3. La fase 1 lo resolvía con el adaptador de
+ * fixtures; la fase 2 (CIF-242) resuelve ahí la lectura real (puerto de lectura + caso de uso).
+ * El resto de `src/ui/admin/**` y de `src/app/[locale]/admin/**` sigue sin conocer Prisma, los
+ * casos de uso ni el contenedor: la frontera es este fichero y solo este.
+ */
+const APPLICATION_SWAP_POINTS = ['admin-catalog-reader.factory.ts']
+
+/**
  * El catálogo de mensajes también pinta en el panel: un pictograma metido en `messages/*.json` se
  * ve igual que uno en el JSX, y la guarda de fuentes no lo miraba (H1 de CIF-300 → CIF-311).
  */
@@ -937,10 +946,18 @@ describe('guardas estáticas del panel', () => {
 
   it('la presentación no conoce infraestructura, aplicación ni la raíz de composición', () => {
     const offenders = files
+      .filter(({ path }) => !APPLICATION_SWAP_POINTS.includes(basename(path)))
       .filter(({ content }) => /from '@\/(infrastructure|application|composition)/.test(content))
       .map(({ path }) => path)
 
     expect(offenders).toEqual([])
+  })
+
+  it('la excepción de capas es exactamente el punto de intercambio de la lectura real', () => {
+    const swapPoints = files.filter(({ path }) => APPLICATION_SWAP_POINTS.includes(basename(path)))
+
+    expect(swapPoints.map(({ path }) => basename(path))).toEqual(APPLICATION_SWAP_POINTS)
+    expect(swapPoints[0]?.content).toMatch(/from '@\/(application|composition)/)
   })
 })
 

@@ -1,3 +1,4 @@
+import type { AdminCatalogReadPort } from '@/application/ports/admin-catalog-reader'
 import type {
   AccessoryRepository,
   ColorRepository,
@@ -22,6 +23,7 @@ import { createDemoCatalogStore } from '@/infrastructure/demo/demo-catalog'
 import { ConsoleEmailSender } from '@/infrastructure/email/console-email-sender'
 import { ResendEmailSender } from '@/infrastructure/email/resend-email-sender'
 import { CryptoIdGenerator } from '@/infrastructure/id/crypto-id-generator'
+import { InMemoryAdminCatalogReader } from '@/infrastructure/persistence/in-memory/admin-catalog-reader'
 import { ReactPdfQuoteRenderer } from '@/infrastructure/pdf/react-pdf-quote-renderer'
 import {
   InMemoryAccessoryRepository,
@@ -38,6 +40,7 @@ import {
   InMemoryQuoteRepository,
   InMemoryQuoteStore,
 } from '@/infrastructure/persistence/in-memory/quote-store'
+import { PrismaAdminCatalogReader } from '@/infrastructure/persistence/prisma/admin-catalog-reader'
 import { getPrismaClient } from '@/infrastructure/persistence/prisma/client'
 import { PrismaQuoteDeliveryRepository } from '@/infrastructure/persistence/prisma/quote-delivery-repository'
 import {
@@ -72,6 +75,8 @@ export interface Container {
   readonly accessoryRepository: AccessoryRepository
   readonly tariffPricingRepository: TariffPricingRepository
   readonly tariffVersionRepository: TariffVersionRepository
+  /** Lectura de administración del panel (ADR-0023 §6): catálogo completo, cualquier estado. */
+  readonly adminCatalogReader: AdminCatalogReadPort
   readonly quoteRepository: QuoteRepository
   readonly quoteDeliveryRepository: QuoteDeliveryRepository
   readonly manualQuoteRequestRepository: ManualQuoteRequestRepository
@@ -97,6 +102,7 @@ function createDemoContainer(): Container {
     accessoryRepository: new InMemoryAccessoryRepository(catalog),
     tariffPricingRepository: new InMemoryTariffPricingRepository(catalog),
     tariffVersionRepository: new InMemoryTariffVersionRepository(catalog),
+    adminCatalogReader: new InMemoryAdminCatalogReader(catalog),
     quoteRepository: new InMemoryQuoteRepository(quotes),
     quoteDeliveryRepository: new InMemoryQuoteDeliveryRepository(),
     manualQuoteRequestRepository: new InMemoryManualQuoteRequestRepository(quotes),
@@ -121,6 +127,7 @@ function createPrismaContainer(connectionString: string): Container {
     accessoryRepository: new PrismaAccessoryRepository(prisma),
     tariffPricingRepository: new PrismaTariffPricingRepository(prisma),
     tariffVersionRepository: new PrismaTariffVersionRepository(prisma),
+    adminCatalogReader: new PrismaAdminCatalogReader(prisma),
     quoteRepository: new PrismaQuoteRepository(prisma),
     quoteDeliveryRepository: new PrismaQuoteDeliveryRepository(prisma),
     manualQuoteRequestRepository: new PrismaManualQuoteRequestRepository(prisma),
