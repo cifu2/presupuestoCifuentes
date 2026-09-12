@@ -1,0 +1,103 @@
+/* Estilos del panel que no se expresan con utilidades: el scrim del backdrop y el apilado de las
+   tablas en móvil. Los colores salen siempre de los tokens de `sistema-de-diseno` §2. */
+
+/* `skip link` del shell: invisible hasta que recibe el foco con el teclado. */
+.admin-skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 60;
+  border-radius: var(--radius-control);
+  background: var(--color-brand-800);
+  color: var(--color-ink-inverse);
+  padding: 8px 12px;
+}
+
+.admin-skip:focus {
+  left: 8px;
+  top: 8px;
+}
+
+dialog::backdrop {
+  background: var(--color-scrim);
+}
+
+.admin-dialog {
+  /* El preflight de Tailwind v4 (`* { margin: 0 }`) anula el `margin: auto` con el que la hoja del
+     navegador centra `dialog:modal`: sin esta línea el modal queda pegado a la esquina superior
+     izquierda (H2 de CIF-281). El bloque de móvil de abajo lo devuelve a hoja inferior. */
+  margin: auto;
+  border: 0;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-lg);
+  padding: 0;
+  max-width: 560px;
+  width: calc(100vw - 32px);
+  background: var(--color-surface);
+  color: var(--color-brand-900);
+}
+
+/* Móvil: el diálogo es una hoja inferior (`sistema-de-diseno` §5, `prototipos-y-flujos` §7). */
+@media (max-width: 767px) {
+  .admin-dialog {
+    position: fixed;
+    inset: auto 0 0 0;
+    margin: 0;
+    width: 100%;
+    max-width: none;
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
+  }
+}
+
+/* La tabla se convierte en tarjetas: cada celda lleva su etiqueta en `data-label`. */
+@media (max-width: 767px) {
+  .admin-table,
+  .admin-table tbody,
+  .admin-table tr,
+  .admin-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .admin-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .admin-table tr {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    background: var(--color-surface);
+    padding: 8px 12px;
+    margin-bottom: 12px;
+  }
+
+  .admin-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    border: 0;
+    padding: 6px 0;
+    text-align: right;
+  }
+
+  .admin-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--color-ink-muted);
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-panel *,
+  .admin-panel *::before,
+  .admin-panel *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

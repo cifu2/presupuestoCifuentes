@@ -77,24 +77,153 @@
     "backHome": "Volver a la página principal"
   },
   "CatalogAdmin": {
-    "title": "Catálogo",
-    "loading": "Cargando el catálogo…",
-    "error": "No se pudo cargar el catálogo. Vuelve a intentarlo.",
+    "a11y": {
+      "skip": "Saltar al contenido",
+      "openMenu": "Abrir menú",
+      "closeMenu": "Cerrar menú",
+      "sortBy": "Ordenar por {column}",
+      "editSeries": "Editar {name}",
+      "locale": "Idioma",
+      "sidebarSections": "Secciones del panel",
+      "tabs": "Secciones de la serie"
+    },
+    "appTag": "panel",
+    "colors": {
+      "help": "Cada color se define con nombre y RAL/hex; es lo que pinta la vista previa 2D."
+    },
+    "confirm": {
+      "publishTitle": "Publicar serie",
+      "cancel": "Cancelar",
+      "publishCta": "Publicar ahora"
+    },
+    "deactivate": "Desactivar",
+    "detail": {
+      "title": "Serie A",
+      "nameEs": "Nombre (ES)",
+      "nameEn": "Nombre (EN)",
+      "translated": "Traducido",
+      "slug": "Identificador web",
+      "slugHelp": "Se genera solo y no cambia al renombrar, para no romper enlaces.",
+      "status": "Estado",
+      "draftNotice": "Los cambios se guardan como borrador hasta que publiques. Publicar no altera los presupuestos ya emitidos (precio congelado)."
+    },
+    "editPrice": "Editar precio",
     "empty": "Todavía no hay elementos en el catálogo.",
+    "error": {
+      "title": "No hemos podido cargar los datos.",
+      "retry": "Reintentar"
+    },
     "fields": {
       "name": "Nombre",
       "description": "Descripción"
     },
-    "translations": "Traducciones",
-    "translatedInto": "Traducido al {language}",
-    "missingTranslation": "Falta la traducción al {language}",
+    "finish": {
+      "lacquered": "Lacado (colores RAL)",
+      "naturalVeneer": "Chapa natural",
+      "aluminium": "Aluminio",
+      "steel": "Acero inoxidable"
+    },
+    "finishes": {
+      "help": "Marca los acabados que ofrece esta serie. El color se define en la sección Colores."
+    },
+    "forbidden": {
+      "help": "Pide acceso al propietario de la cuenta."
+    },
+    "history": "Historial de cambios",
+    "i18n": {
+      "es": "Español (ES)",
+      "en": "Inglés (EN)",
+      "complete": "Completo",
+      "help": "Una serie no se publica en un idioma hasta que su nombre y descripción están traducidos."
+    },
+    "languages": {
+      "title": "Idiomas del catálogo",
+      "active": "Activo"
+    },
+    "loading": "Cargando…",
+    "measures": {
+      "minWidth": "Ancho mínimo",
+      "maxWidth": "Ancho máximo",
+      "minHeight": "Alto mínimo",
+      "maxHeight": "Alto máximo",
+      "help": "Por encima del máximo, el configurador pasa a presupuesto manual. Por debajo del mínimo, muestra un error y no da precio."
+    },
+    "missingTranslation": "Falta traducción",
     "missingTranslations": "Faltan traducciones",
-    "save": "Guardar",
+    "nav": {
+      "section": "Catálogo",
+      "series": "Series",
+      "finishes": "Acabados",
+      "colors": "Colores",
+      "accessories": "Accesorios",
+      "tariffs": "Tarifas",
+      "languages": "Idiomas",
+      "viewSite": "Ver web ↗"
+    },
+    "newSeries": "+ Nueva serie",
+    "newTariffVersion": "+ Nueva versión",
+    "placeholder": "Sección de ejemplo del prototipo.",
     "publish": "Publicar",
-    "unpublish": "Despublicar",
-    "deactivate": "Desactivar",
-    "editPrice": "Editar precio",
-    "history": "Historial de cambios"
+    "publishConfirm": "Al publicar, la serie y sus precios serán visibles en la web. ¿Continuar?",
+    "retry": "Reintentar",
+    "save": "Guardar",
+    "saveDraft": "Guardar borrador",
+    "sectionForbidden": "No tienes acceso a esta sección.",
+    "series": {
+      "title": "Series",
+      "caption": "Series del catálogo. La tarifa vigente es la que ve el configurador.",
+      "col": {
+        "status": "Estado",
+        "name": "Nombre",
+        "max": "Medidas máx.",
+        "finishes": "Acabados",
+        "tariff": "Tarifa",
+        "actions": "Acciones"
+      },
+      "edit": "Editar"
+    },
+    "seriesEmpty": "Todavía no hay series.",
+    "seriesEmptyHelp": "Crea la primera serie para publicarla en el configurador.",
+    "session": {
+      "owner": "Propietario"
+    },
+    "status": {
+      "draft": "Borrador",
+      "published": "Publicada",
+      "archived": "Archivada"
+    },
+    "tabs": {
+      "general": "General",
+      "measures": "Medidas",
+      "finishes": "Acabados",
+      "tariffs": "Tarifas",
+      "translations": "ES | EN"
+    },
+    "tariffs": {
+      "col": {
+        "version": "Versión",
+        "status": "Estado",
+        "from": "Vigente desde",
+        "prices": "Precios",
+        "series": "Serie"
+      },
+      "current": "Vigente",
+      "view": "Ver",
+      "edit": "Editar",
+      "caption": "Versiones de tarifa de la serie. Solo una está vigente.",
+      "allCaption": "Todas las versiones de tarifa del catálogo.",
+      "frozen": "El precio queda congelado al emitir el presupuesto: publicar una tarifa nueva no cambia los presupuestos ya enviados."
+    },
+    "tariffsEmpty": "Sin tarifas para esta serie.",
+    "title": "Catálogo",
+    "toast": {
+      "saved": "Borrador guardado.",
+      "published": "Serie publicada. Ya es visible en la web.",
+      "retrying": "Reintentando…"
+    },
+    "translatedInto": "Traducido al {language}",
+    "translations": "Traducciones",
+    "unpublish": "Despublicar"
   },
   "DomainErrors": {
     "INVALID_VALUE": "Hay un dato con un valor que no es válido.",
