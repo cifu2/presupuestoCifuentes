@@ -11,6 +11,7 @@ apartado _Seguridad_).
 | `DATABASE_URL`         | Neon, base `presupuesto_production` | Neon, base `presupuesto_preview` | PostgreSQL local o rama dev | Vercel (`DATABASE_URL__PRODUCTION` / `DATABASE_URL__PREVIEW`) y `.env.local` |
 | `NEXT_PUBLIC_SITE_URL` | `https://<dominio-produccion>`      | URL del deployment de preview    | `http://localhost:3000`     | Vercel (Production / Preview) y `.env.local`                                 |
 | `CATALOG_DEMO_MODE`    | `false`                             | `false`                          | `false`                     | Vercel (opcional) y `.env.local`                                             |
+| `ADMIN_PANEL_ENABLED`  | `false` (panel cerrado)             | no definida                      | no definida                 | Vercel (Production, opcional) y `.env.local`                                 |
 | `QUOTE_VALIDITY_DAYS`  | `30`                                | `30`                             | `30`                        | Vercel (opcional) y `.env.local`                                             |
 | `ADMIN_API_TOKEN`      | no definida (opcional)              | no definida                      | valor de desarrollo         | Vercel (Production, opcional) y `.env.local`                                 |
 | `ADMIN_SESSION_SECRET` | valor propio del despliegue (≥ 32)  | no definida                      | valor de desarrollo         | Vercel (Production) y `.env.local`                                           |
@@ -39,6 +40,27 @@ consume el bootstrap de Vercel.
   variantes `1`/`0`, `yes`/`no`, `on`/`off`); un valor ambiguo falla al arrancar en lugar de
   activar el modo demo en silencio. `z.coerce.boolean()` no vale porque `Boolean("false")` es
   `true` (CIF-74).
+- `ADMIN_PANEL_ENABLED` es el interruptor de la guarda del shell del panel
+  ([ADR-0023](adr/0023-arranque-panel-shell-presentacion.md) §5) y se lee con el **mismo booleano
+  textual** que `CATALOG_DEMO_MODE` (`environmentFlag`). Solo interviene en _Production_, donde el
+  panel está **cerrado por defecto**: el shell no se sirve y solo se abre con
+  `ADMIN_PANEL_ENABLED=true`. Quien no tiene sesión no llega a ver la diferencia, porque el Proxy de
+  [ADR-0024](adr/0024-autenticacion-panel-sesion-firmada.md) §5 lo redirige antes a
+  `/[locale]/acceso`; con sesión válida, la guarda cerrada es un `404`. En _Preview_ y en local la
+  guarda no interviene y el panel se sirve sin la variable. Un valor ambiguo no abre nada: la guarda
+  lo rechaza en cada petición a esa ruta (el sitio público sigue vivo).
+- **`ADMIN_PANEL_ENABLED` y `CATALOG_DEMO_MODE` son puertas independientes:** las dos pueden dejar
+  servido el shell, pero por vías distintas. El catálogo en memoria lo sirve el contenedor cuando
+  `CATALOG_DEMO_MODE=true` **o** cuando no hay `DATABASE_URL` (`src/composition/container.ts`),
+  mientras que la guarda de ADR-0023 §5 solo se abre con `CATALOG_DEMO_MODE=true`: un despliegue sin
+  `DATABASE_URL` y con `CATALOG_DEMO_MODE=false` sirve el catálogo de fixture pero mantiene el panel
+  **cerrado** (`404` con sesión válida). En _Production_, `CATALOG_DEMO_MODE=true` es inválido (la
+  web no usa los datos reales de Neon **y** la guarda deja de cerrar el shell, que sigue detrás de la
+  sesión de ADR-0024); la combinación válida es `CATALOG_DEMO_MODE` sin definir o a `false`, con
+  `ADMIN_PANEL_ENABLED=true` solo si el propietario decide servir el panel.
+  `scripts/despliegue-preflight.sh` marca `PENDIENTE` si `CATALOG_DEMO_MODE` está activa en
+  _Production_ y solo **informa** del estado de `ADMIN_PANEL_ENABLED`, que sí es un interruptor
+  legítimo.
 - `NEXT_PUBLIC_SITE_URL` es pública por diseño (viaja al navegador). `DATABASE_URL` es un secreto: se
   marca como _Sensitive_ en Vercel y no se lee nunca desde el cliente.
 - `ADMIN_API_TOKEN` es la credencial **opcional** de automatización del API del panel: se envía como
@@ -79,6 +101,12 @@ No queda ninguna variable exigible pendiente de inyectar en _Production_. `ADMIN
 se han inyectado en _Preview_ porque no hay consumidor de la sesión ahí y la base de preview es
 desechable. `ADMIN_API_TOKEN` **no se despliega**: es la credencial opcional de automatización y el
 propietario entra con la sesión (CIF-123).
+
+`ADMIN_PANEL_ENABLED` no está definida en ningún entorno y es lo correcto: en _Production_ el shell
+del panel queda **cerrado por defecto** (con sesión válida, `/[locale]/admin/**` responde `404`) y
+solo se sirve si el propietario decide activar el interruptor. `CATALOG_DEMO_MODE` tampoco está
+definida: su valor por defecto es `false`, que es el único válido en _Production_ (el preflight marca
+`PENDIENTE` si se activa).
 
 **Una variable definida en Vercel no está en vigor hasta el siguiente despliegue de _Production_**
 (regla 1 de §2). La sesión ya está activa: el despliegue de producción es `main@9cc3efc`
@@ -243,3 +271,7 @@ si queda algo pendiente: es la primera parada cuando el despliegue no arranca. E
 de clave y nunca por subcadena** (sin las dos últimas la sesión del panel falla cerrada,
 `/[locale]/admin/**` queda denegado y `POST /api/admin/session` responde `503 ADMIN_ACCESS_DISABLED`,
 CIF-241). `ADMIN_API_TOKEN` no se exige: es la credencial opcional de automatización (CIF-123).
+Además, con el inventario de _Production_ delante, marca `PENDIENTE` si `CATALOG_DEMO_MODE` está
+activa (el catálogo en memoria sustituye a los datos reales y la guarda de ADR-0023 §5 deja de cerrar
+el shell del panel) e informa del estado de `ADMIN_PANEL_ENABLED` (cerrado por defecto, abierto solo
+si el propietario lo activa).
