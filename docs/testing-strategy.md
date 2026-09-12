@@ -62,12 +62,16 @@ mapa de flujos a specs, los datos de prueba y la plantilla de informe de fallo e
 
 `.github/workflows/ci.yml` ejecuta:
 
-- `calidad`: `format:check` → `lint` → `typecheck` → `pnpm db:deploy` → `test:coverage` → 5 pasadas
+- `calidad`: `lint` → `typecheck` → `pnpm db:deploy` → `test:coverage` → 5 pasadas
   consecutivas de `repositories.test.ts`, con un servicio `postgres:17` efímero y
   `TEST_DATABASE_URL` apuntando a `cifuentes_test`, para que los tests de integración se ejecuten en
-  lugar de saltarse. Al final, `./scripts/health-http-check.sh` (CIF-456) sirve la build de
+  lugar de saltarse. Después, `./scripts/health-http-check.sh` (CIF-456) sirve la build de
   producción y comprueba el contrato HTTP de `/api/health` en sus cuatro estados (200 `ok`, 200
   `unconfigured`, 503 `unmigrated` y 503 `unreachable`); deja `salud-http.log` como artefacto.
+  **`format:check` es el último paso de verificación** (CIF-489): cuando iba antes, un hallazgo de
+  formato dejaba en `skipped` lint, tipos, unitarios, guardas de scripts y barrido de secretos, así
+  que un espacio en blanco ocultaba el resto de la señal del job y obligaba a otro ciclo de CI. La
+  guarda de `src/config/ci-workflow.test.ts` fija ese orden.
 - `e2e`: instalación de Chromium → build → `pnpm e2e`; ante un fallo sube `playwright-report/` y
   `test-results/` (informe, capturas, trazas y vídeo del reintento).
 
