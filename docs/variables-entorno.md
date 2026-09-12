@@ -66,14 +66,28 @@ consume el bootstrap de Vercel.
 Inventario de _Production_ y _Preview_ del proyecto `presupuesto-cifuentes` leído de la API de Vercel
 (metadatos, nunca valores):
 
-| Entorno       | Claves definidas                                         |
-| ------------- | -------------------------------------------------------- |
-| _Production_  | `DATABASE_URL` (Sensitive), `NEXT_PUBLIC_SITE_URL`       |
-| _Preview_     | `DATABASE_URL` (Sensitive)                               |
-| _Development_ | ninguna (las credenciales locales viven en `.env.local`) |
+| Entorno       | Claves definidas                                                                                                           |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| _Production_  | `DATABASE_URL` (Sensitive), `NEXT_PUBLIC_SITE_URL`, `ADMIN_SESSION_SECRET` (Sensitive), `ADMIN_PANEL_PASSWORD` (Sensitive) |
+| _Preview_     | `DATABASE_URL` (Sensitive)                                                                                                 |
+| _Development_ | ninguna (las credenciales locales viven en `.env.local`)                                                                   |
 
-Pendiente de inyectar en _Production_ (y en _Preview_ si se quiere probar el acceso antes de
-producción): `ADMIN_API_TOKEN` (CIF-123), `ADMIN_SESSION_SECRET` y `ADMIN_PANEL_PASSWORD` (CIF-241).
+Pendiente de inyectar en _Production_: `ADMIN_API_TOKEN` (CIF-123, en revisión). `ADMIN_SESSION_SECRET`
+y `ADMIN_PANEL_PASSWORD` se inyectaron como _Sensitive_ el 2026-09-12 (CIF-245); no se han inyectado
+en _Preview_ por el mismo criterio que `ADMIN_API_TOKEN`: no hay consumidor y la base de preview es
+desechable.
+
+**Una variable definida en Vercel no está en vigor hasta el siguiente despliegue de _Production_**
+(regla 1 de §2). Al cierre de esta anotación, `main@fbef05f` (el _squash_ del PR #49, CIF-241) sigue
+**sin despliegue de producción**: el merge se topó con la cuota de despliegues del plan gratuito
+([ADR-0019](adr/0019-cuota-despliegues-vercel.md), runbook de [despliegue.md](despliegue.md) §4.1) y
+producción continúa sirviendo el deployment anterior, que no incluye las rutas del panel. Por tanto
+`ADMIN_SESSION_SECRET` y `ADMIN_PANEL_PASSWORD` están **inyectadas pero todavía no activas**; la
+verificación en producción de `POST /api/admin/session`, de la guarda de `/[locale]/admin/**` y de
+`/[locale]/acceso` queda pendiente de ese despliegue (CIF-248).
+
+El valor de `ADMIN_PANEL_PASSWORD` se propuso al consejo en el gestor de secretos (ADR-0014) para que
+el propietario pueda **leerlo**; la propuesta sigue pendiente de aprobación. Nunca se escribe aquí.
 
 `ADMIN_API_TOKEN` **no está definida en ningún entorno**, así que el API del panel responde `503`
 (`ADMIN_API_DISABLED`) en producción. La decisión es definirla **solo en _Production_** por ahora: el
