@@ -33,6 +33,9 @@ mapa de flujos a specs, los datos de prueba y la plantilla de informe de fallo e
 - Datos de prueba con factorías; nada de literales gigantes repetidos.
 - Un test debe poder ejecutarse solo: `pnpm test -- money` o `pnpm e2e -- --grep "tamaño máximo"`.
 - Prohibido `skip`, `only` o `fixme` sin acuerdo del CTO en el PR.
+- **Verificación previa al push:** `pnpm secret:scan` solo mira ficheros **rastreados** por git. Con
+  ficheros nuevos hay que ejecutarlo **después** de `git add` (o usar `--values-stdin`); antes del
+  `git add` da un verde falso y el CI lo destapa con el PR ya abierto.
 
 ## Cobertura
 
