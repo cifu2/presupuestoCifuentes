@@ -40,8 +40,10 @@ servidores propios en ningún entorno ([ADR-0007](adr/0007-despliegue-vercel-git
    Cuando exista un segundo colaborador, se vuelve a activar `required_pull_request_reviews`
    (`REPO_REQUIRED_APPROVALS=1`, apartado 6.2).
 3. La configuración del proyecto de Vercel (framework Next.js, `pnpm build`, Node de `.nvmrc`) se
-   detecta sola; no hace falta `vercel.json`. Si en el futuro hiciera falta configuración, se
-   versiona en el repositorio.
+   detecta sola y no se duplica en el repositorio. El `vercel.json` versionado solo declara qué ramas
+   **no** generan despliegue (`git.deploymentEnabled`, [ADR-0019](adr/0019-cuota-despliegues-vercel.md)):
+   `dependabot/**` y `archive/**`. Nunca lleva configuración de build y su contenido está fijado por
+   `src/config/vercel-config.test.ts`.
 
 ### Flujo de un cambio
 
@@ -107,6 +109,36 @@ servidores propios en ningún entorno ([ADR-0007](adr/0007-despliegue-vercel-git
 - **Ventana de vigilancia:** los 15 minutos siguientes al release se revisan los despliegues de
   Vercel, el endpoint de salud y los avisos de Neon (ver [operacion.md](operacion.md)). Si algo falla,
   se aplica el apartado 5.
+
+### 4.1 Cuota de despliegues del plan gratuito de Vercel
+
+El plan gratuito permite **100 despliegues cada 24 h** por cuenta (`api-deployments-free-per-day`) y la
+ventana es **rodante**, no de día natural. Cuando se agota, Vercel no encola el despliegue y el check
+`Vercel` del commit queda en `failure` con `Deployment rate limited — retry in 24 hours`. Medido el
+2026-09-12 (CIF-149): 111 despliegues en 24 h, `remaining: 0`; a las 00:56Z el límite bloqueaba y a
+las 01:01Z ya había un hueco. La decisión de fondo está en
+[ADR-0019](adr/0019-cuota-despliegues-vercel.md).
+
+**Runbook: un merge a `main` se quedó sin despliegue de producción**
+
+1. **Confirmar que es cuota y no un fallo de build.** El check `Vercel` del commit (o la API) nombra
+   `api-deployments-free-per-day`; cualquier otro mensaje es un fallo de build normal y se trata como
+   tal.
+2. **Reintentar pasados unos minutos, sin tocar nada más.** La ventana es rodante: el hueco reaparece
+   solo, no hace falta esperar 24 h.
+3. **Relanzar el despliegue de producción del commit que está en `main`** (API de Vercel o panel →
+   «Redeploy» de ese commit). No se despliega otra rama ni otro commit para «dar el release por bueno».
+4. **Verificar el release antes de cerrarlo:** el deployment queda `READY` y
+   `curl -fsS https://<dominio-produccion>/api/health` responde `200` con `status: "ok"`. Mientras eso
+   no ocurra, producción no corresponde a `main`.
+5. **Anotar en la tarea de Paperclip** la hora, el commit, el resultado y si hubo que reintentar. Si el
+   reintento vuelve a fallar, DevOps lo escala al CTO con el consumo medido (ADR-0019, punto 6).
+
+**Reglas de consumo** ([ADR-0019](adr/0019-cuota-despliegues-vercel.md)): un push crea un preview, así
+que los cambios de una rama se agrupan y se empujan cuando están listos para revisión, no en cada
+iteración; no se relanza un despliegue si el del mismo commit ya está en cola o listo; y las ramas
+`dependabot/**` y `archive/**` no generan preview (`git.deploymentEnabled` en `vercel.json`). Las
+ramas con código, incluidas `docs/**`, conservan su preview: QA valida el PR ahí.
 
 ## 5. Rollback
 
@@ -297,3 +329,4 @@ La resolución del lockfile depende de dos ajustes que deben contar la misma pol
 - [Base de datos, backups y monitorización](operacion.md)
 - [ADR-0007 — Despliegue en Vercel con el código en GitHub](adr/0007-despliegue-vercel-github.md)
 - [ADR-0006 — Calidad: tests, cobertura y puerta de E2E en CI](adr/0006-calidad-y-ci.md)
+- [ADR-0019 — Mitigación de la cuota diaria de despliegues del plan gratuito de Vercel](adr/0019-cuota-despliegues-vercel.md)
