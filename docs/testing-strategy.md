@@ -58,9 +58,10 @@ mapa de flujos a specs, los datos de prueba y la plantilla de informe de fallo e
 
 `.github/workflows/ci.yml` ejecuta:
 
-- `calidad`: `format:check` → `lint` → `typecheck` → `pnpm db:deploy` → `test:coverage`, con un
-  servicio `postgres:17` efímero y `TEST_DATABASE_URL` apuntando a `cifuentes_test`, para que los
-  tests de integración se ejecuten en lugar de saltarse.
+- `calidad`: `format:check` → `lint` → `typecheck` → `pnpm db:deploy` → `test:coverage` → 5 pasadas
+  consecutivas de `repositories.test.ts`, con un servicio `postgres:17` efímero y
+  `TEST_DATABASE_URL` apuntando a `cifuentes_test`, para que los tests de integración se ejecuten en
+  lugar de saltarse.
 - `e2e`: instalación de Chromium → build → `pnpm e2e`; ante un fallo sube `playwright-report/` y
   `test-results/` (informe, capturas, trazas y vídeo del reintento).
 
@@ -80,5 +81,15 @@ Los tests de integración (`src/infrastructure/**/*.test.ts`) se declaran con
 debe garantizarla. La guarda está en `src/config/ci-workflow.test.ts`, para que nadie quite el
 servicio ni renombre los checks requeridos sin que el CI lo note. Los datos son los que siembra cada
 test y se limpian al terminar; no se usa ninguna base de datos real ni credenciales de cliente.
+
+### Carreras: entrelazado forzado, no scheduling
+
+Una prueba de concurrencia no puede depender de cómo reparta el runner los _await_ de dos peticiones:
+el resultado cambia entre 2-0 y 1-1 sin que el código haya cambiado. La carrera de entrega de
+presupuestos (CIF-175 F1) se fuerza con una costura en el doble de email (`makeDoubles(onSend)`) que
+deja la primera petición dentro del envío con sus dos reservas vivas mientras arranca la segunda, y
+las afirmaciones se hacen sobre la **reserva idempotente** (una fila y un intento por destinatario,
+un correo por destinatario) y no sobre cuántas respuestas ven `delivered`. La repetición de las 5
+pasadas en `calidad` es la evidencia de que el escenario es determinista (CIF-406).
 
 Procedimiento y plantilla de informes de fallo: [e2e-playbook.md](e2e-playbook.md).
