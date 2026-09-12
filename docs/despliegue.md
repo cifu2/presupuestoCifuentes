@@ -40,9 +40,10 @@ servidores propios en ningún entorno ([ADR-0007](adr/0007-despliegue-vercel-git
    Cuando exista un segundo colaborador, se vuelve a activar `required_pull_request_reviews`
    (`REPO_REQUIRED_APPROVALS=1`, apartado 6.2).
 3. La configuración del proyecto de Vercel (framework Next.js, `pnpm build`, Node de `.nvmrc`) se
-   detecta sola y no se duplica en el repositorio. El único `vercel.json` previsto es el de
-   [ADR-0019](adr/0019-cuota-despliegues-vercel.md): declara qué ramas **no** generan despliegue
-   (`git.deploymentEnabled`), nunca configuración de build.
+   detecta sola y no se duplica en el repositorio. El `vercel.json` versionado solo declara qué ramas
+   **no** generan despliegue (`git.deploymentEnabled`, [ADR-0019](adr/0019-cuota-despliegues-vercel.md)):
+   `dependabot/**` y `archive/**`. Nunca lleva configuración de build y su contenido está fijado por
+   `src/config/vercel-config.test.ts`.
 
 ### Flujo de un cambio
 
@@ -131,13 +132,13 @@ las 01:01Z ya había un hueco. La decisión de fondo está en
    `curl -fsS https://<dominio-produccion>/api/health` responde `200` con `status: "ok"`. Mientras eso
    no ocurra, producción no corresponde a `main`.
 5. **Anotar en la tarea de Paperclip** la hora, el commit, el resultado y si hubo que reintentar. Si el
-   reintento vuelve a fallar, DevOps lo escala al CTO con el consumo medido (ADR-0019, punto 5).
+   reintento vuelve a fallar, DevOps lo escala al CTO con el consumo medido (ADR-0019, punto 6).
 
 **Reglas de consumo** ([ADR-0019](adr/0019-cuota-despliegues-vercel.md)): un push crea un preview, así
 que los cambios de una rama se agrupan y se empujan cuando están listos para revisión, no en cada
 iteración; no se relanza un despliegue si el del mismo commit ya está en cola o listo; y las ramas
-`docs/**`, `dependabot/**` y `archive/**` no generan preview (`git.deploymentEnabled` en
-`vercel.json`), de modo que una rama `docs/**` que toque código no puede fusionarse.
+`dependabot/**` y `archive/**` no generan preview (`git.deploymentEnabled` en `vercel.json`). Las
+ramas con código, incluidas `docs/**`, conservan su preview: QA valida el PR ahí.
 
 ## 5. Rollback
 
