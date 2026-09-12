@@ -36,6 +36,15 @@ describe('getSystemStatus', () => {
     expect(status).toEqual({ status: 'degraded', database: 'unreachable', checkedAt: CHECKED_AT })
   })
 
+  it('devuelve degraded y database unmigrated cuando la base responde sin esquema', async () => {
+    const status = await getSystemStatus({
+      clock: fixedClock(CHECKED_AT),
+      healthProbe: probeReturning('unmigrated'),
+    })
+
+    expect(status).toEqual({ status: 'degraded', database: 'unmigrated', checkedAt: CHECKED_AT })
+  })
+
   it('devuelve ok y database unconfigured sin base de datos (healthProbe null)', async () => {
     const status = await getSystemStatus({ clock: fixedClock(CHECKED_AT), healthProbe: null })
 

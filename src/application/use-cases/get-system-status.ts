@@ -14,7 +14,7 @@ export interface GetSystemStatusDeps {
 export type DatabaseStatus = DatabaseHealth | 'unconfigured'
 
 export interface SystemStatus {
-  /** `degraded` cuando la base está configurada pero no responde. */
+  /** `degraded` cuando la base está configurada pero no responde o no tiene el esquema migrado. */
   status: 'ok' | 'degraded'
   database: DatabaseStatus
   checkedAt: string
@@ -34,6 +34,9 @@ export const HEALTH_PROBE_TIMEOUT_MS = 2000
  * comprobación de la base por el puerto `HealthProbe`; los adaptadores reales se inyectan en la
  * raíz de composición. Nunca propaga ni registra el error del driver, que puede contener la
  * cadena de conexión.
+ *
+ * Solo `ok` (y `unconfigured`, sin base) cuentan como sanos: `unreachable` y `unmigrated` dejan el
+ * estado en `degraded`, porque en ambos casos las rutas que tocan la base devolverían 500.
  */
 export async function getSystemStatus({
   clock,
