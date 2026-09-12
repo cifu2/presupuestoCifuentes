@@ -15,6 +15,7 @@ import {
   PLANKING_MESSAGE_KEYS,
   TYPE_MESSAGE_KEYS,
   assessSelectionSize,
+  belowMinimumAxes,
   buildConfigurationRequestBody,
   buildManualQuoteRequestBody,
   clearDraft,
@@ -144,6 +145,23 @@ describe('validación de medidas', () => {
     // Una medida imposible para el dominio no se evalúa: la valida el borde antes.
     expect(assessSelectionSize({ widthMm: 0, heightMm: 2030 }, SERIES.sizeRange)).toBeNull()
     expect(isWithinSeriesRange({ widthMm: 900, heightMm: 2030 }, SERIES.sizeRange)).toBe(true)
+  })
+
+  it('separa los ejes por debajo del mínimo para el error inline (D1)', () => {
+    expect(
+      belowMinimumAxes(assessSelectionSize({ widthMm: 900, heightMm: 2030 }, SERIES.sizeRange)),
+    ).toEqual({ width: false, height: false })
+    expect(
+      belowMinimumAxes(assessSelectionSize({ widthMm: 500, heightMm: 2030 }, SERIES.sizeRange)),
+    ).toEqual({ width: true, height: false })
+    expect(
+      belowMinimumAxes(assessSelectionSize({ widthMm: 900, heightMm: 1700 }, SERIES.sizeRange)),
+    ).toEqual({ width: false, height: true })
+    // Solo el máximo es presupuesto manual: no se marca como error inline.
+    expect(
+      belowMinimumAxes(assessSelectionSize({ widthMm: 1300, heightMm: 2030 }, SERIES.sizeRange)),
+    ).toEqual({ width: false, height: false })
+    expect(belowMinimumAxes(null)).toEqual({ width: false, height: false })
   })
 })
 

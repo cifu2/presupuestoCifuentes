@@ -226,6 +226,23 @@ test.describe('vista previa 2D del configurador', () => {
     await expect(preview(page)).toHaveAttribute('data-out-of-range', 'true')
   })
 
+  test('distingue el mínimo del máximo en el aviso de fuera de rango (D2/H2)', async ({ page }) => {
+    await page.goto(CONFIGURATOR_PATH)
+
+    await page.getByTestId('preview-width').fill('500')
+
+    await expect(page.getByTestId('preview-out-of-range')).toHaveText(
+      'La medida no llega al mínimo de la serie.',
+    )
+    await expect(preview(page)).toHaveAttribute('data-out-of-range', 'true')
+
+    await page.getByTestId('preview-width').fill('1300')
+
+    await expect(page.getByTestId('preview-out-of-range')).toHaveText(
+      'La medida supera el tamaño máximo de la serie: pasa a presupuesto manual.',
+    )
+  })
+
   test('pinta el cambio de medida en menos de 200 ms (presupuesto de móvil)', async ({ page }) => {
     await page.goto(CONFIGURATOR_PATH)
 

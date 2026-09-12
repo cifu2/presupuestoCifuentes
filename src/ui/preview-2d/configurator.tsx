@@ -167,7 +167,7 @@ export function Preview2DConfigurator(): React.JSX.Element {
         <h2 id="vista-previa" className="text-xl font-semibold text-brand-900">
           {t('previewTitle')}
         </h2>
-        <div className="mt-3 flex aspect-[3/4] max-h-[35vh] items-center justify-center overflow-hidden rounded-lg bg-[#f7f7f5] lg:max-h-none">
+        <div className="mt-3 flex aspect-[3/4] max-h-[35vh] items-center justify-center overflow-hidden rounded-lg bg-surface-muted lg:max-h-none">
           <DoorPreview
             geometry={geometry}
             className="h-full w-full"

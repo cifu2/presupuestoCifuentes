@@ -33,6 +33,7 @@ import {
   PLANKING_MESSAGE_KEYS,
   TYPE_MESSAGE_KEYS,
   assessSelectionSize,
+  belowMinimumAxes,
   buildConfigurationRequestBody,
   buildManualQuoteRequestBody,
   clearDraft,
@@ -300,22 +301,31 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
   const heightParsed = parseMeasurementInput(heightText)
   const measurementsValid = widthParsed.ok && heightParsed.ok
 
-  const price: PriceState = measurementsValid ? storedPrice : { status: 'idle' }
-  // Un presupuesto emitido deja de valer en cuanto cambia la configuración que representaba.
-  const quote: QuoteState = quoteEntry.key === priceKey ? quoteEntry.state : { status: 'idle' }
-  const setQuote = (state: QuoteState) => setQuoteEntry({ key: priceKey, state })
-  const showContact = price.status === 'priced' && contactKey === priceKey
-
   const sizeAssessment = useMemo(
     () => assessSelectionSize(selection, activeSeries.sizeRange),
     [activeSeries.sizeRange, selection],
   )
   const outOfRange = sizeAssessment?.status === 'out_of_range'
   const requiresManualQuote = outOfRange && sizeAssessment.requiresManualQuote
+  /**
+   * D1: por debajo del mínimo **no** hay presupuesto manual — es un error inline del campo. Si la
+   * configuración mezcla los dos sentidos (p. ej. ancho por encima del máximo y alto por debajo del
+   * mínimo) se muestran el error inline y el bloque manual, y este último nombra solo el máximo.
+   */
+  const { width: widthBelowMinimum, height: heightBelowMinimum } = belowMinimumAxes(sizeAssessment)
+  const belowMinimum = widthBelowMinimum || heightBelowMinimum
+  const priceBlockedByMinimum = belowMinimum && !requiresManualQuote
+
+  const price: PriceState =
+    measurementsValid && !priceBlockedByMinimum ? storedPrice : { status: 'idle' }
+  // Un presupuesto emitido deja de valer en cuanto cambia la configuración que representaba.
+  const quote: QuoteState = quoteEntry.key === priceKey ? quoteEntry.state : { status: 'idle' }
+  const setQuote = (state: QuoteState) => setQuoteEntry({ key: priceKey, state })
+  const showContact = price.status === 'priced' && contactKey === priceKey
 
   // Precio en vivo: el servidor decide; el cliente solo debounce-a y cancela lo obsoleto.
   useEffect(() => {
-    if (!measurementsValid) {
+    if (!measurementsValid || priceBlockedByMinimum) {
       return
     }
 
@@ -355,7 +365,7 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
       controller.abort()
     }
     // `priceAttempt` no interviene en la petición: solo fuerza repetirla al pulsar «Reintentar».
-  }, [measurementsValid, priceAttempt, priceKey])
+  }, [measurementsValid, priceAttempt, priceBlockedByMinimum, priceKey])
 
   const update = useCallback((patch: Partial<ConfiguratorSelection>) => {
     setRawSelection((previous) => ({ ...previous, ...patch }))
@@ -561,7 +571,7 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
   const sending = quote.status === 'sending'
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="configurator-touch flex flex-col gap-6 pb-32 lg:pb-0">
       <label className="flex flex-col gap-1 text-sm text-brand-700" htmlFor="serie">
         {t('catalog.series')}
         <select
@@ -584,49 +594,66 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
       )}
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <section
-          aria-labelledby="vista-previa"
-          className="lg:order-2 lg:sticky lg:top-6 lg:self-start"
-        >
-          <h2 id="vista-previa" className="text-xl font-semibold text-brand-900">
-            {tPreview('previewTitle')}
-          </h2>
-          <div className="mt-3 flex aspect-[3/4] max-h-[30vh] items-center justify-center overflow-hidden rounded-lg bg-[#f7f7f5] lg:max-h-none">
-            <DoorPreview
-              geometry={geometry}
-              className="h-full w-full"
-              labels={{ region: previewLabel, colorUndefined: tPreview('colorUndefined') }}
-            />
-          </div>
-          <p
-            className="mt-3 text-sm font-medium text-brand-700"
-            role="status"
-            aria-live="polite"
-            data-testid="preview-measurement"
-          >
-            {tPreview('summary.measurement', {
-              width: selection.widthMm,
-              height: selection.heightMm,
-            })}
-          </p>
-          <p id="preview-range" className="mt-1 text-sm text-brand-500" data-testid="preview-range">
-            {tPreview('summary.range', {
-              minWidth: activeSeries.sizeRange.minWidthMm,
-              maxWidth: activeSeries.sizeRange.maxWidthMm,
-              minHeight: activeSeries.sizeRange.minHeightMm,
-              maxHeight: activeSeries.sizeRange.maxHeightMm,
-            })}
-          </p>
-          {outOfRange ? (
+        {/* G1/G3: en escritorio la columna derecha (vista previa + precio) es sticky. */}
+        <div className="flex flex-col gap-6 lg:order-2 lg:sticky lg:top-6 lg:self-start">
+          <section aria-labelledby="vista-previa">
+            <h2 id="vista-previa" className="text-xl font-semibold text-brand-900">
+              {tPreview('previewTitle')}
+            </h2>
+            <div className="mt-3 flex aspect-[3/4] max-h-[30vh] items-center justify-center overflow-hidden rounded-lg bg-surface-muted lg:max-h-none">
+              <DoorPreview
+                geometry={geometry}
+                className="h-full w-full"
+                labels={{ region: previewLabel, colorUndefined: tPreview('colorUndefined') }}
+              />
+            </div>
             <p
-              className="mt-2 rounded-md bg-accent-100 px-3 py-2 text-sm font-medium text-accent-700"
-              role="alert"
-              data-testid="preview-out-of-range"
+              className="mt-3 text-sm font-medium text-brand-700"
+              role="status"
+              aria-live="polite"
+              data-testid="preview-measurement"
             >
-              {tPreview('summary.outOfRange')}
+              {tPreview('summary.measurement', {
+                width: selection.widthMm,
+                height: selection.heightMm,
+              })}
             </p>
-          ) : null}
-        </section>
+            <p
+              id="preview-range"
+              className="mt-1 text-sm text-brand-500"
+              data-testid="preview-range"
+            >
+              {tPreview('summary.range', {
+                minWidth: activeSeries.sizeRange.minWidthMm,
+                maxWidth: activeSeries.sizeRange.maxWidthMm,
+                minHeight: activeSeries.sizeRange.minHeightMm,
+                maxHeight: activeSeries.sizeRange.maxHeightMm,
+              })}
+            </p>
+            {outOfRange ? (
+              <p
+                className={`mt-2 rounded-md px-3 py-2 text-sm font-medium ${
+                  requiresManualQuote
+                    ? 'bg-accent-100 text-accent-700'
+                    : 'bg-danger-100 text-danger-700'
+                }`}
+                role="alert"
+                data-testid="preview-out-of-range"
+              >
+                {requiresManualQuote
+                  ? tPreview('summary.outOfRange')
+                  : tPreview('summary.belowMinimum')}
+              </p>
+            ) : null}
+          </section>
+
+          <PricePanel
+            locale={locale}
+            price={price}
+            errorKey={priceErrorKey}
+            onRetry={() => setPriceAttempt((attempt) => attempt + 1)}
+          />
+        </div>
 
         <div className="flex flex-col gap-8 lg:order-1">
           {draftRestored ? (
@@ -689,8 +716,10 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
                   id="ancho"
                   name="ancho"
                   data-testid="preview-width"
-                  aria-describedby="preview-range"
-                  aria-invalid={widthParsed.ok ? undefined : true}
+                  aria-describedby={
+                    widthBelowMinimum ? 'preview-range ancho-minimo' : 'preview-range'
+                  }
+                  aria-invalid={!widthParsed.ok || widthBelowMinimum ? true : undefined}
                   className="rounded-md border border-brand-500/40 bg-white px-3 py-2"
                   type="number"
                   inputMode="numeric"
@@ -706,14 +735,29 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
                   {t(`measurements.errors.${widthParsed.error}`)}
                 </p>
               )}
+              {widthBelowMinimum ? (
+                <p
+                  id="ancho-minimo"
+                  role="alert"
+                  data-testid="width-below-minimum"
+                  className="text-sm font-medium text-danger-700"
+                >
+                  {t('belowMinimum', {
+                    dimension: t('measurements.dimensions.width'),
+                    min: activeSeries.sizeRange.minWidthMm,
+                  })}
+                </p>
+              ) : null}
               <label className="flex flex-col gap-1 text-sm text-brand-700" htmlFor="alto">
                 {tPreview('form.height')}
                 <input
                   id="alto"
                   name="alto"
                   data-testid="preview-height"
-                  aria-describedby="preview-range"
-                  aria-invalid={heightParsed.ok ? undefined : true}
+                  aria-describedby={
+                    heightBelowMinimum ? 'preview-range alto-minimo' : 'preview-range'
+                  }
+                  aria-invalid={!heightParsed.ok || heightBelowMinimum ? true : undefined}
                   className="rounded-md border border-brand-500/40 bg-white px-3 py-2"
                   type="number"
                   inputMode="numeric"
@@ -729,6 +773,19 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
                   {t(`measurements.errors.${heightParsed.error}`)}
                 </p>
               )}
+              {heightBelowMinimum ? (
+                <p
+                  id="alto-minimo"
+                  role="alert"
+                  data-testid="height-below-minimum"
+                  className="text-sm font-medium text-danger-700"
+                >
+                  {t('belowMinimum', {
+                    dimension: t('measurements.dimensions.height'),
+                    min: activeSeries.sizeRange.minHeightMm,
+                  })}
+                </p>
+              ) : null}
               {requiresManualQuote ? (
                 <p className="text-sm text-brand-700" data-testid="manual-size-notice">
                   {t('measurements.manualNotice')}
@@ -927,13 +984,6 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
             </fieldset>
           </form>
 
-          <PricePanel
-            locale={locale}
-            price={price}
-            errorKey={priceErrorKey}
-            onRetry={() => setPriceAttempt((attempt) => attempt + 1)}
-          />
-
           <section aria-labelledby="presupuesto" className="flex flex-col gap-3">
             <h2 id="presupuesto" className="text-xl font-semibold text-brand-900">
               {quote.status === 'manual_created' ? t('quote.manualCreatedTitle') : t('quote.title')}
@@ -1073,15 +1123,18 @@ function PricePanel({ locale, price, errorKey, onRetry }: PricePanelProps) {
   const tPreview = useTranslations('Preview2D')
 
   return (
-    <section aria-labelledby="precio" className="flex flex-col gap-3">
-      <h2 id="precio" className="text-xl font-semibold text-brand-900">
+    <section
+      aria-labelledby="precio"
+      className="fixed inset-x-0 bottom-0 z-30 flex flex-col gap-2 border-t border-border-strong bg-surface px-4 pb-3 pt-2 shadow-lg lg:static lg:z-auto lg:gap-3 lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none"
+    >
+      <h2 id="precio" className="sr-only text-xl font-semibold text-brand-900 lg:not-sr-only">
         {t('price.title')}
       </h2>
       <div
         role="status"
         aria-live="polite"
         data-testid="price-status"
-        className="rounded-lg border border-brand-500/20 bg-white px-4 py-4"
+        className="rounded-lg border border-brand-500/20 bg-white px-4 py-3 lg:py-4"
       >
         {price.status === 'idle' ? (
           <p className="text-sm text-brand-500" data-testid="price-idle">
@@ -1119,7 +1172,7 @@ function PricePanel({ locale, price, errorKey, onRetry }: PricePanelProps) {
           </p>
         ) : null}
 
-        <p className="mt-3 text-xs text-brand-500">{tPreview('summary.live')}</p>
+        <p className="mt-3 hidden text-xs text-brand-500 lg:block">{tPreview('summary.live')}</p>
       </div>
     </section>
   )
@@ -1138,12 +1191,12 @@ function Breakdown({ locale, result }: BreakdownProps) {
   return (
     <div className="flex flex-col gap-2">
       <dl className="flex flex-col gap-1 text-sm text-brand-700">
-        <div className="flex justify-between gap-3">
+        <div className="hidden justify-between gap-3 lg:flex">
           <dt>{t('price.basePrice')}</dt>
           <dd data-testid="price-base">{money(breakdown.basePrice.amount)}</dd>
         </div>
         {breakdown.lines.map((line) => (
-          <div key={line.code} className="flex justify-between gap-3">
+          <div key={line.code} className="hidden justify-between gap-3 lg:flex">
             <dt>
               {line.label ?? line.code}
               {line.units > 1 ? ` × ${formatNumber(line.units, locale)}` : ''}
@@ -1151,11 +1204,11 @@ function Breakdown({ locale, result }: BreakdownProps) {
             <dd>{money(line.amount.amount)}</dd>
           </div>
         ))}
-        <div className="mt-1 flex justify-between gap-3 border-t border-brand-500/20 pt-1">
+        <div className="mt-1 hidden justify-between gap-3 border-t border-brand-500/20 pt-1 lg:flex">
           <dt>{t('price.subtotal')}</dt>
           <dd data-testid="price-subtotal">{money(breakdown.subtotal.amount)}</dd>
         </div>
-        <div className="flex justify-between gap-3">
+        <div className="hidden justify-between gap-3 lg:flex">
           <dt>{t('price.tax', { rate: formatNumber(breakdown.taxRatePercent, locale) })}</dt>
           <dd data-testid="price-tax">{money(breakdown.taxAmount.amount)}</dd>
         </div>
@@ -1164,7 +1217,7 @@ function Breakdown({ locale, result }: BreakdownProps) {
           <dd data-testid="price-total">{money(breakdown.total.amount)}</dd>
         </div>
       </dl>
-      <p className="text-xs text-brand-500" data-testid="price-tariff">
+      <p className="hidden text-xs text-brand-500 lg:block" data-testid="price-tariff">
         {t('price.tariff', { version: formatNumber(result.tariff.versionNumber, locale) })}
       </p>
     </div>
@@ -1303,9 +1356,10 @@ function ContactForm({
         type="submit"
         data-testid="contact-submit"
         disabled={sending}
+        aria-busy={sending}
         className="self-start rounded-md bg-brand-900 px-4 py-2 font-medium text-white"
       >
-        {submitLabel}
+        {sending ? t('quote.sending') : submitLabel}
       </button>
       <p className="text-xs text-brand-500">{t('contact.privacy')}</p>
     </form>

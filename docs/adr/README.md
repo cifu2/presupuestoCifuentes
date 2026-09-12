@@ -28,6 +28,7 @@ que supersede al anterior y se marca el antiguo como `Superseded por ADR-XXXX`.
 | [0019](0019-cuota-despliegues-vercel.md)                  | Cuota de despliegues de Vercel: reintento y ramas sin preview          | Aceptado |
 | [0020](0020-configurador-data-driven-y-gate-de-diseno.md) | El configurador es data-driven: el catálogo no es un gate de diseño    | Aceptado |
 | [0021](0021-metodo-de-fusion-y-trazabilidad-squash.md)    | Método de fusión (squash) y trazabilidad del gate en `main`            | Aceptado |
+| [0022](0022-minimo-de-serie-error-de-validacion.md)       | El mínimo de serie es error de validación, no presupuesto manual       | Aceptado |
 
 ## Cuándo hace falta un ADR
 

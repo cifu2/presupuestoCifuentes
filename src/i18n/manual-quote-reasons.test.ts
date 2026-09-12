@@ -30,14 +30,6 @@ const details: readonly ManualQuoteDetail[] = [
     maxWidthMm: 1000,
     maxHeightMm: 2200,
   },
-  {
-    kind: 'size_below_series_min',
-    widthMm: 400,
-    heightMm: 2100,
-    seriesCode: 'CI-100',
-    minWidthMm: 600,
-    minHeightMm: 1800,
-  },
   { kind: 'finish_not_allowed', finishId: 'finish-oro', seriesCode: 'CI-100' },
   { kind: 'color_not_allowed', colorId: 'color-ral-9010' },
   { kind: 'accessory_not_allowed', accessoryId: 'accessory-barra', seriesCode: 'CI-100' },
@@ -90,16 +82,6 @@ describe('mensajes de presupuesto manual', () => {
         maxHeightMm: 2,
       }),
     ).toBe('size_exceeds_series_max')
-    expect(
-      manualQuoteReasonOf({
-        kind: 'size_below_series_min',
-        widthMm: 1,
-        heightMm: 1,
-        seriesCode: 'X',
-        minWidthMm: 2,
-        minHeightMm: 2,
-      }),
-    ).toBe('uncovered_configuration')
     expect(manualQuoteReasonOf({ kind: 'no_tariff_in_force', seriesCode: 'X' })).toBe(
       'no_tariff_in_force',
     )
