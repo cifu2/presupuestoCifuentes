@@ -16,6 +16,7 @@ import type { Finish } from '@/domain/catalog/finish'
 import type { DoorSeries } from '@/domain/catalog/series'
 import type { TariffVersion } from '@/domain/catalog/tariff-version'
 import type { PriceTable } from '@/domain/pricing/price-table'
+import { ConflictError } from '@/domain/shared/errors'
 import type {
   AccessoryWriteRepository,
   CatalogUsageReader,
@@ -352,6 +353,24 @@ export class InMemoryTariffVersionRepository implements TariffVersionRepository 
 
   async listBySeriesId(seriesId: string): Promise<readonly TariffVersion[]> {
     return this.store.listTariffVersions().filter((version) => version.seriesId === seriesId)
+  }
+
+  async create(version: TariffVersion): Promise<void> {
+    const alreadyExists = this.store
+      .listTariffVersions()
+      .some(
+        (candidate) =>
+          candidate.seriesId === version.seriesId &&
+          candidate.versionNumber === version.versionNumber,
+      )
+
+    if (alreadyExists) {
+      throw new ConflictError(
+        `La serie "${version.seriesId}" ya tiene una versión de tarifa con el número ${version.versionNumber}`,
+      )
+    }
+
+    this.store.upsertTariffVersion(version)
   }
 
   async save(version: TariffVersion): Promise<void> {

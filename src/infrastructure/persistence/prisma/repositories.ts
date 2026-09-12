@@ -187,6 +187,13 @@ export function isUniqueViolation(error: unknown): boolean {
   return errorGraphHasCode(error, PRISMA_UNIQUE_VIOLATION)
 }
 
+/** Formato de un id `@db.Uuid`; cualquier otra cosa no puede existir en la tabla. */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function isUuidLike(value: string): boolean {
+  return UUID_PATTERN.test(value)
+}
+
 /**
  * ¿El error viene de una clave ajena inexistente? Se traduce a `ResourceNotFoundError`: el llamante
  * mandó un id de acabado o complemento que no existe.
@@ -251,6 +258,14 @@ export class PrismaSeriesRepository implements SeriesRepository {
   }
 
   async findById(id: string) {
+    // Un id sin formato de UUID no puede existir en una columna `@db.Uuid`: se responde `null`
+    // (el borde lo traduce a 404) en vez de dejar que Prisma lance P2007 y salga un 500. En modo
+    // demostración los ids del catálogo son legibles (`series-ci-100`), así que este camino es
+    // normal ahí; en producción solo llega con un id manipulado.
+    if (!isUuidLike(id)) {
+      return null
+    }
+
     const rows = await this.prisma.doorSeries.findMany({ where: { id }, include: SERIES_INCLUDE })
 
     return (await this.mapRows(rows))[0] ?? null
@@ -450,6 +465,25 @@ export class PrismaTariffPricingRepository implements TariffPricingRepository {
   }
 }
 
+/**
+ * Columnas mutables de una versión de tarifa, compartidas por el *upsert* (`save`) y el alta
+ * (`create`). El `id`, la serie, el número de versión y `createdAt` son inmutables: los pone cada
+ * operación, no este mapeo.
+ */
+function toTariffVersionColumns(version: TariffVersion) {
+  return {
+    status: catalogStatusToDb(version.status),
+    strategy: pricingStrategyToDb(version.strategy),
+    validFrom: version.validity.validFrom,
+    validUntil: version.validity.validUntil,
+    taxRatePercent: version.taxRatePercent,
+    currency: version.currency,
+    notes: version.notes,
+    publishedAt: version.publishedAt,
+    updatedAt: version.updatedAt,
+  }
+}
+
 export class PrismaTariffVersionRepository implements TariffVersionRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
@@ -469,17 +503,7 @@ export class PrismaTariffVersionRepository implements TariffVersionRepository {
   }
 
   async save(version: TariffVersion): Promise<void> {
-    const mutableFields = {
-      status: catalogStatusToDb(version.status),
-      strategy: pricingStrategyToDb(version.strategy),
-      validFrom: version.validity.validFrom,
-      validUntil: version.validity.validUntil,
-      taxRatePercent: version.taxRatePercent,
-      currency: version.currency,
-      notes: version.notes,
-      publishedAt: version.publishedAt,
-      updatedAt: version.updatedAt,
-    }
+    const mutableFields = toTariffVersionColumns(version)
 
     try {
       await this.prisma.tariffVersion.upsert({
@@ -499,6 +523,33 @@ export class PrismaTariffVersionRepository implements TariffVersionRepository {
       if (isPublishedTariffOverlapViolation(error)) {
         throw new AmbiguousTariffError(
           `Ya hay una versión de tarifa publicada que se solapa con la versión ${version.versionNumber} de la serie "${version.seriesId}"`,
+        )
+      }
+
+      throw error
+    }
+  }
+
+  /**
+   * Alta de una versión nueva. El `@@unique([seriesId, versionNumber])` es la última red contra dos
+   * altas concurrentes que hayan calculado el mismo número: se traduce a `ConflictError` (409) para
+   * que el caso de uso pueda reintentar en vez de responder un 500.
+   */
+  async create(version: TariffVersion): Promise<void> {
+    try {
+      await this.prisma.tariffVersion.create({
+        data: {
+          id: version.id,
+          seriesId: version.seriesId,
+          versionNumber: version.versionNumber,
+          createdAt: version.createdAt,
+          ...toTariffVersionColumns(version),
+        },
+      })
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ConflictError(
+          `La serie "${version.seriesId}" ya tiene una versión de tarifa con el número ${version.versionNumber}`,
         )
       }
 

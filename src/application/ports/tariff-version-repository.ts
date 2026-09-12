@@ -15,6 +15,12 @@ export interface TariffVersionRepository {
   findById(id: string): Promise<TariffVersion | null>
   /** Todas las versiones de la serie, en cualquier estado (borrador, publicada o archivada). */
   listBySeriesId(seriesId: string): Promise<readonly TariffVersion[]>
+  /**
+   * Inserta una versión nueva; a diferencia de `save`, no actualiza ninguna fila existente. Si la
+   * serie ya tiene una versión con ese `versionNumber` lanza `ConflictError` (lo impone el
+   * `@@unique([seriesId, versionNumber])`): quien abre borradores reintenta con el número siguiente.
+   */
+  create(version: TariffVersion): Promise<void>
   /** Crea la versión si no existe y la actualiza si ya está; nunca borra. */
   save(version: TariffVersion): Promise<void>
   /** Tabla de precios de la versión, o `null` si el borrador todavía no tiene ninguna. */
