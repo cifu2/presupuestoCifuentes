@@ -31,9 +31,8 @@ const TARIFF_CI_200_V1 = '0192f1b0-0000-7000-8000-000000000201'
 const TARIFF_CI_300_V1 = '0192f1b0-0000-7000-8000-000000000301'
 
 /**
- * Borradores del panel: versiones sin tabla de precios que el propietario todavía no ha publicado.
- * El E2E de publicación (CIF-86) los necesita para cubrir el 200 y el 409, que exigen un borrador
- * real; `InMemoryCatalogStore` acepta versiones sin tabla desde su `tariffVersions`.
+ * Borradores del panel. El E2E de publicación (CIF-86) los necesita para cubrir el 200 y el 409,
+ * que exigen un borrador real.
  *
  * - `TARIFF_CI_400_2027_DRAFT`: vigencia futura, así que publicarla no cambia el precio vigente de
  *   la serie (el configurador sigue pasando a presupuesto manual); es el caso **sin** solape.
@@ -43,6 +42,10 @@ const TARIFF_CI_300_V1 = '0192f1b0-0000-7000-8000-000000000301'
  *   (criterio 2 de la revisión CIF-86 → CIF-9). Las dos ventanas no se solapan entre sí.
  * - `TARIFF_CI_100_V2_DRAFT`: solapa con la v1 publicada de la serie CI-100 (vigencia abierta), así
  *   que la invariante de no solapamiento debe rechazarla sin escribir.
+ *
+ * Los dos borradores publicables llevan tabla de precios (CIF-126a, ADR-0027 §4): una versión sin
+ * tabla no se publica, así que un borrador vacío ya no puede recorrer el camino 200. El de solape se
+ * queda **sin** tabla a propósito: prueba que el no-solapamiento se comprueba antes que el vacío.
  */
 const TARIFF_CI_400_2027_DRAFT = '0192f1b0-0000-7000-8000-000000000401'
 const TARIFF_CI_400_2029_DRAFT = '0192f1b0-0000-7000-8000-000000000402'
@@ -424,24 +427,46 @@ export function buildDemoCatalog(): CatalogStoreSnapshot {
         modifiers: [],
       }),
     },
+    {
+      // Borrador publicable de CI-400 (ventana 2027): con tabla, para que el E2E cubra el 200.
+      tariff: draftTariff({
+        id: TARIFF_CI_400_2027_DRAFT,
+        seriesId: ci400.id,
+        strategy: 'per_square_metre',
+        validFrom: new Date('2027-01-01T00:00:00.000Z'),
+        validUntil: new Date('2028-01-01T00:00:00.000Z'),
+      }),
+      priceTable: PriceTable.create({
+        tariffVersionId: TARIFF_CI_400_2027_DRAFT,
+        strategy: 'per_square_metre',
+        perSquareMetre: money('420.00'),
+        fixedPrice: null,
+        bands: [],
+        modifiers: [],
+      }),
+    },
+    {
+      // Borrador publicable de CI-400 (ventana 2029): el que publica el proyecto `movil`.
+      tariff: draftTariff({
+        id: TARIFF_CI_400_2029_DRAFT,
+        seriesId: ci400.id,
+        strategy: 'per_square_metre',
+        versionNumber: 2,
+        validFrom: new Date('2029-01-01T00:00:00.000Z'),
+        validUntil: new Date('2030-01-01T00:00:00.000Z'),
+      }),
+      priceTable: PriceTable.create({
+        tariffVersionId: TARIFF_CI_400_2029_DRAFT,
+        strategy: 'per_square_metre',
+        perSquareMetre: money('455.00'),
+        fixedPrice: null,
+        bands: [],
+        modifiers: [],
+      }),
+    },
   ]
 
   const drafts = [
-    draftTariff({
-      id: TARIFF_CI_400_2027_DRAFT,
-      seriesId: ci400.id,
-      strategy: 'per_square_metre',
-      validFrom: new Date('2027-01-01T00:00:00.000Z'),
-      validUntil: new Date('2028-01-01T00:00:00.000Z'),
-    }),
-    draftTariff({
-      id: TARIFF_CI_400_2029_DRAFT,
-      seriesId: ci400.id,
-      strategy: 'per_square_metre',
-      versionNumber: 2,
-      validFrom: new Date('2029-01-01T00:00:00.000Z'),
-      validUntil: new Date('2030-01-01T00:00:00.000Z'),
-    }),
     draftTariff({
       id: TARIFF_CI_100_V2_DRAFT,
       seriesId: catalogoSeries.id,
@@ -457,7 +482,7 @@ export function buildDemoCatalog(): CatalogStoreSnapshot {
     colors,
     accessories,
     pricing,
-    // El panel lista versiones con y sin tabla de precios; los borradores aún no dan precio.
+    // El panel lista versiones con y sin tabla de precios; el borrador de solape aún no da precio.
     tariffVersions: [...pricing.map((entry) => entry.tariff), ...drafts],
   }
 }
