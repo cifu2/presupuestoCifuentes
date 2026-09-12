@@ -115,6 +115,7 @@ function shapeElement(shape: PreviewShape): React.JSX.Element {
     return (
       <circle
         key={`${shape.kind}-${shape.x}-${shape.y}`}
+        data-shape-kind={shape.kind}
         cx={shape.x + shape.w / 2}
         cy={shape.y + shape.h / 2}
         r={shape.w / 2}
@@ -129,6 +130,7 @@ function shapeElement(shape: PreviewShape): React.JSX.Element {
     return (
       <line
         key={`${shape.kind}-${shape.x}-${shape.y}`}
+        data-shape-kind={shape.kind}
         x1={axisX}
         y1={shape.y}
         x2={axisX}
@@ -141,6 +143,7 @@ function shapeElement(shape: PreviewShape): React.JSX.Element {
   return (
     <rect
       key={`${shape.kind}-${shape.x}-${shape.y}`}
+      data-shape-kind={shape.kind}
       x={shape.x}
       y={shape.y}
       width={Math.max(0, shape.w)}

@@ -112,7 +112,68 @@
     "customer_requested": "The customer has expressly asked to be contacted"
   },
   "Preview2D": {
+    "title": "Door configurator",
+    "intro": "Pick type, size, finish and colour: the 2D preview updates instantly.",
+    "previewTitle": "Preview",
     "region": "2D preview of the configured door",
-    "colorUndefined": "Colour to be defined"
+    "regionDetail": "Preview: {type}, {width} × {height} mm, {finish}, {color}",
+    "colorUndefined": "Colour to be defined",
+    "summary": {
+      "measurement": "{width} × {height} mm",
+      "range": "Sizes allowed by the demo series: {minWidth}–{maxWidth} mm wide and {minHeight}–{maxHeight} mm high.",
+      "outOfRange": "The size exceeds the series maximum: it goes to a manual quote.",
+      "live": "Any option change is reflected in the preview."
+    },
+    "form": {
+      "type": "Door type",
+      "measurements": "Measurements",
+      "width": "Width (mm)",
+      "height": "Height (mm)",
+      "finish": "Finish and colour",
+      "finishKind": "Finish",
+      "color": "Colour",
+      "hingeSide": "Handing",
+      "surface": "Surface and trims",
+      "planking": "Surface",
+      "moulding": "Perimeter moulding",
+      "twoToneFrame": "Frame in a second colour",
+      "glazing": "Glass cut-outs"
+    },
+    "types": {
+      "abatible1Hoja": "Single-leaf armoured door",
+      "abatible2Hojas": "Double-leaf armoured door",
+      "entradaAcorazada": "Armoured entrance door",
+      "pivotante1Hoja": "Single-leaf pivot door",
+      "pivotante2Hoja": "Double-leaf pivot door"
+    },
+    "finishes": {
+      "lacado": "Lacquered",
+      "chapaNatural": "Natural veneer",
+      "decoradoMadera": "Wood decor",
+      "aluminio": "Aluminium",
+      "anodizado": "Anodised",
+      "acero": "Steel",
+      "corten": "Corten",
+      "sinAcabado": "Unfinished"
+    },
+    "colors": {
+      "ninguno": "No colour defined",
+      "ral-9010": "RAL 9010 white",
+      "ral-7016": "RAL 7016 grey",
+      "roble": "Rustic oak"
+    },
+    "hingeSides": {
+      "izquierda": "Left",
+      "derecha": "Right"
+    },
+    "plankings": {
+      "ninguna": "Plain",
+      "tablones36": "36 cm boards",
+      "tablones54": "54 cm boards",
+      "tablonesCurvos36": "36 cm curved boards",
+      "tablonesCurvos54": "54 cm curved boards",
+      "duelasVerticales": "Vertical slats",
+      "duelasHorizontales": "Horizontal slats"
+    }
   }
 }
