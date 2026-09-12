@@ -6,10 +6,19 @@ describe('formato de importes', () => {
   it('respeta la agrupación y el separador decimal del idioma', () => {
     // En español la agrupación de millares de CLDR solo aparece a partir de cinco cifras
     // (`minimumGroupingDigits`); por debajo, el número va sin separadores.
-    expect(formatMoney('1234.5', 'EUR', 'es')).toContain('1234,50')
-    expect(formatMoney('12345.5', 'EUR', 'es')).toContain('12.345,50')
-    expect(formatMoney('1234.5', 'EUR', 'en')).toContain('1,234.50')
-    expect(formatMoney('1234.5', 'EUR', 'es')).toContain('€')
+    expect(formatMoney('1234.5', 'EUR', 'es')).toBe('1234,50\u00a0€')
+    expect(formatMoney('12345.5', 'EUR', 'es')).toBe('12.345,50\u00a0€')
+    expect(formatMoney('1234.5', 'EUR', 'en')).toBe('€1,234.50')
+    expect(formatMoney('718.20', 'EUR', 'en')).toBe('€718.20')
+  })
+
+  it('no duplica la magnitud del importe en los idiomas que trocean el entero (CIF-345)', () => {
+    // Con `en`, el patrón de `formatToParts` parte el entero en cada límite de agrupación
+    // (`1`, `,`, `234`); emitir el importe agrupado en cada parte duplicaba la cifra.
+    expect(formatMoney('718.20', 'EUR', 'en')).toBe('€718.20')
+    expect(formatMoney('45.00', 'EUR', 'en')).toBe('€45.00')
+    expect(formatMoney('763.20', 'EUR', 'en')).toBe('€763.20')
+    expect(formatMoney('1234567.89', 'EUR', 'en')).toBe('€1,234,567.89')
   })
 
   it('no pierde precisión con importes grandes: nunca pasa por coma flotante', () => {
@@ -19,7 +28,8 @@ describe('formato de importes', () => {
   })
 
   it('mantiene el signo de los descuentos', () => {
-    expect(formatMoney('-0.5', 'EUR', 'es')).toContain('-0,50')
+    expect(formatMoney('-0.5', 'EUR', 'es')).toBe('-0,50\u00a0€')
+    expect(formatMoney('-1234.5', 'EUR', 'en')).toBe('-€1,234.50')
   })
 
   it('completa a dos decimales y no redondea lo que ya viene redondeado', () => {
