@@ -30,6 +30,11 @@ import type {
 import { PriceModifier, PriceTable, SizeBand } from '@/domain/pricing/price-table'
 import type { PriceLine, PriceLineKind } from '@/domain/pricing/price-breakdown'
 import { Quote } from '@/domain/quote/quote'
+import {
+  QuoteDelivery,
+  type QuoteDeliveryAudience,
+  type QuoteDeliveryStatus,
+} from '@/domain/quote/quote-delivery'
 import { InvalidQuoteError, InvalidValueError } from '@/domain/shared/errors'
 import { Money } from '@/domain/shared/money'
 
@@ -644,5 +649,73 @@ export function toManualQuoteRequest(row: ManualQuoteRow): ManualQuoteRequest {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     handledAt: row.handledAt,
+  })
+}
+
+const QUOTE_DELIVERY_STATUS: Record<$Enums.QuoteDeliveryStatus, QuoteDeliveryStatus> = {
+  PENDING: 'pending',
+  SENT: 'sent',
+  FAILED: 'failed',
+}
+
+const QUOTE_DELIVERY_STATUS_TO_DB: Record<QuoteDeliveryStatus, $Enums.QuoteDeliveryStatus> = {
+  pending: 'PENDING',
+  sent: 'SENT',
+  failed: 'FAILED',
+}
+
+const QUOTE_DELIVERY_AUDIENCE: Record<$Enums.QuoteDeliveryAudience, QuoteDeliveryAudience> = {
+  CUSTOMER: 'customer',
+  INTERNAL: 'internal',
+}
+
+const QUOTE_DELIVERY_AUDIENCE_TO_DB: Record<QuoteDeliveryAudience, $Enums.QuoteDeliveryAudience> = {
+  customer: 'CUSTOMER',
+  internal: 'INTERNAL',
+}
+
+export const quoteDeliveryStatusToDb = (status: QuoteDeliveryStatus): $Enums.QuoteDeliveryStatus =>
+  QUOTE_DELIVERY_STATUS_TO_DB[status]
+
+export const quoteDeliveryAudienceToDb = (
+  audience: QuoteDeliveryAudience,
+): $Enums.QuoteDeliveryAudience => QUOTE_DELIVERY_AUDIENCE_TO_DB[audience]
+
+export interface QuoteDeliveryRow {
+  readonly id: string
+  readonly quoteId: string
+  readonly quote: { readonly reference: string }
+  readonly version: number
+  readonly audience: $Enums.QuoteDeliveryAudience
+  readonly recipient: string
+  readonly customerName: string | null
+  readonly idempotencyKey: string
+  readonly status: $Enums.QuoteDeliveryStatus
+  readonly attempts: number
+  readonly providerMessageId: string | null
+  readonly lastError: string | null
+  readonly sentAt: Date | null
+  readonly claimedAt: Date | null
+  readonly createdAt: Date
+  readonly updatedAt: Date
+}
+
+export function toQuoteDelivery(row: QuoteDeliveryRow): QuoteDelivery {
+  return QuoteDelivery.create({
+    id: row.id,
+    quoteId: row.quoteId,
+    quoteReference: row.quote.reference,
+    version: row.version,
+    audience: QUOTE_DELIVERY_AUDIENCE[row.audience],
+    recipient: row.recipient,
+    customerName: row.customerName,
+    status: QUOTE_DELIVERY_STATUS[row.status],
+    attempts: row.attempts,
+    providerMessageId: row.providerMessageId,
+    lastError: row.lastError,
+    sentAt: row.sentAt,
+    claimedAt: row.claimedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   })
 }

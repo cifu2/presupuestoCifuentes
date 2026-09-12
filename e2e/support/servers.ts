@@ -34,6 +34,12 @@ export const E2E_ADMIN_BASE_URL =
 export const E2E_ADMIN_TOKEN = process.env.E2E_ADMIN_TOKEN ?? 'token-de-e2e-solo-para-pruebas'
 
 /**
+ * Buzón interno (aviso al comercial) que configura el servidor de administración del E2E. Es un
+ * valor de pruebas: la entrega de CIF-173 no envía correo real, usa el adaptador de consola.
+ */
+export const E2E_SALES_MAILBOX = 'avisos-presupuestos@example.com'
+
+/**
  * Sesión del panel en el servidor de administración (CIF-241): secreto de firma y credencial del
  * propietario. No son secretos: son valores de pruebas que solo valen contra el servidor que
  * levanta la propia suite (DoD, apartado _Seguridad_).

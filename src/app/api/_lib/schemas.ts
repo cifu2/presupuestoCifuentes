@@ -58,6 +58,30 @@ export const manualQuoteRequestSchema = z.object({
 
 const localeQuerySchema = z.object({ locale: localeSchema })
 
+/**
+ * Entrega del presupuesto (PDF + email). El cliente es opcional: el aviso interno al buzón
+ * configurado funciona aunque el configurador no haya pedido datos de contacto.
+ */
+export const quoteDeliverySchema = z.object({
+  version: z.number().int().min(1).max(1000).optional(),
+  customer: z
+    .object({
+      name: z.string().min(1).max(120),
+      email: z.email().max(254),
+    })
+    .nullable()
+    .default(null),
+})
+
+export type QuoteDeliveryPayload = z.infer<typeof quoteDeliverySchema>
+
+/** Reintento de las entregas pendientes o fallidas; sin versión, reintenta todas. */
+export const quoteDeliveryRetrySchema = z.object({
+  version: z.number().int().min(1).max(1000).optional(),
+})
+
+export type QuoteDeliveryRetryPayload = z.infer<typeof quoteDeliveryRetrySchema>
+
 export function parseLocale(
   searchParams: URLSearchParams,
 ): { ok: true; locale: Locale } | { ok: false; response: NextResponse } {

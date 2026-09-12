@@ -6,18 +6,23 @@ apartado _Seguridad_).
 
 ## 1. Inventario
 
-| Variable               | Producción                          | Preview                          | Desarrollo local            | Se define en                                                                 |
-| ---------------------- | ----------------------------------- | -------------------------------- | --------------------------- | ---------------------------------------------------------------------------- |
-| `DATABASE_URL`         | Neon, base `presupuesto_production` | Neon, base `presupuesto_preview` | PostgreSQL local o rama dev | Vercel (`DATABASE_URL__PRODUCTION` / `DATABASE_URL__PREVIEW`) y `.env.local` |
-| `NEXT_PUBLIC_SITE_URL` | `https://<dominio-produccion>`      | URL del deployment de preview    | `http://localhost:3000`     | Vercel (Production / Preview) y `.env.local`                                 |
-| `CATALOG_DEMO_MODE`    | `false`                             | `false`                          | `false`                     | Vercel (opcional) y `.env.local`                                             |
-| `ADMIN_PANEL_ENABLED`  | `false` (panel cerrado)             | no definida                      | no definida                 | Vercel (Production, opcional) y `.env.local`                                 |
-| `QUOTE_VALIDITY_DAYS`  | `30`                                | `30`                             | `30`                        | Vercel (opcional) y `.env.local`                                             |
-| `ADMIN_API_TOKEN`      | no definida (opcional)              | no definida                      | valor de desarrollo         | Vercel (Production, opcional) y `.env.local`                                 |
-| `ADMIN_SESSION_SECRET` | valor propio del despliegue (≥ 32)  | no definida                      | valor de desarrollo         | Vercel (Production) y `.env.local`                                           |
-| `ADMIN_PANEL_PASSWORD` | valor propio del despliegue (≥ 16)  | no definida                      | valor de desarrollo         | Vercel (Production) y `.env.local`                                           |
-| `NODE_ENV`             | lo fija Vercel (`production`)       | lo fija Vercel (`production`)    | lo fija Next.js             | No se configura a mano                                                       |
-| `VERCEL_ENV`           | lo fija Vercel (`production`)       | lo fija Vercel (`preview`)       | no definida                 | No se configura a mano                                                       |
+| Variable                                      | Producción                          | Preview                          | Desarrollo local                   | Se define en                                                                 |
+| --------------------------------------------- | ----------------------------------- | -------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------- |
+| `DATABASE_URL`                                | Neon, base `presupuesto_production` | Neon, base `presupuesto_preview` | PostgreSQL local o rama dev        | Vercel (`DATABASE_URL__PRODUCTION` / `DATABASE_URL__PREVIEW`) y `.env.local` |
+| `NEXT_PUBLIC_SITE_URL`                        | `https://<dominio-produccion>`      | URL del deployment de preview    | `http://localhost:3000`            | Vercel (Production / Preview) y `.env.local`                                 |
+| `CATALOG_DEMO_MODE`                           | `false`                             | `false`                          | `false`                            | Vercel (opcional) y `.env.local`                                             |
+| `ADMIN_PANEL_ENABLED`                         | `false` (panel cerrado)             | no definida                      | no definida                        | Vercel (Production, opcional) y `.env.local`                                 |
+| `QUOTE_VALIDITY_DAYS`                         | `30`                                | `30`                             | `30`                               | Vercel (opcional) y `.env.local`                                             |
+| `ADMIN_API_TOKEN`                             | no definida (opcional)              | no definida                      | valor de desarrollo                | Vercel (Production, opcional) y `.env.local`                                 |
+| `ADMIN_SESSION_SECRET`                        | valor propio del despliegue (≥ 32)  | no definida                      | valor de desarrollo                | Vercel (Production) y `.env.local`                                           |
+| `ADMIN_PANEL_PASSWORD`                        | valor propio del despliegue (≥ 16)  | no definida                      | valor de desarrollo                | Vercel (Production) y `.env.local`                                           |
+| `RESEND_FROM`                                 | pendiente del propietario (CIF-14)  | no definida                      | no definida (adaptador de consola) | Vercel (Production) y `.env.local`                                           |
+| `RESEND_API_KEY`                              | pendiente del propietario (CIF-14)  | no definida                      | no definida                        | Vercel (Production, _Sensitive_) y `.env.local`                              |
+| `QUOTE_INTERNAL_RECIPIENTS`                   | buzón del comercial (CIF-14)        | valor de pruebas                 | opcional                           | Vercel (Production / Preview) y `.env.local`                                 |
+| `QUOTE_ISSUER_*`                              | datos fiscales (CIF-14)             | datos fiscales (CIF-14)          | opcional (marcador)                | Vercel y `.env.local`                                                        |
+| `QUOTE_CONDITIONS_ES` / `QUOTE_CONDITIONS_EN` | condiciones legales (CIF-14)        | igual                            | opcional (marcador)                | Vercel y `.env.local`                                                        |
+| `NODE_ENV`                                    | lo fija Vercel (`production`)       | lo fija Vercel (`production`)    | lo fija Next.js                    | No se configura a mano                                                       |
+| `VERCEL_ENV`                                  | lo fija Vercel (`production`)       | lo fija Vercel (`preview`)       | no definida                        | No se configura a mano                                                       |
 
 `DATABASE_URL` es configuración **por entorno**, no una variable común: el fichero de valores declara
 `DATABASE_URL__PRODUCTION`, `DATABASE_URL__PREVIEW` y `DATABASE_URL__DEVELOPMENT`, y
@@ -63,6 +68,22 @@ consume el bootstrap de Vercel.
   legítimo.
 - `NEXT_PUBLIC_SITE_URL` es pública por diseño (viaja al navegador). `DATABASE_URL` es un secreto: se
   marca como _Sensitive_ en Vercel y no se lee nunca desde el cliente.
+- **Entrega del presupuesto (CIF-173, ADR-0004).** Los valores que dependen del propietario son
+  configuración, no código, así que rellenarlos no exige tocar nada:
+  - `RESEND_FROM` es el remitente verificado (por ejemplo `Puertas Cifuentes <presupuestos@…>`).
+    **Sin `RESEND_FROM` y `RESEND_API_KEY` la aplicación usa el adaptador de consola**: no envía
+    correo real y deja traza del envío. Es el comportamiento por defecto mientras no llegue la
+    respuesta de CIF-14.
+  - `QUOTE_INTERNAL_RECIPIENTS` es la lista de destinatarios internos (buzón del comercial y copias)
+    separada por comas. El cliente se añade con los datos que envía el configurador.
+  - `QUOTE_ISSUER_NAME`, `QUOTE_ISSUER_TAX_ID`, `QUOTE_ISSUER_ADDRESS`, `QUOTE_ISSUER_EMAIL`,
+    `QUOTE_ISSUER_PHONE` y `QUOTE_ISSUER_WEBSITE` son los datos fiscales de la cabecera del PDF.
+    Mientras falten, el PDF imprime `[pendiente de configurar]` en su lugar y añade un aviso: nadie
+    puede confundir el documento provisional con el definitivo.
+  - `QUOTE_CONDITIONS_ES` y `QUOTE_CONDITIONS_EN` son las condiciones legales, **una por línea**. Si
+    falta un idioma se imprimen las del idioma por defecto y el aviso de pendiente lo refleja.
+  - `RESEND_API_KEY` es un secreto: se marca como _Sensitive_ en Vercel y solo lo usa el adaptador de
+    Resend en servidor.
 - `ADMIN_API_TOKEN` es la credencial **opcional** de automatización del API del panel: se envía como
   `Authorization: Bearer …` y se marca como _Sensitive_ en Vercel. **No es exigible**: el propietario
   entra con la sesión de abajo y el API de administración acepta cualquiera de las dos credenciales
