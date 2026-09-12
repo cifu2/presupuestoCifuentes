@@ -10,6 +10,7 @@ import {
   type GlassAperture,
   type PreviewConfig,
   type PreviewGeometry,
+  type PreviewPaintPattern,
 } from './model'
 
 /**
@@ -490,6 +491,112 @@ describe('modelo 2D · pivotantes (H9 y H12)', () => {
 
     expect(geometry.shapes.filter((shape) => shape.kind === 'pivot')).toHaveLength(4)
     expect(leafRects(geometry)).toHaveLength(2)
+  })
+})
+
+describe('modelo 2D · pintura de los patrones (B2/§4, hallazgo 7 de CIF-240)', () => {
+  const specOf = (
+    overrides: Partial<PreviewConfig>,
+    kind: PreviewPaintPattern,
+  ): PreviewGeometry['patternSpecs'][number] | undefined =>
+    geometryOf(overrides).patternSpecs.find((spec) => spec.kind === kind)
+
+  const linearStops = (
+    overrides: Partial<PreviewConfig>,
+    kind: PreviewPaintPattern,
+  ): readonly { offset: string; color: string; opacity: string }[] | null => {
+    const paint = specOf(overrides, kind)?.paint
+
+    return paint?.variant === 'linearGradient' ? paint.stops : null
+  }
+
+  it('declara los patrones en el orden canónico con el que se emite el <defs>', () => {
+    const kindsOf = (overrides: Partial<PreviewConfig>): readonly string[] =>
+      geometryOf(overrides).patternSpecs.map((spec) => spec.kind)
+
+    expect(kindsOf({ type: 'corredera' })).toEqual(['sheen', 'glass', 'metal', 'wall'])
+    expect(kindsOf({})).toEqual(['sheen', 'glass', 'metal'])
+    expect(kindsOf({ finishKind: 'decorado-madera' })).toEqual(['glass', 'metal', 'grain'])
+    expect(kindsOf({ finishKind: 'aluminio' })).toEqual(['glass', 'metal', 'anodized'])
+    expect(kindsOf({ finishKind: 'acero' })).toEqual(['glass', 'metal', 'metalFinish'])
+    expect(kindsOf({ finishKind: 'sin-acabado', colorHex: null })).toEqual(['glass', 'metal'])
+  })
+
+  it('resuelve el brillo del lacado con sus paradas y su orden', () => {
+    expect(linearStops({}, 'sheen')).toEqual([
+      { offset: '0', color: '#fff', opacity: '.16' },
+      { offset: '.35', color: '#fff', opacity: '0' },
+    ])
+  })
+
+  it('resuelve el cristal, el metal, la pared y el acabado metálico en el modelo', () => {
+    const glass = specOf({}, 'glass')?.paint
+    const metal = specOf({}, 'metal')?.paint
+    const wall = specOf({ type: 'corredera' }, 'wall')?.paint
+    const metalFinish = specOf({ finishKind: 'acero' }, 'metalFinish')?.paint
+
+    expect(glass).toMatchObject({ variant: 'linearGradient', x1: '0', y1: '0', x2: '0', y2: '1' })
+    expect(metal).toMatchObject({ variant: 'linearGradient', x1: '0', y1: '0', x2: '0', y2: '1' })
+    expect(wall).toMatchObject({ variant: 'linearGradient', x1: '0', y1: '0', x2: '0', y2: '1' })
+    expect(metalFinish).toMatchObject({
+      variant: 'linearGradient',
+      x1: '0',
+      y1: '0',
+      x2: '1',
+      y2: '0',
+    })
+
+    expect(linearStops({}, 'glass')).toEqual([
+      { offset: '0', color: '#dbe8f0', opacity: '1' },
+      { offset: '1', color: '#b9cddd', opacity: '1' },
+    ])
+    expect(linearStops({}, 'metal')).toEqual([
+      { offset: '0', color: '#f2f4f5', opacity: '1' },
+      { offset: '.45', color: '#c6ccd1', opacity: '1' },
+      { offset: '1', color: '#9aa2a9', opacity: '1' },
+    ])
+    expect(linearStops({ type: 'corredera' }, 'wall')).toEqual([
+      { offset: '0', color: '#000', opacity: '.10' },
+      { offset: '1', color: '#000', opacity: '.05' },
+    ])
+    expect(linearStops({ finishKind: 'acero' }, 'metalFinish')).toEqual([
+      { offset: '0', color: '#000', opacity: '.12' },
+      { offset: '.5', color: '#fff', opacity: '.12' },
+      { offset: '1', color: '#000', opacity: '.12' },
+    ])
+  })
+
+  it('el anodizado declara sus tres rects en orden (variante tile)', () => {
+    expect(specOf({ finishKind: 'anodizado' }, 'anodized')?.paint).toEqual({
+      variant: 'tile',
+      width: '6',
+      height: '6',
+      patternUnits: 'userSpaceOnUse',
+      tiles: [
+        { w: '6', h: '6', fill: 'none' },
+        { w: '1.2', h: '6', fill: 'rgba(255,255,255,.10)' },
+        { x: '3', w: '0.8', h: '6', fill: 'rgba(0,0,0,.06)' },
+      ],
+    })
+  })
+
+  it('el veteado viaja resuelto y sigue siendo determinista por colorCode', () => {
+    const paint = specOf({ finishKind: 'decorado-madera' }, 'grain')?.paint
+
+    expect(paint?.variant).toBe('veins')
+
+    if (paint?.variant !== 'veins') {
+      return
+    }
+
+    expect(paint.stroke).toBe('rgba(0,0,0,.10)')
+    expect(paint.veins).toHaveLength(12)
+    expect(paint.veins[0]).toEqual({ d: 'M5.95 0 C 7.15 30, 5.95 70, 6.55 100', width: '1.35' })
+    expect(paint.veins.at(-1)?.d).toMatch(/^M[\d.]+ 0 C /)
+    expect(specOf({ finishKind: 'decorado-madera' }, 'grain')?.paint).toEqual(paint)
+    expect(
+      specOf({ finishKind: 'decorado-madera', colorCode: 'RAL 9010' }, 'grain')?.paint,
+    ).not.toEqual(paint)
   })
 })
 

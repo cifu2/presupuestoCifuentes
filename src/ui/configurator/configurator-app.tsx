@@ -8,7 +8,7 @@ import type { CatalogSeriesDetail } from '@/application/use-cases/get-series-det
 import type { Locale } from '@/domain/catalog/locale'
 import { QUOTE_EXTRAS, type QuoteExtra } from '@/domain/pricing/quote-configuration'
 import { DoorPreview } from '@/ui/preview-2d/door-preview'
-import { TIPOS_2D_MVP, buildPreviewGeometry } from '@/ui/preview-2d/model'
+import { TIPOS_2D_MVP, TWO_TONE_FRAME_HEX, buildPreviewGeometry } from '@/ui/preview-2d/model'
 
 import {
   manualQuoteCreatedSchema,
@@ -552,7 +552,7 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
       : [],
     moulding: selection.moulding,
     twoToneFrame: selection.twoToneFrame,
-    secondColorHex: selection.twoToneFrame ? '#9AA2A9' : null,
+    secondColorHex: selection.twoToneFrame ? TWO_TONE_FRAME_HEX : null,
   })
 
   const previewLabel = tPreview('regionDetail', {

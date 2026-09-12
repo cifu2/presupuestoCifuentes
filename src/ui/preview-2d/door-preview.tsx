@@ -20,78 +20,45 @@ export interface DoorPreviewProps {
   readonly className?: string
 }
 
-const INK_MUTED = '#5b6773'
+/** Serializa un patrón tal y como lo resolvió el modelo: aquí no se deduce ningún color. */
+function patternMarkup(spec: PreviewPatternSpec): string {
+  const { paint } = spec
 
-function patternSpec(
-  geometry: PreviewGeometry,
-  kind: PreviewPatternSpec['kind'],
-): PreviewPatternSpec | undefined {
-  return geometry.patternSpecs.find((spec) => spec.kind === kind)
-}
-
-function grainPaths(spec: PreviewPatternSpec): string {
-  const paths: string[] = []
-
-  for (let index = 0; index < spec.veins; index += 1) {
-    const x = ((index + (spec.seed % 7) / 7) * 100) / spec.veins
-    const width = 0.6 + ((spec.seed + index * 13) % 5) / 4
-
-    paths.push(
-      `<path d="M${x.toFixed(2)} 0 C ${(x + 1.2).toFixed(2)} 30, ${x.toFixed(2)} 70, ${(x + 0.6).toFixed(2)} 100" stroke="rgba(0,0,0,.10)" stroke-width="${width.toFixed(2)}" fill="none" vector-effect="non-scaling-stroke"/>`,
-    )
-  }
-
-  return paths.join('')
-}
-
-/** `<defs>`: solo los patrones que la geometría declara, nada se deduce aquí. */
-function PreviewDefs({ geometry }: { readonly geometry: PreviewGeometry }): React.JSX.Element {
-  const linearGradient = (
-    id: string,
-    stops: readonly (readonly [string, string, string])[],
-  ): string =>
-    `<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">${stops
+  if (paint.variant === 'linearGradient') {
+    const stops = paint.stops
       .map(
-        ([offset, color, opacity]) =>
+        ({ offset, color, opacity }) =>
           `<stop offset="${offset}" stop-color="${color}" stop-opacity="${opacity}"/>`,
       )
-      .join('')}</linearGradient>`
+      .join('')
 
-  const grain = patternSpec(geometry, 'grain')
+    return `<linearGradient id="${spec.id}" x1="${paint.x1}" y1="${paint.y1}" x2="${paint.x2}" y2="${paint.y2}">${stops}</linearGradient>`
+  }
 
-  const defs = [
-    patternSpec(geometry, 'sheen')
-      ? '<linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".16"/><stop offset=".35" stop-color="#fff" stop-opacity="0"/></linearGradient>'
-      : '',
-    patternSpec(geometry, 'glass')
-      ? linearGradient('glass', [
-          ['0', '#dbe8f0', '1'],
-          ['1', '#b9cddd', '1'],
-        ])
-      : '',
-    patternSpec(geometry, 'metal')
-      ? linearGradient('metal', [
-          ['0', '#f2f4f5', '1'],
-          ['.45', '#c6ccd1', '1'],
-          ['1', '#9aa2a9', '1'],
-        ])
-      : '',
-    patternSpec(geometry, 'wall')
-      ? linearGradient('wall', [
-          ['0', '#000', '.10'],
-          ['1', '#000', '.05'],
-        ])
-      : '',
-    patternSpec(geometry, 'metalFinish')
-      ? '<linearGradient id="metalFinish" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".12"/><stop offset=".5" stop-color="#fff" stop-opacity=".12"/><stop offset="1" stop-color="#000" stop-opacity=".12"/></linearGradient>'
-      : '',
-    patternSpec(geometry, 'anodized')
-      ? '<pattern id="anodized" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="none"/><rect width="1.2" height="6" fill="rgba(255,255,255,.10)"/><rect x="3" width="0.8" height="6" fill="rgba(0,0,0,.06)"/></pattern>'
-      : '',
-    grain
-      ? `<pattern id="grain" width="100" height="100" patternUnits="objectBoundingBox">${grainPaths(grain)}</pattern>`
-      : '',
-  ].join('')
+  if (paint.variant === 'veins') {
+    const veins = paint.veins
+      .map(
+        ({ d, width }) =>
+          `<path d="${d}" stroke="${paint.stroke}" stroke-width="${width}" fill="none" vector-effect="non-scaling-stroke"/>`,
+      )
+      .join('')
+
+    return `<pattern id="${spec.id}" width="${paint.width}" height="${paint.height}" patternUnits="${paint.patternUnits}">${veins}</pattern>`
+  }
+
+  const tiles = paint.tiles
+    .map(
+      ({ x, y, w, h, fill }) =>
+        `<rect${x === undefined ? '' : ` x="${x}"`}${y === undefined ? '' : ` y="${y}"`} width="${w}" height="${h}" fill="${fill}"/>`,
+    )
+    .join('')
+
+  return `<pattern id="${spec.id}" width="${paint.width}" height="${paint.height}" patternUnits="${paint.patternUnits}">${tiles}</pattern>`
+}
+
+/** `<defs>`: solo los patrones que la geometría declara, en su orden canónico y con su pintura. */
+function PreviewDefs({ geometry }: { readonly geometry: PreviewGeometry }): React.JSX.Element {
+  const defs = geometry.patternSpecs.map(patternMarkup).join('')
 
   return <defs dangerouslySetInnerHTML={{ __html: defs }} />
 }
@@ -176,7 +143,7 @@ export function DoorPreview({ geometry, labels, className }: DoorPreviewProps): 
           x={colorUndefined.x + colorUndefined.w / 2}
           y={colorUndefined.y + colorUndefined.h / 2}
           textAnchor="middle"
-          fill={INK_MUTED}
+          style={{ fill: 'var(--color-ink-muted)' }}
           fontSize={Math.max(14, width * 0.03)}
         >
           {labels.colorUndefined}
