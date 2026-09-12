@@ -13,8 +13,14 @@ import type { $Enums, PrismaClient } from '@prisma/client'
 import { selectTariffInForce, type TariffVersion } from '@/domain/catalog/tariff-version'
 import type { ManualQuoteRequest } from '@/domain/catalog/manual-quote-request'
 import type { Quote } from '@/domain/quote/quote'
-import { AmbiguousTariffError, InvalidValueError } from '@/domain/shared/errors'
+import { AmbiguousTariffError, ConflictError, InvalidValueError } from '@/domain/shared/errors'
+import type { LocalizedText } from '@/domain/catalog/catalog-text'
 import type { QuoteExtra } from '@/domain/pricing/quote-configuration'
+import type { PriceTable } from '@/domain/pricing/price-table'
+import type { Accessory } from '@/domain/catalog/accessory'
+import type { Color } from '@/domain/catalog/color'
+import type { Finish } from '@/domain/catalog/finish'
+import type { DoorSeries } from '@/domain/catalog/series'
 
 import type {
   AccessoryRepository,
@@ -24,6 +30,13 @@ import type {
 import type { ManualQuoteRequestRepository } from '@/application/ports/manual-quote-request-repository'
 import type { QuoteNumberSequence } from '@/application/ports/quote-number-sequence'
 import type { QuoteRepository } from '@/application/ports/quote-repository'
+import type {
+  AccessoryWriteRepository,
+  CatalogUsageReader,
+  ColorWriteRepository,
+  FinishWriteRepository,
+  SeriesWriteRepository,
+} from '@/application/ports/catalog-write-repositories'
 import type { SeriesRepository } from '@/application/ports/series-repository'
 import type {
   TariffPricing,
@@ -35,9 +48,15 @@ import {
   groupCatalogTexts,
   localizedTextToJson,
   manualQuoteReasonToDb,
+  accessoryCategoryToDb,
+  modifierCatalogColumns,
+  modifierKindToDb,
+  modifierTargetToDb,
   pricingStrategyToDb,
+  pricingStrategyToDomain,
   quoteLineKindToDb,
   toAccessory,
+  toCatalogTextRows,
   toColor,
   toDoorSeries,
   toFinish,
@@ -118,6 +137,62 @@ export function isPublishedTariffOverlapViolation(error: unknown): boolean {
   }
 
   return inspect(error, 0)
+}
+
+/** Códigos de Prisma para las violaciones de integridad que el borde debe traducir a dominio. */
+const PRISMA_UNIQUE_VIOLATION = 'P2002'
+const PRISMA_FOREIGN_KEY_VIOLATION = 'P2003'
+
+/**
+ * ¿El error (o alguno de los errores anidados) lleva ese código de Prisma?
+ *
+ * Prisma 7 envuelve el error del driver, y la restricción de exclusión ya se busca así (CIF-89). Se
+ * recorre el grafo en lugar de depender de la forma concreta del error.
+ */
+function errorGraphHasCode(error: unknown, code: string): boolean {
+  const visited = new Set<unknown>()
+
+  const inspect = (value: unknown, depth: number): boolean => {
+    if (depth > MAX_ERROR_DEPTH || typeof value !== 'object' || value === null) {
+      return false
+    }
+
+    if (visited.has(value)) {
+      return false
+    }
+
+    visited.add(value)
+
+    const record = value as Record<string, unknown>
+
+    if (record.code === code) {
+      return true
+    }
+
+    return Object.values(record).some(
+      (child) => typeof child === 'object' && child !== null && inspect(child, depth + 1),
+    )
+  }
+
+  return inspect(error, 0)
+}
+
+/**
+ * ¿El error viene de violar un `@@unique` (código o slug ya ocupado)?
+ *
+ * La comprobación previa del caso de uso cubre el caso normal; esto evita un 500 en una carrera
+ * entre dos altas con el mismo `code`. Se exporta para probarlo sin base de datos.
+ */
+export function isUniqueViolation(error: unknown): boolean {
+  return errorGraphHasCode(error, PRISMA_UNIQUE_VIOLATION)
+}
+
+/**
+ * ¿El error viene de una clave ajena inexistente? Se traduce a `ResourceNotFoundError`: el llamante
+ * mandó un id de acabado o complemento que no existe.
+ */
+export function isForeignKeyViolation(error: unknown): boolean {
+  return errorGraphHasCode(error, PRISMA_FOREIGN_KEY_VIOLATION)
 }
 
 const SERIES_INCLUDE = {
@@ -430,6 +505,75 @@ export class PrismaTariffVersionRepository implements TariffVersionRepository {
       throw error
     }
   }
+
+  async findPriceTableByVersionId(tariffVersionId: string): Promise<PriceTable | null> {
+    const row = await this.prisma.tariffVersion.findUnique({
+      where: { id: tariffVersionId },
+      select: { strategy: true, priceTable: { include: PRICE_TABLE_INCLUDE } },
+    })
+
+    if (row === null || row.priceTable === null) {
+      return null
+    }
+
+    return toPriceTable(tariffVersionId, pricingStrategyToDomain(row.strategy), row.priceTable)
+  }
+
+  async savePriceTable(priceTable: PriceTable): Promise<void> {
+    const tariffVersionId = priceTable.tariffVersionId
+
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.tariffPriceTable.upsert({
+        where: { tariffVersionId },
+        create: {
+          tariffVersionId,
+          perSquareMetreCents: priceTable.perSquareMetre?.cents ?? null,
+          fixedPriceCents: priceTable.fixedPrice?.cents ?? null,
+        },
+        update: {
+          perSquareMetreCents: priceTable.perSquareMetre?.cents ?? null,
+          fixedPriceCents: priceTable.fixedPrice?.cents ?? null,
+        },
+      })
+
+      // La tabla se reemplaza entera: la edición del panel envía el estado completo, así que las
+      // filas que ya no vienen se borran (los presupuestos emitidos guardan su propia instantánea).
+      await transaction.tariffSizeBand.deleteMany({
+        where: { tariffPriceTableId: tariffVersionId },
+      })
+      await transaction.tariffSizeBand.createMany({
+        data: priceTable.bands.map((band, index) => ({
+          id: band.id,
+          tariffPriceTableId: tariffVersionId,
+          label: band.label === null ? Prisma.JsonNull : localizedTextToJson(band.label),
+          minWidthMm: band.minWidthMm,
+          maxWidthMm: band.maxWidthMm,
+          minHeightMm: band.minHeightMm,
+          maxHeightMm: band.maxHeightMm,
+          priceCents: band.price.cents,
+          sortOrder: index,
+        })),
+      })
+
+      await transaction.tariffModifier.deleteMany({
+        where: { tariffPriceTableId: tariffVersionId },
+      })
+      await transaction.tariffModifier.createMany({
+        data: priceTable.modifiers.map((modifier, index) => ({
+          id: modifier.id,
+          tariffPriceTableId: tariffVersionId,
+          code: modifier.code,
+          label: modifier.label === null ? Prisma.JsonNull : localizedTextToJson(modifier.label),
+          kind: modifierKindToDb(modifier.kind),
+          target: modifierTargetToDb(modifier.target),
+          ...modifierCatalogColumns(modifier),
+          amountCents: modifier.amount?.cents ?? null,
+          percentage: modifier.percentage,
+          sortOrder: index,
+        })),
+      })
+    })
+  }
 }
 
 export class PrismaQuoteRepository implements QuoteRepository {
@@ -612,3 +756,339 @@ export class PrismaQuoteNumberSequence implements QuoteNumberSequence {
 }
 
 export type { QuoteExtra }
+
+/**
+ * Traduce `catalog_text` a filas: *upsert* por idioma y borrado de los idiomas que ya no están.
+ *
+ * Un idioma sin traducción no debe dejar fila huérfana: si el propietario borra el inglés de un
+ * nombre, la fila `en` desaparece y el configurador cae al idioma por defecto (ADR-0005).
+ */
+async function upsertCatalogTexts(
+  transaction: Prisma.TransactionClient,
+  entityType: $Enums.CatalogEntityType,
+  entityId: string,
+  fields: readonly ($Enums.CatalogTextField | null)[],
+  text: LocalizedText | null,
+): Promise<void> {
+  for (const field of fields) {
+    if (field === null) {
+      continue
+    }
+
+    const rows = toCatalogTextRows(entityType, entityId, field, text)
+
+    if (rows.length === 0) {
+      // Sin texto no hay filas: se borran las que hubiera (el idioma se dejó vacío a propósito).
+      await transaction.catalogText.deleteMany({ where: { entityType, entityId, field } })
+      continue
+    }
+
+    await transaction.catalogText.deleteMany({
+      where: { entityType, entityId, field, locale: { notIn: rows.map((row) => row.locale) } },
+    })
+
+    for (const row of rows) {
+      await transaction.catalogText.upsert({
+        where: {
+          entityType_entityId_field_locale: {
+            entityType,
+            entityId,
+            field,
+            locale: row.locale,
+          },
+        },
+        create: { entityType, entityId, field, locale: row.locale, value: row.value },
+        update: { value: row.value },
+      })
+    }
+  }
+}
+
+/** Textos de una serie: `name` siempre, `description` si la hay. */
+async function saveSeriesTexts(
+  transaction: Prisma.TransactionClient,
+  series: DoorSeries,
+): Promise<void> {
+  await upsertCatalogTexts(transaction, 'SERIES', series.id, ['NAME'], series.name)
+  await upsertCatalogTexts(transaction, 'SERIES', series.id, ['DESCRIPTION'], series.description)
+}
+
+/**
+ * Escritura de series: *upsert* por id, con los vínculos de compatibilidad y los textos
+ * multi-idioma reemplazados en la misma transacción.
+ */
+export class PrismaSeriesWriteRepository implements SeriesWriteRepository {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async findByCode(code: string): Promise<DoorSeries | null> {
+    const rows = await this.prisma.doorSeries.findMany({ where: { code }, include: SERIES_INCLUDE })
+
+    return (await this.mapRows(rows))[0] ?? null
+  }
+
+  async findBySlug(slug: string): Promise<DoorSeries | null> {
+    const rows = await this.prisma.doorSeries.findMany({ where: { slug }, include: SERIES_INCLUDE })
+
+    return (await this.mapRows(rows))[0] ?? null
+  }
+
+  async save(series: DoorSeries): Promise<void> {
+    const mutableFields = {
+      code: series.code,
+      slug: series.slug,
+      status: catalogStatusToDb(series.status),
+      minWidthMm: series.sizeRange.minWidthMm,
+      maxWidthMm: series.sizeRange.maxWidthMm,
+      minHeightMm: series.sizeRange.minHeightMm,
+      maxHeightMm: series.sizeRange.maxHeightMm,
+      sortOrder: series.sortOrder,
+      updatedAt: series.updatedAt,
+    }
+
+    try {
+      await this.prisma.$transaction(async (transaction) => {
+        await transaction.doorSeries.upsert({
+          where: { id: series.id },
+          create: { id: series.id, createdAt: series.createdAt, ...mutableFields },
+          update: mutableFields,
+        })
+
+        await transaction.seriesFinish.deleteMany({ where: { seriesId: series.id } })
+
+        if (series.allowedFinishIds.length > 0) {
+          await transaction.seriesFinish.createMany({
+            data: series.allowedFinishIds.map((finishId) => ({ seriesId: series.id, finishId })),
+          })
+        }
+
+        await transaction.seriesAccessory.deleteMany({ where: { seriesId: series.id } })
+
+        if (series.allowedAccessoryIds.length > 0) {
+          await transaction.seriesAccessory.createMany({
+            data: series.allowedAccessoryIds.map((accessoryId) => ({
+              seriesId: series.id,
+              accessoryId,
+            })),
+          })
+        }
+
+        await saveSeriesTexts(transaction, series)
+      })
+    } catch (error) {
+      throw asCatalogWriteError(error, `la serie "${series.code}"`)
+    }
+  }
+
+  private async mapRows(rows: readonly SeriesRow[]): Promise<readonly DoorSeries[]> {
+    const texts = await fetchTexts(
+      this.prisma,
+      'SERIES',
+      rows.map((row) => row.id),
+    )
+
+    return rows.map((row) => toDoorSeries(row, texts))
+  }
+}
+
+/** Escritura de acabados: *upsert* por `code` con sus textos. */
+export class PrismaFinishWriteRepository implements FinishWriteRepository {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async findByCode(code: string): Promise<Finish | null> {
+    const row = await this.prisma.finish.findUnique({ where: { code } })
+
+    if (row === null) {
+      return null
+    }
+
+    const texts = await fetchTexts(this.prisma, 'FINISH', [row.id])
+
+    return toFinish(row, texts.get(row.id))
+  }
+
+  async save(finish: Finish): Promise<void> {
+    const mutableFields = {
+      code: finish.code,
+      status: catalogStatusToDb(finish.status),
+      sortOrder: finish.sortOrder,
+      updatedAt: finish.updatedAt,
+    }
+
+    try {
+      await this.prisma.$transaction(async (transaction) => {
+        await transaction.finish.upsert({
+          where: { id: finish.id },
+          create: { id: finish.id, createdAt: finish.createdAt, ...mutableFields },
+          update: mutableFields,
+        })
+
+        await upsertCatalogTexts(transaction, 'FINISH', finish.id, ['NAME'], finish.name)
+        await upsertCatalogTexts(
+          transaction,
+          'FINISH',
+          finish.id,
+          ['DESCRIPTION'],
+          finish.description,
+        )
+      })
+    } catch (error) {
+      throw asCatalogWriteError(error, `el acabado "${finish.code}"`)
+    }
+  }
+}
+
+/** Escritura de colores: *upsert* por `(finishId, code)` con su nombre. */
+export class PrismaColorWriteRepository implements ColorWriteRepository {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async findByFinishIdAndCode(finishId: string, code: string): Promise<Color | null> {
+    const row = await this.prisma.color.findUnique({
+      where: { finishId_code: { finishId, code } },
+    })
+
+    if (row === null) {
+      return null
+    }
+
+    const texts = await fetchTexts(this.prisma, 'COLOR', [row.id])
+
+    return toColor(row, texts.get(row.id))
+  }
+
+  async save(color: Color): Promise<void> {
+    const mutableFields = {
+      finishId: color.finishId,
+      code: color.code,
+      hex: color.hex,
+      status: catalogStatusToDb(color.status),
+      sortOrder: color.sortOrder,
+      updatedAt: color.updatedAt,
+    }
+
+    try {
+      await this.prisma.$transaction(async (transaction) => {
+        await transaction.color.upsert({
+          where: { id: color.id },
+          create: { id: color.id, createdAt: color.createdAt, ...mutableFields },
+          update: mutableFields,
+        })
+
+        await upsertCatalogTexts(transaction, 'COLOR', color.id, ['NAME'], color.name)
+      })
+    } catch (error) {
+      throw asCatalogWriteError(error, `el color "${color.code}"`)
+    }
+  }
+}
+
+/** Escritura de complementos: *upsert* por `code` con sus textos. */
+export class PrismaAccessoryWriteRepository implements AccessoryWriteRepository {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async findByCode(code: string): Promise<Accessory | null> {
+    const row = await this.prisma.accessory.findUnique({ where: { code } })
+
+    if (row === null) {
+      return null
+    }
+
+    const texts = await fetchTexts(this.prisma, 'ACCESSORY', [row.id])
+
+    return toAccessory(row, texts.get(row.id))
+  }
+
+  async save(accessory: Accessory): Promise<void> {
+    const mutableFields = {
+      code: accessory.code,
+      category: accessoryCategoryToDb(accessory.category),
+      status: catalogStatusToDb(accessory.status),
+      sortOrder: accessory.sortOrder,
+      updatedAt: accessory.updatedAt,
+    }
+
+    try {
+      await this.prisma.$transaction(async (transaction) => {
+        await transaction.accessory.upsert({
+          where: { id: accessory.id },
+          create: { id: accessory.id, createdAt: accessory.createdAt, ...mutableFields },
+          update: mutableFields,
+        })
+
+        await upsertCatalogTexts(transaction, 'ACCESSORY', accessory.id, ['NAME'], accessory.name)
+        await upsertCatalogTexts(
+          transaction,
+          'ACCESSORY',
+          accessory.id,
+          ['DESCRIPTION'],
+          accessory.description,
+        )
+      })
+    } catch (error) {
+      throw asCatalogWriteError(error, `el complemento "${accessory.code}"`)
+    }
+  }
+}
+
+/**
+ * Consultas de uso del catálogo vivo para las guardas de desactivación (CIF-126a).
+ *
+ * Cada método pregunta lo mínimo: una serie con tarifa publicada y vigente, un vínculo de serie no
+ * archivada o un color no archivado.
+ */
+export class PrismaCatalogUsageReader implements CatalogUsageReader {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async seriesHasTariffInForce(seriesId: string, instant: Date): Promise<boolean> {
+    const row = await this.prisma.tariffVersion.findFirst({
+      where: {
+        seriesId,
+        status: 'PUBLISHED',
+        validFrom: { lte: instant },
+        OR: [{ validUntil: null }, { validUntil: { gt: instant } }],
+      },
+      select: { id: true },
+    })
+
+    return row !== null
+  }
+
+  async isFinishAllowedByLiveSeries(finishId: string): Promise<boolean> {
+    const row = await this.prisma.seriesFinish.findFirst({
+      where: { finishId, series: { status: { not: 'ARCHIVED' } } },
+      select: { seriesId: true },
+    })
+
+    return row !== null
+  }
+
+  async isAccessoryAllowedByLiveSeries(accessoryId: string): Promise<boolean> {
+    const row = await this.prisma.seriesAccessory.findFirst({
+      where: { accessoryId, series: { status: { not: 'ARCHIVED' } } },
+      select: { seriesId: true },
+    })
+
+    return row !== null
+  }
+
+  async finishHasLiveColors(finishId: string): Promise<boolean> {
+    const row = await this.prisma.color.findFirst({
+      where: { finishId, status: { not: 'ARCHIVED' } },
+      select: { id: true },
+    })
+
+    return row !== null
+  }
+}
+
+/** Traduce las violaciones de integridad del catálogo a errores de dominio estables. */
+function asCatalogWriteError(error: unknown, subject: string): unknown {
+  if (isUniqueViolation(error)) {
+    return new ConflictError(`Ya existe ${subject} con ese código o slug`)
+  }
+
+  if (isForeignKeyViolation(error)) {
+    return new InvalidValueError(`Al guardar ${subject} se referenció un elemento que no existe`)
+  }
+
+  return error
+}

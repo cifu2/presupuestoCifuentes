@@ -11,7 +11,9 @@ export default defineConfig({
     environment: 'node',
     // La API se prueba contra el catálogo de demostración en memoria (sin PostgreSQL).
     env: { CATALOG_DEMO_MODE: 'true' },
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    // Los unitarios de las guardas del E2E viven junto a la suite (`e2e/support/*.test.ts`) para que
+    // no se puedan separar del código que cubren; Playwright solo carga `*.spec.ts` (`testMatch`).
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'e2e/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

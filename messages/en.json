@@ -269,7 +269,12 @@
     "NOT_FOUND": "We could not find what you are looking for.",
     "INVALID_QUOTE_DELIVERY": "The quote delivery is not valid",
     "INVALID_QUOTE_DELIVERY_TRANSITION": "The quote delivery cannot change state",
-    "QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED": "The delivery ran out of attempts: send a new quote version to retry it."
+    "QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED": "The delivery ran out of attempts: send a new quote version to retry it.",
+    "CONFLICT": "A catalogue item with that code or web address already exists.",
+    "SERIES_IN_USE": "The series has a published tariff in force; archive it before deactivating the series.",
+    "ITEM_IN_USE": "The item is in use in the live catalogue; remove it before deactivating it.",
+    "EMPTY_PRICE_TABLE": "The tariff has no prices loaded; load them before publishing it.",
+    "TARIFF_NOT_EDITABLE": "Only draft tariff prices can be edited."
   },
   "ManualQuoteReasons": {
     "size_above_series_max": "The measurement {width}×{height} mm exceeds the maximum size of the \"{series}\" series ({maxWidth}×{maxHeight} mm)",

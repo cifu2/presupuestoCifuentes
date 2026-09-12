@@ -14,10 +14,15 @@ import type { IdGenerator } from '@/application/ports/id-generator'
 
 import {
   InMemoryAccessoryRepository,
+  InMemoryAccessoryWriteRepository,
   InMemoryCatalogStore,
+  InMemoryCatalogUsageReader,
   InMemoryColorRepository,
+  InMemoryColorWriteRepository,
   InMemoryFinishRepository,
+  InMemoryFinishWriteRepository,
   InMemorySeriesRepository,
+  InMemorySeriesWriteRepository,
   InMemoryTariffPricingRepository,
   InMemoryTariffVersionRepository,
 } from '@/infrastructure/persistence/in-memory/catalog-store'
@@ -74,6 +79,11 @@ export interface TestWorld {
   readonly accessoryRepository: InMemoryAccessoryRepository
   readonly tariffPricingRepository: InMemoryTariffPricingRepository
   readonly tariffVersionRepository: InMemoryTariffVersionRepository
+  readonly seriesWriteRepository: InMemorySeriesWriteRepository
+  readonly finishWriteRepository: InMemoryFinishWriteRepository
+  readonly colorWriteRepository: InMemoryColorWriteRepository
+  readonly accessoryWriteRepository: InMemoryAccessoryWriteRepository
+  readonly catalogUsageReader: InMemoryCatalogUsageReader
   readonly quoteRepository: InMemoryQuoteRepository
   readonly manualQuoteRequestRepository: InMemoryManualQuoteRequestRepository
   readonly quoteNumberSequence: InMemoryQuoteNumberSequence
@@ -169,6 +179,11 @@ export function makeTestWorld(options: TestWorldOptions = {}): TestWorld {
     accessoryRepository: new InMemoryAccessoryRepository(catalog),
     tariffPricingRepository: new InMemoryTariffPricingRepository(catalog),
     tariffVersionRepository: new InMemoryTariffVersionRepository(catalog),
+    seriesWriteRepository: new InMemorySeriesWriteRepository(catalog),
+    finishWriteRepository: new InMemoryFinishWriteRepository(catalog),
+    colorWriteRepository: new InMemoryColorWriteRepository(catalog),
+    accessoryWriteRepository: new InMemoryAccessoryWriteRepository(catalog),
+    catalogUsageReader: new InMemoryCatalogUsageReader(catalog),
     quoteRepository: new InMemoryQuoteRepository(quotes),
     manualQuoteRequestRepository: new InMemoryManualQuoteRequestRepository(quotes),
     quoteNumberSequence: new InMemoryQuoteNumberSequence(quotes),

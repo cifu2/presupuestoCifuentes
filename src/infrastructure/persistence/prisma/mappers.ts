@@ -9,7 +9,7 @@ import type { $Enums, Prisma } from '@prisma/client'
 
 import type { Accessory, AccessoryCategory } from '@/domain/catalog/accessory'
 import { Accessory as AccessoryEntity } from '@/domain/catalog/accessory'
-import { LocalizedText } from '@/domain/catalog/catalog-text'
+import { LocalizedText, localizedTextTranslations } from '@/domain/catalog/catalog-text'
 import type { CatalogStatus } from '@/domain/catalog/catalog-status'
 import { Color } from '@/domain/catalog/color'
 import { Finish } from '@/domain/catalog/finish'
@@ -133,6 +133,17 @@ const ACCESSORY_CATEGORY: Record<$Enums.AccessoryCategory, AccessoryCategory> = 
   VENTILATION: 'ventilation',
   OTHER: 'other',
 }
+
+const ACCESSORY_CATEGORY_TO_DB: Record<AccessoryCategory, $Enums.AccessoryCategory> = {
+  hardware: 'HARDWARE',
+  closing: 'CLOSING',
+  glass: 'GLASS',
+  ventilation: 'VENTILATION',
+  other: 'OTHER',
+}
+
+export const accessoryCategoryToDb = (category: AccessoryCategory): $Enums.AccessoryCategory =>
+  ACCESSORY_CATEGORY_TO_DB[category]
 
 export const catalogStatusToDomain = (status: $Enums.CatalogStatus): CatalogStatus =>
   CATALOG_STATUS[status]
@@ -718,4 +729,48 @@ export function toQuoteDelivery(row: QuoteDeliveryRow): QuoteDelivery {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   })
+}
+
+/** Estrategia de cálculo del dominio a partir del enum de Prisma (mapa inverso del de escritura). */
+export const pricingStrategyToDomain = (strategy: $Enums.PricingStrategy): PricingStrategy =>
+  PRICING_STRATEGY[strategy]
+
+/**
+ * Filas de `catalog_text` de un texto traducible: una por idioma realmente escrito.
+ *
+ * El *upsert* por `(entityType, entityId, field, locale)` vive en el adaptador; aquí solo se traduce
+ * el texto del dominio a filas, sin fallback: un idioma sin traducción no genera fila.
+ */
+export function toCatalogTextRows(
+  entityType: $Enums.CatalogEntityType,
+  entityId: string,
+  field: $Enums.CatalogTextField,
+  text: LocalizedText | null,
+): readonly { readonly locale: string; readonly value: string }[] {
+  if (text === null) {
+    return []
+  }
+
+  return Object.entries(localizedTextTranslations(text)).map(([locale, value]) => ({
+    locale,
+    value,
+  }))
+}
+
+/**
+ * Columnas de catálogo de un modificador: el objetivo `finish`/`color`/`accessory` guarda su
+ * referencia en su propia columna y el descuento, el código en `discountCode`.
+ */
+export function modifierCatalogColumns(modifier: PriceModifier): {
+  readonly discountCode: string | null
+  readonly finishId: string | null
+  readonly colorId: string | null
+  readonly accessoryId: string | null
+} {
+  return {
+    discountCode: modifier.target === 'discount' ? modifier.targetId : null,
+    finishId: modifier.target === 'finish' ? modifier.targetId : null,
+    colorId: modifier.target === 'color' ? modifier.targetId : null,
+    accessoryId: modifier.target === 'accessory' ? modifier.targetId : null,
+  }
 }

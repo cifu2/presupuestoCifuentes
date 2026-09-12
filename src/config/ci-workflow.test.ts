@@ -24,6 +24,41 @@ function jobSection(jobId: string): string {
 const calidad = jobSection('calidad')
 const e2e = jobSection('e2e')
 
+/** Comandos `run:` de una sola línea del job, en orden de aparición. */
+function runSteps(job: string): string[] {
+  return [...job.matchAll(/^ +(?:- )?run: *(\S.*)$/gm)].map((match) => match[1]!.trim())
+}
+
+describe('un fallo de formato no oculta el resto de la puerta (CIF-489)', () => {
+  // Si `format:check` va antes, un hallazgo de formato deja estos pasos en `skipped`: el job rojo no
+  // dice si hay algo más y hace falta otro ciclo de CI para averiguarlo.
+  const gatesAntesDelFormato = [
+    'run: pnpm lint',
+    'run: pnpm typecheck',
+    'run: pnpm test:coverage',
+    'bash -n "$script"',
+    'run: ./scripts/secret-scan.sh',
+    'run: ./scripts/docs-preview-guard.sh',
+  ]
+
+  it('deja `format:check` como último paso de verificación del job `calidad`', () => {
+    expect(runSteps(calidad).at(-1)).toBe('pnpm format:check')
+  })
+
+  it('ejecuta lint, tipos, unitarios, guardas de scripts y barrido de secretos antes del formato', () => {
+    const formato = calidad.indexOf('run: pnpm format:check')
+
+    expect(formato).toBeGreaterThan(-1)
+
+    for (const gate of gatesAntesDelFormato) {
+      const posicion = calidad.indexOf(gate)
+
+      expect(posicion, `${gate} no está en el job`).toBeGreaterThan(-1)
+      expect(posicion, `${gate} queda después de format:check`).toBeLessThan(formato)
+    }
+  })
+})
+
 describe('job `calidad` con base de datos de test', () => {
   it('arranca un servicio PostgreSQL 17 para los tests de integración', () => {
     // Sin base de datos, los tests de integración de los adaptadores Prisma se saltan

@@ -1,6 +1,9 @@
 /**
- * Test del borde HTTP del panel: publicar una tarifa que se solapa con otra publicada de la misma
- * serie responde 409 y **no** escribe la fila (hallazgo N5 de CIF-78).
+ * Test del borde HTTP del panel: las dos invariantes de publicación responden 409 y **no** escriben la
+ * fila (hallazgo N5 de CIF-78) — el solape con otra publicada de la misma serie (`AMBIGUOUS_TARIFF`) y
+ * la versión sin tabla de precios (`EMPTY_PRICE_TABLE`, ADR-0027 §5). El orden también importa: el
+ * solape se comprueba antes que la tabla vacía, y el caso de solape de este fichero no siembra tabla a
+ * propósito.
  *
  * Los ids son UUID reales porque el `:id` se valida en el borde (hallazgo N2 de CIF-85).
  */
@@ -10,6 +13,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { makeTariffVersion, TEST_NOW } from '@/domain/catalog/testing/factories'
 import { ValidityPeriod } from '@/domain/catalog/validity-period'
 import type { TariffVersion } from '@/domain/catalog/tariff-version'
+import { makePriceTable } from '@/domain/pricing/testing/factories'
+import type { PriceTable } from '@/domain/pricing/price-table'
 
 const TOKEN = 'token-de-prueba-suficientemente-largo'
 
@@ -17,6 +22,8 @@ const store = vi.hoisted(() => ({
   versions: [] as unknown[],
   saves: [] as unknown[],
   findByIdCalls: [] as string[],
+  /** Tablas de precios por versión: el doble del puerto devuelve una si el test la sembró. */
+  priceTables: new Map<string, unknown>(),
 }))
 
 vi.mock('@/config/env', () => ({
@@ -37,6 +44,10 @@ vi.mock('@/composition/container', () => ({
         (store.versions as { seriesId: string }[]).filter(
           (version) => version.seriesId === seriesId,
         ),
+      findPriceTableByVersionId: async (id: string) => store.priceTables.get(id) ?? null,
+      savePriceTable: async (priceTable: PriceTable) => {
+        store.priceTables.set(priceTable.tariffVersionId, priceTable)
+      },
       save: async (version: { id: string }) => {
         store.saves.push(version)
         const versions = store.versions as { id: string }[]
@@ -67,7 +78,13 @@ function seed(versions: readonly TariffVersion[]): void {
   store.versions.length = 0
   store.saves.length = 0
   store.findByIdCalls.length = 0
+  store.priceTables.clear()
   store.versions.push(...versions)
+}
+
+/** Todo borrador que vaya a publicarse necesita su tabla de precios (ADR-0027 §4). */
+function seedPriceTable(tariffVersionId: string): void {
+  store.priceTables.set(tariffVersionId, makePriceTable({ tariffVersionId }))
 }
 
 const CI_100_V1 = '0192f1b0-0000-7000-8000-000000000101'
@@ -87,6 +104,7 @@ describe('POST /api/admin/tariff-versions/[id]/publish', () => {
         publishedAt: null,
       }),
     ])
+    seedPriceTable(CI_400_V1)
 
     const response = await publish(CI_400_V1)
     const body = await response.json()
@@ -117,6 +135,27 @@ describe('POST /api/admin/tariff-versions/[id]/publish', () => {
     expect(store.saves).toEqual([])
     expect(
       (store.versions as TariffVersion[]).find((version) => version.id === CI_100_V2)?.status,
+    ).toBe('draft')
+  })
+
+  it('responde 409 EMPTY_PRICE_TABLE y no escribe si el borrador no tiene tabla de precios', async () => {
+    seed([
+      makeTariffVersion({
+        id: CI_400_V1,
+        seriesId: 'series-ci-400',
+        status: 'draft',
+        publishedAt: null,
+      }),
+    ])
+
+    const response = await publish(CI_400_V1)
+    const body = await response.json()
+
+    expect(response.status).toBe(409)
+    expect(body.error.code).toBe('EMPTY_PRICE_TABLE')
+    expect(store.saves).toEqual([])
+    expect(
+      (store.versions as TariffVersion[]).find((version) => version.id === CI_400_V1)?.status,
     ).toBe('draft')
   })
 
