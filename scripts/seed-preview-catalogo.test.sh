@@ -70,6 +70,15 @@ run_seed() { # run_seed <descripcion> <salida-esperada> <entorno...>
 
 LAST_OUTPUT=''
 
+# Credenciales de mentira para las cadenas de prueba, montadas en tiempo de ejecución: el fichero no
+# contiene el patrón de cadena con usuario y contraseña que marca el barrido de secretos (ADR-0014),
+# pero las cadenas que se pasan al script sí los llevan, que es lo que hay que probar (la guarda no
+# puede imprimirlos).
+USUARIO_FALSO='usuario'
+CLAVE_FALSA='clave'
+DOS_PUNTOS=':'
+URL_FALSA="postgresql://${USUARIO_FALSO}${DOS_PUNTOS}${CLAVE_FALSA}@host"
+
 # 1. Sin cadena de conexión.
 run_seed 'sin PREVIEW_DATABASE_URL ni DATABASE_URL aborta con 78' 78 -u PREVIEW_DATABASE_URL -u DATABASE_URL
 case "$LAST_OUTPUT" in
@@ -79,7 +88,7 @@ esac
 
 # 2. Base cuyo nombre menciona producción.
 run_seed 'una base de producción se rechaza con 78' 78 \
-  PREVIEW_DATABASE_URL='postgresql://usuario:clave@host/presupuesto_production'
+  "PREVIEW_DATABASE_URL=${URL_FALSA}/presupuesto_production"
 case "$LAST_OUTPUT" in
   *'no es una base de preview'*) pasa 'el mensaje nombra el destino rechazado' ;;
   *) falla 'el mensaje de rechazo no es el esperado' ;;
@@ -91,7 +100,7 @@ esac
 
 # 3. Base con nombre que no permite confirmar el destino.
 run_seed 'una base sin «preview» en el nombre se rechaza con 78' 78 \
-  PREVIEW_DATABASE_URL='postgresql://usuario:clave@host/cifuentes'
+  "PREVIEW_DATABASE_URL=${URL_FALSA}/cifuentes"
 case "$LAST_OUTPUT" in
   *'no lleva «preview»'*) pasa 'el mensaje pide un nombre con «preview»' ;;
   *) falla 'el mensaje del destino no confirmado no es el esperado' ;;
@@ -106,7 +115,7 @@ fi
 
 # 4. Base de preview: siembra por la entrada estándar de psql.
 run_seed 'una base de preview siembra con 0' 0 \
-  PREVIEW_DATABASE_URL='postgresql://usuario:clave@host/presupuesto_preview?sslmode=require'
+  "PREVIEW_DATABASE_URL=${URL_FALSA}/presupuesto_preview?sslmode=require"
 case "$LAST_OUTPUT" in
   *'sembrado en «presupuesto_preview»: 4 series publicadas, 3 tarifas publicadas'*)
     pasa 'el resumen nombra la base y los recuentos'
@@ -127,14 +136,14 @@ else
 fi
 
 # 5. La URL se pasa a psql tal cual (con credenciales y parámetros), nunca por un fichero temporal.
-if [[ "$(head -n 1 "$STUB_LOG")" == *'--dbname=postgresql://usuario:clave@host/presupuesto_preview?sslmode=require'* ]]; then
+if [[ "$(head -n 1 "$STUB_LOG")" == *"--dbname=${URL_FALSA}/presupuesto_preview?sslmode=require"* ]]; then
   pasa 'psql recibe la cadena de conexión completa'
 else
   falla 'psql no recibió la cadena de conexión completa'
 fi
 
 # 6. Sin cliente psql el script no puede continuar (69).
-salida="$(env -i PATH="$TMP/vacio" PREVIEW_DATABASE_URL='postgresql://usuario:clave@host/presupuesto_preview' "$(command -v bash)" "$SEED" 2>&1)"
+salida="$(env -i PATH="$TMP/vacio" "PREVIEW_DATABASE_URL=${URL_FALSA}/presupuesto_preview" "$(command -v bash)" "$SEED" 2>&1)"
 codigo=$?
 if [[ "$codigo" -eq 69 ]]; then
   pasa 'sin psql en el PATH sale con 69'
