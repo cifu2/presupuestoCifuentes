@@ -12,12 +12,19 @@
  * pool de **una sola conexión** para poder destruirla al cancelar sin tocar las conexiones que
  * atienden peticiones.
  *
+ * El tope también acota el **establecimiento** de la conexión: `AbortSignal` no cancela el
+ * handshake de `pool.connect`, así que el pool del adaptador fija `connectionTimeoutMillis` al
+ * mismo `HEALTH_PROBE_TIMEOUT_MS` del caso de uso. Sin él, un host que traga la conexión dejaría el
+ * intento en vuelo y el pool (`max: 1`) encolaría las sondas siguientes hasta que fallara el socket
+ * (CIF-455).
+ *
  * Nunca se registra ni se propaga el error crudo del driver: `pg`/Prisma pueden incluir la cadena
  * de conexión (con credenciales) en el mensaje. El puerto devuelve un estado, no un error.
  */
 
 import pg, { type Pool, type PoolClient } from 'pg'
 
+import { HEALTH_PROBE_TIMEOUT_MS } from '@/application/use-cases/get-system-status'
 import type {
   DatabaseHealth,
   HealthProbe,
@@ -43,9 +50,24 @@ const SCHEMA_PRESENCE_SQL = `
     to_regclass('door_series') IS NOT NULL AS "hasSchema"
 `
 
+/**
+ * Mensajes de fallo con un solo criterio: un `console.error` solo puede decir que la base no
+ * responde o que el tope canceló la sonda, y la señal decide cuál de los dos, tanto al establecer
+ * la conexión como al ejecutar la consulta.
+ */
+const UNREACHABLE_LOG = '[health] la base de datos no responde a la sonda'
+const CANCELLED_LOG =
+  '[health] la sonda de la base de datos se canceló al agotarse el tiempo de espera'
+
 /** Pool de la sonda: una única conexión, para que cancelar no afecte al resto de la aplicación. */
 export function createHealthProbe(connectionString: string): PgHealthProbe {
-  return new PgHealthProbe(new pg.Pool({ connectionString, max: 1 }))
+  return new PgHealthProbe(
+    new pg.Pool({
+      connectionString,
+      max: 1,
+      connectionTimeoutMillis: HEALTH_PROBE_TIMEOUT_MS,
+    }),
+  )
 }
 
 export class PgHealthProbe implements HealthProbe {
@@ -56,7 +78,7 @@ export class PgHealthProbe implements HealthProbe {
       return 'unreachable'
     }
 
-    const client = await this.checkout()
+    const client = await this.checkout(signal)
 
     if (client === null) {
       return 'unreachable'
@@ -90,11 +112,7 @@ export class PgHealthProbe implements HealthProbe {
 
       return 'ok'
     } catch {
-      console.error(
-        cancelled
-          ? '[health] la sonda de la base de datos se canceló al agotarse el tiempo de espera'
-          : '[health] la base de datos no responde a la sonda',
-      )
+      console.error(cancelled ? CANCELLED_LOG : UNREACHABLE_LOG)
 
       return 'unreachable'
     } finally {
@@ -107,11 +125,13 @@ export class PgHealthProbe implements HealthProbe {
     }
   }
 
-  private async checkout(): Promise<PoolClient | null> {
+  private async checkout(signal?: AbortSignal): Promise<PoolClient | null> {
     try {
       return await this.pool.connect()
     } catch {
-      console.error('[health] la base de datos no responde a la sonda')
+      // Si la señal se abortó durante el `connect`, el fallo es la cancelación (el tope ganó la
+      // carrera), no que la base no responda: mismo criterio de mensaje que la consulta.
+      console.error(isAborted(signal) ? CANCELLED_LOG : UNREACHABLE_LOG)
 
       return null
     }
