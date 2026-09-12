@@ -20,6 +20,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "e2e": "playwright test",
+    "salud:http": "./scripts/health-http-check.sh",
+    "salud:http:test": "./scripts/health-http-check.test.sh",
     "secret:scan": "./scripts/secret-scan.sh",
     "secret:scan:test": "./scripts/secret-scan.test.sh",
     "e2e:install": "playwright install --with-deps chromium",

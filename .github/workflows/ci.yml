@@ -19,7 +19,7 @@ jobs:
   calidad:
     name: calidad (formato · lint · tipos · unitarios)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     # Los tests de integración de los adaptadores Prisma solo se ejecutan si existe
     # TEST_DATABASE_URL (`describe.runIf`); sin la variable se saltan en silencio y el CI daría por
     # bueno un adaptador que nadie ejecutó (CIF-19). La base es efímera y no guarda datos reales.
@@ -79,6 +79,8 @@ jobs:
         run: ./scripts/docs-preview-guard.sh
       - name: Guarda y paso de siembra del catálogo de preview (CIF-330)
         run: ./scripts/seed-preview-catalogo.test.sh
+      - name: Test del contrato HTTP real de /api/health (CIF-456)
+        run: ./scripts/health-http-check.test.sh
       - run: pnpm lint
       - run: pnpm typecheck
       - name: migraciones en la base de datos de test
@@ -93,6 +95,20 @@ jobs:
             echo "· integración Prisma, repetición ${repetition}/5"
             pnpm exec vitest run src/infrastructure/persistence/prisma/repositories.test.ts
           done
+      # El E2E hermético solo ve el estado `unconfigured` del borde (CIF-456). Este paso sirve la
+      # build de producción con los cuatro entornos del contrato de `/api/health` (ADR-0015 §5)
+      # sobre la base de test ya migrada: una regresión de los 503 no llega a `main` sin que esta
+      # puerta la vea. Deja el informe como artefacto.
+      - name: Contrato HTTP real de /api/health sobre la build de producción (CIF-456)
+        env:
+          HEALTH_CHECK_REPORT: salud-http.log
+        run: ./scripts/health-http-check.sh
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: salud-http
+          path: salud-http.log
+          retention-days: 7
       - if: always()
         uses: actions/upload-artifact@v7
         with:

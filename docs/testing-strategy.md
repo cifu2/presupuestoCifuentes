@@ -11,6 +11,7 @@ es la que manda cuando hay duda.
 | Unitario de aplicación | Vitest      | Casos de uso con puertos doblados (repositorios y servicios falsos en memoria)   | `src/application/**/*.test.ts`    |
 | Integración            | Vitest      | Adaptadores contra PostgreSQL real (base de datos de test) y renderizado de PDF  | `src/infrastructure/**/*.test.ts` |
 | E2E                    | Playwright  | Flujos completos de usuario en navegador, escritorio y móvil                     | `e2e/*.spec.ts`                   |
+| Contrato del borde     | Bash + curl | Los cuatro estados de `/api/health` sobre la build de producción servida         | `scripts/health-http-check.sh`    |
 
 ## Prioridad de pruebas por flujo crítico
 
@@ -61,7 +62,9 @@ mapa de flujos a specs, los datos de prueba y la plantilla de informe de fallo e
 - `calidad`: `format:check` → `lint` → `typecheck` → `pnpm db:deploy` → `test:coverage` → 5 pasadas
   consecutivas de `repositories.test.ts`, con un servicio `postgres:17` efímero y
   `TEST_DATABASE_URL` apuntando a `cifuentes_test`, para que los tests de integración se ejecuten en
-  lugar de saltarse.
+  lugar de saltarse. Al final, `./scripts/health-http-check.sh` (CIF-456) sirve la build de
+  producción y comprueba el contrato HTTP de `/api/health` en sus cuatro estados (200 `ok`, 200
+  `unconfigured`, 503 `unmigrated` y 503 `unreachable`); deja `salud-http.log` como artefacto.
 - `e2e`: instalación de Chromium → build → `pnpm e2e`; ante un fallo sube `playwright-report/` y
   `test-results/` (informe, capturas, trazas y vídeo del reintento).
 
@@ -81,6 +84,17 @@ Los tests de integración (`src/infrastructure/**/*.test.ts`) se declaran con
 debe garantizarla. La guarda está en `src/config/ci-workflow.test.ts`, para que nadie quite el
 servicio ni renombre los checks requeridos sin que el CI lo note. Los datos son los que siembra cada
 test y se limpian al terminar; no se usa ninguna base de datos real ni credenciales de cliente.
+
+### Contrato HTTP de `/api/health`
+
+La sonda del monitor externo (ADR-0009 §5) no ve el caso de uso, ve el borde: código HTTP y cuerpo.
+Los unitarios de la ruta doblan el caso de uso, así que no cubren el montaje real (variables de
+entorno, driver, bundle). `scripts/health-http-check.sh` cierra ese hueco: compila la build de
+producción y la sirve una vez por estado del contrato (ADR-0015 §5) contra la base de test ya
+migrada. `unmigrated` se provoca con `search_path` a un esquema inexistente (no ejecuta ningún DDL)
+y `unreachable` con un puerto cerrado. Su contrato se prueba en
+`scripts/health-http-check.test.sh`, que dobla `pnpm` y `curl` para que una regresión de los 503
+salga en rojo sin compilar ni tocar la base. En local: `pnpm salud:http`, con `TEST_DATABASE_URL`.
 
 ### Carreras: entrelazado forzado, no scheduling
 
