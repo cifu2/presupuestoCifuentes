@@ -8,6 +8,10 @@
 # (CIF-123). Las claves se comparan por nombre exacto, nunca por subcadena (CIF-129). Los avisos de
 # esta comprobación se prueban en scripts/despliegue-preflight.test.sh.
 #
+# Interruptores de la guarda del shell del panel (ADR-0023 §5, CIF-282): bloquea si
+# `CATALOG_DEMO_MODE` está activa en Production (sustituye los datos reales por fixtures y abre la
+# guarda) e informa del estado de `ADMIN_PANEL_ENABLED`, que es un interruptor legítimo.
+#
 # No crea, no modifica ni borra nada y no imprime ningún valor secreto: solo metadatos (usuario,
 # repositorio, proyecto, nombres de variables). Funciona sin las CLI de GitHub y de Vercel, así que
 # sirve también dentro del entorno del agente; aquí no hay ninguna credencial en texto claro.
@@ -32,6 +36,7 @@ DB_URL="${PRODUCTION_DATABASE_URL:-${NEON_PRODUCTION_DATABASE_URL:-}}"
 pending=0
 ok() { printf '  OK        %s\n' "$1"; }
 ko() { printf '  PENDIENTE %s\n' "$1"; pending=1; }
+info() { printf '  INFO      %s\n' "$1"; }
 
 command -v curl >/dev/null 2>&1 || { echo "falta curl" >&2; exit 69; }
 command -v python3 >/dev/null 2>&1 || { echo "falta python3" >&2; exit 69; }
@@ -56,6 +61,25 @@ tiene_clave() { # tiene_clave <fichero-json> <clave> -> 0 si esa clave exacta es
 e = json.load(open(sys.argv[1])).get("envs", [])
 raise SystemExit(0 if any(x.get("key") == sys.argv[2] and "production" in (x.get("target") or []) for x in e) else 1)' "$1" "$2"
 }
+
+valor_produccion() { # valor_produccion <fichero-json> <clave> -> valor legible, vacío si no lo es
+  # De Vercel solo llega el valor de las variables no sensibles (`plain`); en las demás viene vacío
+  # o ausente, así que el preflight nunca imprime un secreto y solo compara estos dos interruptores.
+  python3 -c 'import json,sys
+e = json.load(open(sys.argv[1])).get("envs", [])
+v = next((x.get("value") for x in e if x.get("key") == sys.argv[2] and "production" in (x.get("target") or [])), None)
+print(v if isinstance(v, str) else "")' "$1" "$2"
+}
+
+# Los dos interruptores que el código interpreta con `environmentFlag` (booleano textual, CIF-74):
+# mismos valores verdaderos y falsos que `z.stringbool()` de Zod 4.6, sin distinguir mayúsculas.
+interruptor_activo() {
+  case "$1" in true | 1 | yes | on | y | enabled) return 0 ;; *) return 1 ;; esac
+}
+interruptor_inactivo() {
+  case "$1" in false | 0 | no | off | n | disabled) return 0 ;; *) return 1 ;; esac
+}
+normalizar_interruptor() { printf '%s' "$1" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]'; }
 
 echo "== 1/6 GitHub: token"
 if [[ -z "$GH_TOKEN_RESOLVED" ]]; then
@@ -149,6 +173,39 @@ print(", ".join(sorted({x["key"] for x in e if "production" in (x.get("target") 
       # sesión (CIF-123).
       tiene_clave "$TMP/env.json" ADMIN_SESSION_SECRET || ko "falta ADMIN_SESSION_SECRET en Production: la sesión del panel falla cerrada y /api/admin/session responde 503 (CIF-241)"
       tiene_clave "$TMP/env.json" ADMIN_PANEL_PASSWORD || ko "falta ADMIN_PANEL_PASSWORD en Production: el propietario no puede canjear la credencial del panel (CIF-241)"
+
+      # Guarda del shell del panel (ADR-0023 §5). `CATALOG_DEMO_MODE` sirve el catálogo en memoria y
+      # además abre la guarda en Production: es la configuración del E2E hermético, nunca la de
+      # producción, así que su activación bloquea la puesta en marcha. `ADMIN_PANEL_ENABLED` sí es
+      # un interruptor legítimo: solo se informa de su estado.
+      if tiene_clave "$TMP/env.json" CATALOG_DEMO_MODE; then
+        demo="$(normalizar_interruptor "$(valor_produccion "$TMP/env.json" CATALOG_DEMO_MODE)")"
+        if interruptor_activo "$demo"; then
+          ko "CATALOG_DEMO_MODE activa el catálogo de demostración en Production: sirve datos de fixture y abre el shell del panel (ADR-0023 §5). Desactívala y redespliega"
+        elif interruptor_inactivo "$demo"; then
+          ok "CATALOG_DEMO_MODE desactivado en Production (catálogo real)"
+        elif [[ -z "$demo" ]]; then
+          info "CATALOG_DEMO_MODE está definida en Production pero su valor no es legible desde la API: compruébala a mano"
+        else
+          ko "CATALOG_DEMO_MODE tiene un valor que el arranque rechaza (environmentFlag, CIF-74): el despliegue no arranca hasta corregirlo"
+        fi
+      else
+        ok "CATALOG_DEMO_MODE no está definida en Production (valor por defecto false: catálogo real)"
+      fi
+      if tiene_clave "$TMP/env.json" ADMIN_PANEL_ENABLED; then
+        panel="$(normalizar_interruptor "$(valor_produccion "$TMP/env.json" ADMIN_PANEL_ENABLED)")"
+        if interruptor_activo "$panel"; then
+          ok "ADMIN_PANEL_ENABLED activado en Production: /[locale]/admin/** se sirve detrás de la sesión del propietario (ADR-0024)"
+        elif interruptor_inactivo "$panel"; then
+          ok "ADMIN_PANEL_ENABLED desactivado en Production: el shell no se sirve (404 con sesión válida)"
+        elif [[ -z "$panel" ]]; then
+          info "ADMIN_PANEL_ENABLED está definida en Production pero su valor no es legible desde la API: compruébala a mano"
+        else
+          ko "ADMIN_PANEL_ENABLED tiene un valor que la guarda rechaza (environmentFlag): /[locale]/admin/** falla en cada petición"
+        fi
+      else
+        ok "ADMIN_PANEL_ENABLED no está definida en Production: shell cerrado por defecto (sin sesión manda el acceso, ADR-0024)"
+      fi
     else
       ko "no se pudo listar las variables (HTTP $code)"
     fi

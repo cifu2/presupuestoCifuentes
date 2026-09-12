@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Tests de `scripts/despliegue-preflight.sh` (CIF-123 y CIF-241).
+# Tests de `scripts/despliegue-preflight.sh` (CIF-123, CIF-241 y CIF-282).
 #
 # Contrato que se prueba: el preflight no puede dar por bueno un entorno de Production al que le
 # faltan `ADMIN_SESSION_SECRET` o `ADMIN_PANEL_PASSWORD`, porque entonces la sesión del panel falla
@@ -8,6 +8,12 @@
 # `DATABASE_URL`; y las claves se comparan por nombre exacto, así que un `DATABASE_URL_UNPOOLED` no
 # cubre `DATABASE_URL` (CIF-129). `ADMIN_API_TOKEN` **no** es exigible: es la credencial opcional de
 # automatización por `Bearer` y el propietario entra con la sesión (CIF-123).
+#
+# Contrato de los interruptores del panel (CIF-282): `CATALOG_DEMO_MODE` activa en Production
+# bloquea la puesta en marcha (sirve el catálogo de fixture y abre la guarda de ADR-0023 §5); un
+# valor que `environmentFlag` rechaza también bloquea, porque el arranque no pasa de ahí;
+# `ADMIN_PANEL_ENABLED` solo se informa y su ausencia no es un pendiente; y si el valor no es
+# legible para el token, el preflight avisa sin bloquear en falso.
 #
 # `curl` se sustituye por un doble que responde con datos canónicos de GitHub, Vercel y del
 # inventario de variables: no se llama a ninguna API real y no se usa ninguna credencial. Los valores
@@ -195,6 +201,59 @@ cat > "$TMP/env-con-sufijo.json" <<'JSON'
 }
 JSON
 
+# Guarda del shell del panel (CIF-282). El inventario de la sesión está completo en los tres, así que
+# el único motivo de bloqueo es el interruptor que se prueba.
+cat > "$TMP/env-demo-activo.json" <<'JSON'
+{
+  "envs": [
+    { "key": "DATABASE_URL", "target": ["production"], "type": "sensitive" },
+    { "key": "NEXT_PUBLIC_SITE_URL", "target": ["production"], "type": "plain" },
+    { "key": "ADMIN_SESSION_SECRET", "target": ["production"], "type": "sensitive" },
+    { "key": "ADMIN_PANEL_PASSWORD", "target": ["production"], "type": "sensitive" },
+    { "key": "CATALOG_DEMO_MODE", "target": ["production"], "type": "plain", "value": "true" }
+  ]
+}
+JSON
+
+cat > "$TMP/env-demo-ambiguo.json" <<'JSON'
+{
+  "envs": [
+    { "key": "DATABASE_URL", "target": ["production"], "type": "sensitive" },
+    { "key": "NEXT_PUBLIC_SITE_URL", "target": ["production"], "type": "plain" },
+    { "key": "ADMIN_SESSION_SECRET", "target": ["production"], "type": "sensitive" },
+    { "key": "ADMIN_PANEL_PASSWORD", "target": ["production"], "type": "sensitive" },
+    { "key": "CATALOG_DEMO_MODE", "target": ["production"], "type": "plain", "value": "quizá" }
+  ]
+}
+JSON
+
+cat > "$TMP/env-panel-abierto.json" <<'JSON'
+{
+  "envs": [
+    { "key": "DATABASE_URL", "target": ["production"], "type": "sensitive" },
+    { "key": "NEXT_PUBLIC_SITE_URL", "target": ["production"], "type": "plain" },
+    { "key": "ADMIN_SESSION_SECRET", "target": ["production"], "type": "sensitive" },
+    { "key": "ADMIN_PANEL_PASSWORD", "target": ["production"], "type": "sensitive" },
+    { "key": "CATALOG_DEMO_MODE", "target": ["production"], "type": "plain", "value": "false" },
+    { "key": "ADMIN_PANEL_ENABLED", "target": ["production"], "type": "plain", "value": "true" }
+  ]
+}
+JSON
+
+# Vercel no entrega el valor de una variable sensible: el preflight no puede comprobarla y no debe
+# inventarse un pendiente (avisa y sigue).
+cat > "$TMP/env-demo-no-legible.json" <<'JSON'
+{
+  "envs": [
+    { "key": "DATABASE_URL", "target": ["production"], "type": "sensitive" },
+    { "key": "NEXT_PUBLIC_SITE_URL", "target": ["production"], "type": "plain" },
+    { "key": "ADMIN_SESSION_SECRET", "target": ["production"], "type": "sensitive" },
+    { "key": "ADMIN_PANEL_PASSWORD", "target": ["production"], "type": "sensitive" },
+    { "key": "CATALOG_DEMO_MODE", "target": ["production"], "type": "sensitive" }
+  ]
+}
+JSON
+
 fallos=0
 pasa() { printf 'ok    %s\n' "$1"; }
 falla() {
@@ -275,7 +334,55 @@ else
   falla "un nombre con sufijo cubrió la clave exacta (comparación por subcadena)"
 fi
 
-# Caso 5: contrato de redacción (ADR-0014): el informe no imprime ningún valor de credencial.
+# Caso 5: CATALOG_DEMO_MODE activa en Production -> pendiente explícito y código 1 (CIF-282).
+ejecutar "$TMP/env-demo-activo.json"
+codigo=$?
+if [[ "$codigo" -eq 1 ]]; then
+  pasa "con CATALOG_DEMO_MODE activa en Production el preflight sale con código 1"
+else
+  falla "con CATALOG_DEMO_MODE activa el preflight sale con código $codigo (se esperaba 1)"
+fi
+if grep -qE '^  PENDIENTE CATALOG_DEMO_MODE activa el catálogo de demostración en Production' "$TMP/salida"; then
+  pasa "el informe marca PENDIENTE el modo demostración en Production"
+else
+  falla "el informe no marca PENDIENTE el modo demostración en Production"
+fi
+
+# Caso 6: valor que `environmentFlag` rechaza -> el arranque no pasa y el preflight lo bloquea.
+ejecutar "$TMP/env-demo-ambiguo.json"
+codigo=$?
+if [[ "$codigo" -eq 1 ]] &&
+  grep -qE '^  PENDIENTE CATALOG_DEMO_MODE tiene un valor que el arranque rechaza' "$TMP/salida"; then
+  pasa "un valor ambiguo de CATALOG_DEMO_MODE bloquea y se explica (CIF-74)"
+else
+  falla "un valor ambiguo de CATALOG_DEMO_MODE no bloquea o no se explica (código $codigo)"
+fi
+
+# Caso 7: ADMIN_PANEL_ENABLED=true es un interruptor legítimo -> se informa y no bloquea.
+ejecutar "$TMP/env-panel-abierto.json"
+codigo=$?
+if [[ "$codigo" -eq 0 ]]; then
+  pasa "con ADMIN_PANEL_ENABLED activado el preflight sigue saliendo con código 0"
+else
+  falla "con ADMIN_PANEL_ENABLED activado el preflight sale con código $codigo (se esperaba 0)"
+fi
+if grep -qE '^  OK .*ADMIN_PANEL_ENABLED activado en Production' "$TMP/salida"; then
+  pasa "el informe indica que el panel se sirve detrás de la sesión"
+else
+  falla "el informe no indica el estado de ADMIN_PANEL_ENABLED"
+fi
+
+# Caso 8: valor no legible (variable sensible) -> INFO, sin pendiente inventado.
+ejecutar "$TMP/env-demo-no-legible.json"
+codigo=$?
+if [[ "$codigo" -eq 0 ]] &&
+  grep -qE '^  INFO .*CATALOG_DEMO_MODE .*no es legible' "$TMP/salida"; then
+  pasa "un valor no legible avisa por INFO y no bloquea en falso"
+else
+  falla "un valor no legible de CATALOG_DEMO_MODE no se trata como INFO (código $codigo)"
+fi
+
+# Caso 9: contrato de redacción (ADR-0014): el informe no imprime ningún valor de credencial.
 if grep -qF "$SENTINEL_GH" "$TMP/salida" || grep -qF "$SENTINEL_VERCEL" "$TMP/salida" ||
   grep -qF "$SENTINEL_DB" "$TMP/salida"; then
   falla "el informe imprime un valor de credencial"
