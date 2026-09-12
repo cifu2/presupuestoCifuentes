@@ -193,13 +193,12 @@ async function retryQuoteDeliveryVersion(
   const at = deps.clock.now()
   const observed = stored.filter((delivery) => delivery.version === version)
   const claimed: QuoteDelivery[] = []
-  // `candidates` trae las entregas de todas las versiones: el grupo se acota a la suya para no
-  // reclamar ni liquidar entregas ajenas (CIF-187).
-  const versionCandidates = candidates.filter((candidate) => candidate.version === version)
 
-  for (const candidate of versionCandidates) {
-    // Nunca se reclama una entrega agotada: `startAttempt` lanza si se intenta, así que la que gastó
-    // sus intentos se queda para `settleExhausted` (CIF-186).
+  for (const candidate of candidates) {
+    if (candidate.version !== version) {
+      continue
+    }
+
     if (candidate.isExhausted()) {
       continue
     }
@@ -212,8 +211,14 @@ async function retryQuoteDeliveryVersion(
   }
 
   // Las entregas que agotaron sus intentos no se reintentan: se cierran como fallidas con un motivo
-  // legible para que el operador sepa que hay que emitir una versión nueva (CIF-186).
-  const settled = await settleExhausted(deps, versionCandidates, at)
+  // legible para que el operador sepa que hay que emitir una versión nueva (CIF-186). Solo se
+  // liquidan las de la versión del grupo: `candidates` trae las de todas y cada grupo responde con
+  // las suyas, así que liquidarlas todas en cada pasada repetiría las filas de las otras versiones.
+  const settled = await settleExhausted(
+    deps,
+    candidates.filter((candidate) => candidate.version === version),
+    at,
+  )
 
   return runDeliveries(deps, quote, version, customer, {
     claimed,
@@ -253,18 +258,17 @@ function isSettledExhausted(delivery: QuoteDelivery, now: Date): boolean {
  * Orden de severidad para combinar el resultado de varias versiones: manda el grupo más severo. Los
  * valores no se solapan con los de `runDeliveries`; solo fijan qué estado prevalece en la mezcla.
  *
- * `incomplete` va por delante de `attempts_exhausted` porque todavía se puede reintentar, y
- * `attempts_exhausted` por delante de `in_progress` para no ocultar que esa versión es terminal y
- * exige emitir una nueva: es la misma precedencia que aplica `runDeliveries` dentro de un grupo
- * (CIF-195) y evita informar de un terminal mientras quede trabajo en vuelo.
+ * `attempts_exhausted` es el más severo porque es terminal: exige emitir una versión nueva del
+ * documento. Si quedara por debajo de `incomplete`, al combinar grupos se perdería el terminal que
+ * cierra CIF-186, que es justo lo que ese cambio aporta.
  */
 const RETRY_RESULT_SEVERITY: Record<DeliverQuoteStatus, number> = {
-  nothing_to_retry: 0,
-  already_delivered: 1,
-  delivered: 2,
-  in_progress: 3,
+  nothing_to_retry: -1,
+  already_delivered: 0,
+  delivered: 1,
+  in_progress: 2,
+  incomplete: 3,
   attempts_exhausted: 4,
-  incomplete: 5,
 }
 
 /**

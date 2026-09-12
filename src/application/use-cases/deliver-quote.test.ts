@@ -884,20 +884,20 @@ describe('tope de intentos de entrega (CIF-186)', () => {
     ])
   })
 
-  it('con un grupo aún reintentable manda `incomplete`, no el terminal de la otra versión (CIF-186/CIF-187)', async () => {
+  it('el terminal manda aunque otra versión siga fallando: exige emitir una versión nueva (CIF-186/CIF-187)', async () => {
     const harness = makeHarness({ internalRecipients: [] })
     const second = 'cliente-v2@example.com'
 
-    // La v1 agotó sus intentos y la v2 vuelve a fallar: el reintento de la v2 todavía puede progresar
-    // (misma precedencia que dentro de un grupo, CIF-195), así que no se informa de estado terminal.
+    // La v1 agotó sus intentos y la v2 vuelve a fallar: manda el estado terminal de la v1 porque es
+    // lo que exige una decisión (versión nueva), y el fallo de la v2 sigue visible en `deliveries`.
     await harness.store.save(seedAttempts(harness, MAX_QUOTE_DELIVERY_ATTEMPTS))
     await harness.store.save(seedAttempts(harness, 1, { version: 2, recipient: second }))
     harness.failEmails.add(second)
 
     const retried = await retryQuoteDeliveries(harness.deps, { reference: 'PC-2026-000001' })
 
-    expect(retried.status).toBe('incomplete')
-    expect(retried.reason).toBe('email_send_failed')
+    expect(retried.status).toBe('attempts_exhausted')
+    expect(retried.reason).toBe('attempts_exhausted')
     expect(retried.deliveries.map((delivery) => [delivery.version, delivery.status])).toEqual([
       [1, 'failed'],
       [2, 'failed'],

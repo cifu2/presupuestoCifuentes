@@ -360,9 +360,9 @@ destinatarios de otra (CIF-187). En ese caso el `version` de la respuesta es el 
 antigua reintentada y cada entrada de `deliveries` lleva la suya. Si varias versiones quedan
 `incomplete` con motivos distintos, `reason` es el de la versión más antigua reintentada
 (`version` de la respuesta): no hay jerarquía entre `pdf_render_failed` y `email_send_failed`.
-Si una versión queda terminal y otra todavía reintentable, manda la reintentable (`502 incomplete`)
-con **su** motivo: informar del terminal ocultaría que el reintento aún puede progresar, y el
-terminal de la otra versión sigue visible en su entrada de `deliveries` (CIF-186/CIF-187).
+Si una versión queda terminal (`attempts_exhausted`) y otra vuelve a fallar, manda el terminal
+(`200`) con **su** motivo: exige emitir una versión nueva y el fallo de la otra versión sigue
+visible en su entrada de `deliveries` (CIF-186/CIF-187).
 
 - `200` `{ "status": "delivered", … }` si el reintento salió bien.
 - `200` `{ "status": "nothing_to_retry", … }` si no quedaba nada por enviar (no renderiza el PDF).
