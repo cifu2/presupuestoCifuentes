@@ -10,6 +10,14 @@ import { TRANSLATED_DOMAIN_ERROR_CODES } from './domain-errors'
 
 type Messages = { [key: string]: string | Messages }
 
+/**
+ * Nombres accesibles del panel que el port del prototipo v3.2 (hallazgos M1/M2 de CIF-55 → CIF-101)
+ * consume como `aria-label`/`aria-labelledby`. La paridad de claves sola no los protege: borrados en
+ * todos los idiomas a la vez, el diccionario seguiría siendo coherente y el port volvería a
+ * literales sin traducir. Se exige por nombre, como `TRANSLATED_DOMAIN_ERROR_CODES`.
+ */
+const REQUIRED_CATALOG_ADMIN_A11Y_KEYS = ['locale', 'sidebarSections', 'tabs'] as const
+
 const messagesDirectory = fileURLToPath(new URL('../../messages', import.meta.url))
 
 function readMessages(locale: string): Messages {
@@ -69,6 +77,17 @@ describe('diccionarios de mensajes', () => {
         const reference = entriesByLocale[DEFAULT_LOCALE][key] ?? ''
 
         expect(placeholdersOf(value ?? ''), `${locale}:${key}`).toEqual(placeholdersOf(reference))
+      }
+    }
+  })
+
+  it('conserva los nombres accesibles del panel en todos los idiomas', () => {
+    for (const locale of SUPPORTED_LOCALES) {
+      for (const key of REQUIRED_CATALOG_ADMIN_A11Y_KEYS) {
+        expect(
+          entriesByLocale[locale][`CatalogAdmin.a11y.${key}`]?.trim(),
+          `${locale}:CatalogAdmin.a11y.${key}`,
+        ).toBeTruthy()
       }
     }
   })

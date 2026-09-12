@@ -94,7 +94,12 @@
     "unpublish": "Despublicar",
     "deactivate": "Desactivar",
     "editPrice": "Editar precio",
-    "history": "Historial de cambios"
+    "history": "Historial de cambios",
+    "a11y": {
+      "locale": "Idioma",
+      "sidebarSections": "Secciones del panel",
+      "tabs": "Secciones de la serie"
+    }
   },
   "DomainErrors": {
     "INVALID_VALUE": "Hay un dato con un valor que no es válido.",
