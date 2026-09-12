@@ -78,6 +78,14 @@ El catálogo y los precios son **datos**, no código ([ADR-0020](adr/0020-config
 
 ## Límite conocido (documentado, no bloqueante)
 
+Al abrir una serie, el configurador parte de valores **fijos de vista**, no de catálogo
+(`src/ui/configurator/selection.ts`): tipo de puerta `abatible-1-hoja`, mano `derecha`, medidas
+iniciales de 900 × 2030 mm (acotadas al rango de la serie) y, en el dibujo, el color `#9AA2A9` del
+bastidor bicolor y las aperturas del cristal. No rompen
+[ADR-0020](adr/0020-configurador-data-driven-y-gate-de-diseno.md) —son modelo/vista, no precio ni
+catálogo—, pero el «por defecto» es una decisión comercial: cuando el propietario la responda, debe
+entrar como dato publicado por el catálogo (el valor inicial de la serie), sin desplegar.
+
 El catálogo no guarda todavía un campo visual por acabado. La correspondencia entre el `code`
 comercial y la textura del 2D es una tabla de palabras clave en `src/ui/configurator/selection.ts`
 (acabado desconocido → relleno neutro). Cuando existan los puertos de escritura de catálogo

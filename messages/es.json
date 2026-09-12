@@ -178,6 +178,7 @@
   "Configurator": {
     "intro": "Elige serie, tipo, medidas, acabado, color y accesorios. El precio se calcula en el servidor y se actualiza en vivo.",
     "catalog": {
+      "retry": "Reintentar",
       "series": "Serie",
       "empty": "Todavía no hay ninguna serie publicada. Vuelve a intentarlo en unos minutos.",
       "error": "No pudimos cargar los acabados, colores y accesorios de la serie. Vuelve a intentarlo.",

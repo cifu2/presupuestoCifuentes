@@ -178,6 +178,7 @@
   "Configurator": {
     "intro": "Choose a series, type, measurements, finish, colour and accessories. The server prices it and updates live.",
     "catalog": {
+      "retry": "Try again",
       "series": "Series",
       "empty": "There are no published series yet. Please try again in a few minutes.",
       "error": "We could not load the finishes, colours and accessories for this series. Please try again.",

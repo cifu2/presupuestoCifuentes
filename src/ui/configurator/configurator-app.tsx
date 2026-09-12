@@ -173,6 +173,8 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
     usableInitialDetail === null ? {} : { [usableInitialDetail.series.slug]: usableInitialDetail },
   )
   const [detailFailed, setDetailFailed] = useState(false)
+  /** Sube al pulsar «Reintentar» del aviso de catálogo: vuelve a pedir la ficha de la serie. */
+  const [detailAttempt, setDetailAttempt] = useState(0)
   const [draftRestored, setDraftRestored] = useState(false)
   const [contact, setContact] = useState<ConfiguratorContact>(EMPTY_CONTACT)
   const [contactErrors, setContactErrors] = useState<ReturnType<typeof validateContact>>({})
@@ -249,7 +251,7 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
 
       controller.abort()
     }
-  }, [activeSeries.slug, locale])
+  }, [activeSeries.slug, detailAttempt, locale])
 
   // Borrador recuperable: se lee al montar (nunca en el servidor) y se guarda en cada cambio.
   useEffect(() => {
@@ -553,7 +555,9 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
 
   const priceErrorKey =
     price.status === 'error' ? (PRICE_ERROR_KEYS[price.code] ?? 'generic') : null
-  const contactOpen = quote.status === 'idle' || quote.status === 'sending'
+  // Con `error` el formulario/CTA sigue montado: el envío fallido no puede dejar al cliente sin
+  // salida (un 500 o un corte de red transitorio perdería el presupuesto sin poder reintentar).
+  const contactOpen = quote.status !== 'issued' && quote.status !== 'manual_created'
   const sending = quote.status === 'sending'
 
   return (
@@ -1034,9 +1038,22 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
           </section>
 
           {detailFailed ? (
-            <p role="alert" data-testid="catalog-error" className="text-sm text-accent-700">
-              {t('catalog.error')}
-            </p>
+            <div className="flex flex-col items-start gap-2">
+              <p role="alert" data-testid="catalog-error" className="text-sm text-accent-700">
+                {t('catalog.error')}
+              </p>
+              <button
+                type="button"
+                data-testid="catalog-retry"
+                onClick={() => {
+                  requestedSlugs.current.delete(activeSeries.slug)
+                  setDetailAttempt((attempt) => attempt + 1)
+                }}
+                className="rounded-md border border-brand-500/40 px-3 py-1 text-sm font-medium text-brand-900"
+              >
+                {t('catalog.retry')}
+              </button>
+            </div>
           ) : null}
         </div>
       </div>
@@ -1235,6 +1252,7 @@ function ContactForm({
           data-testid="contact-phone"
           maxLength={40}
           aria-invalid={errors.phone === undefined ? undefined : true}
+          aria-describedby={errors.phone === undefined ? undefined : 'contacto-telefono-error'}
           className="rounded-md border border-brand-500/40 bg-white px-3 py-2"
           value={contact.phone ?? ''}
           onChange={(event) =>
@@ -1243,7 +1261,12 @@ function ContactForm({
         />
       </label>
       {errors.phone === undefined ? null : (
-        <p role="alert" className="text-sm text-accent-700">
+        <p
+          id="contacto-telefono-error"
+          data-testid="contact-phone-error"
+          role="alert"
+          className="text-sm text-accent-700"
+        >
           {t(`contact.errors.phone.${errors.phone}`)}
         </p>
       )}
@@ -1256,6 +1279,8 @@ function ContactForm({
           data-testid="contact-message"
           rows={3}
           maxLength={2000}
+          aria-invalid={errors.message === undefined ? undefined : true}
+          aria-describedby={errors.message === undefined ? undefined : 'contacto-mensaje-error'}
           className="rounded-md border border-brand-500/40 bg-white px-3 py-2"
           value={contact.message ?? ''}
           onChange={(event) =>
@@ -1263,6 +1288,16 @@ function ContactForm({
           }
         />
       </label>
+      {errors.message === undefined ? null : (
+        <p
+          id="contacto-mensaje-error"
+          data-testid="contact-message-error"
+          role="alert"
+          className="text-sm text-accent-700"
+        >
+          {t(`contact.errors.message.${errors.message}`)}
+        </p>
+      )}
 
       <button
         type="submit"

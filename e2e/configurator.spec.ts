@@ -63,6 +63,8 @@ test('el cliente obtiene presupuesto con precio en vivo en menos de lo que tarda
   page,
   request,
 }) => {
+  const startedAt = Date.now()
+
   await page.goto(CONFIGURATOR_PATH)
 
   await page.getByTestId('preview-width').fill('900')
@@ -105,6 +107,9 @@ test('el cliente obtiene presupuesto con precio en vivo en menos de lo que tarda
 
   await expect(page.getByTestId('quote-issued')).toBeVisible()
   await expect(page.getByTestId('quote-reference')).toHaveText(/^PC-\d{4}-\d{6}$/)
+
+  // AC de CIF-7: el cliente completa la configuración y obtiene presupuesto en menos de 3 minutos.
+  expect(Date.now() - startedAt).toBeLessThan(180_000)
 })
 
 test('una medida por encima del máximo de la serie pasa a presupuesto manual', async ({ page }) => {
@@ -172,6 +177,19 @@ test('el formulario de contacto no envía datos incompletos', async ({ page }) =
 
   await expect(page.getByTestId('contact-email')).toHaveAttribute('aria-invalid', 'true')
   await expect(page.getByTestId('quote-issued')).toHaveCount(0)
+
+  await page.getByTestId('contact-email').fill(CONTACT.email)
+  await page.getByTestId('contact-phone').fill('123')
+  await page.getByTestId('contact-submit').click()
+
+  // El error del teléfono se anuncia y queda ligado al campo, como en nombre y correo.
+  await expect(page.getByTestId('contact-phone')).toHaveAttribute('aria-invalid', 'true')
+  await expect(page.getByTestId('contact-phone')).toHaveAttribute(
+    'aria-describedby',
+    'contacto-telefono-error',
+  )
+  await expect(page.getByTestId('contact-phone-error')).toBeVisible()
+  await expect(page.getByTestId('quote-issued')).toHaveCount(0)
 })
 
 test('el borrador se recupera al volver a la página', async ({ page }) => {
@@ -215,6 +233,10 @@ test('el configurador está traducido en los dos idiomas y declara su canónica'
     'href',
     /\/es\/configurador$/,
   )
+  await expect(page.locator('link[rel="alternate"][hreflang="en"]')).toHaveAttribute(
+    'href',
+    /\/en\/configurador$/,
+  )
   await expect(page.locator('link[rel="alternate"][hreflang="x-default"]')).toHaveAttribute(
     'href',
     /\/es\/configurador$/,
@@ -223,7 +245,37 @@ test('el configurador está traducido en los dos idiomas y declara su canónica'
   await page.goto('/es/configurador')
 
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\/es\/configurador$/)
+  await expect(page.locator('link[rel="alternate"][hreflang="es"]')).toHaveAttribute(
+    'href',
+    /\/es\/configurador$/,
+  )
+  await expect(page.locator('link[rel="alternate"][hreflang="en"]')).toHaveAttribute(
+    'href',
+    /\/en\/configurador$/,
+  )
+  await expect(page.locator('link[rel="alternate"][hreflang="x-default"]')).toHaveAttribute(
+    'href',
+    /\/es\/configurador$/,
+  )
   await expect(page.getByTestId('request-quote')).toHaveText('Solicitar presupuesto')
+})
+
+test('la canónica de la ruta anidada ignora la query', async ({ page }) => {
+  await page.goto('/es/configurador?modelo=ci-400&v=2')
+
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\/es\/configurador$/)
+  await expect(page.locator('link[rel="alternate"][hreflang="es"]')).toHaveAttribute(
+    'href',
+    /\/es\/configurador$/,
+  )
+  await expect(page.locator('link[rel="alternate"][hreflang="en"]')).toHaveAttribute(
+    'href',
+    /\/en\/configurador$/,
+  )
+  await expect(page.locator('link[rel="alternate"][hreflang="x-default"]')).toHaveAttribute(
+    'href',
+    /\/es\/configurador$/,
+  )
 })
 
 test('el botón de reintentar vuelve a pedir el precio tras un fallo', async ({ page }) => {
@@ -342,4 +394,109 @@ test('si el servidor responde que la configuración sí tiene precio, se refresc
   // `price_available` es un estado documentado, no un error de contrato: la vista vuelve al precio.
   await expect(page.getByTestId('quote-error')).toHaveCount(0)
   await expect(page.getByTestId('price-total')).toBeVisible()
+})
+
+test('un fallo al emitir el presupuesto deja el formulario disponible para reintentar', async ({
+  page,
+}) => {
+  let calls = 0
+
+  await page.route('**/api/quotes', async (route) => {
+    calls += 1
+
+    if (calls === 1) {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 'INTERNAL_ERROR', message: 'Fallo simulado' } }),
+      })
+      return
+    }
+
+    await route.continue()
+  })
+
+  await page.goto(CONFIGURATOR_PATH)
+  await expect(page.getByTestId('price-total')).toBeVisible()
+
+  await page.getByTestId('request-quote').click()
+  await fillContact(page)
+  await page.getByTestId('contact-submit').click()
+
+  // El error se anuncia y el camino de conversión sigue teniendo salida: formulario y botón montados.
+  await expect(page.getByTestId('quote-error')).toBeVisible()
+  await expect(page.getByTestId('contact-form')).toBeVisible()
+  await expect(page.getByTestId('contact-submit')).toBeVisible()
+
+  await page.getByTestId('contact-submit').click()
+
+  await expect(page.getByTestId('quote-issued')).toBeVisible()
+  await expect(page.getByTestId('quote-error')).toHaveCount(0)
+  expect(calls).toBeGreaterThan(1)
+})
+
+test('un fallo al registrar la solicitud manual también se puede reintentar', async ({ page }) => {
+  let calls = 0
+
+  await page.route('**/api/manual-quote-requests', async (route) => {
+    calls += 1
+
+    if (calls === 1) {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 'INTERNAL_ERROR', message: 'Fallo simulado' } }),
+      })
+      return
+    }
+
+    await route.continue()
+  })
+
+  await page.goto(CONFIGURATOR_PATH)
+  await page.getByTestId('configurator-series').selectOption('ci-400')
+  await expect(page.getByTestId('manual-quote-reason')).toBeVisible()
+
+  await fillContact(page)
+  await page.getByTestId('contact-submit').click()
+
+  await expect(page.getByTestId('quote-error')).toBeVisible()
+  await expect(page.getByTestId('contact-form')).toBeVisible()
+
+  await page.getByTestId('contact-submit').click()
+
+  await expect(page.getByTestId('manual-quote-created')).toBeVisible()
+  await expect(page.getByTestId('quote-error')).toHaveCount(0)
+  expect(calls).toBeGreaterThan(1)
+})
+
+test('el aviso de catálogo ofrece reintentar sin cambiar de serie', async ({ page }) => {
+  let calls = 0
+
+  await page.route('**/api/catalog/series/ci-400*', async (route) => {
+    calls += 1
+
+    if (calls === 1) {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 'INTERNAL_ERROR', message: 'Fallo simulado' } }),
+      })
+      return
+    }
+
+    await route.continue()
+  })
+
+  await page.goto(CONFIGURATOR_PATH)
+  await expect(page.getByTestId('price-total')).toBeVisible()
+
+  await page.getByTestId('configurator-series').selectOption('ci-400')
+  await expect(page.getByTestId('catalog-error')).toBeVisible()
+
+  await page.getByTestId('catalog-retry').click()
+
+  await expect(page.getByTestId('catalog-error')).toHaveCount(0)
+  await expect(page.getByTestId('accessories-empty')).toBeVisible()
+  expect(calls).toBeGreaterThan(1)
 })
