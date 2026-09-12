@@ -5,6 +5,8 @@ import { useTranslations } from 'next-intl'
 
 import { DoorPreview } from './door-preview'
 import {
+  DEMO_COLOR_HEX,
+  TWO_TONE_FRAME_HEX,
   TIPOS_2D_MVP,
   buildPreviewGeometry,
   type FinishKind,
@@ -17,8 +19,9 @@ import {
  * Panel del configurador que alimenta la vista previa 2D en vivo (CIF-6).
  *
  * Une las opciones que afectan al dibujo con el modelo visual. Mientras CIF-7 no conecte el catálogo
- * publicado y el motor de precios, la paleta y el rango de medidas son de demostración y viven aquí,
- * nunca dentro del modelo ni del componente de pintura.
+ * publicado y el motor de precios, la paleta y el rango de medidas son de demostración. Los hex de
+ * esa paleta viven en el modelo como valores de vista fijos (`DEMO_COLOR_HEX`/`TWO_TONE_FRAME_HEX`,
+ * A2 de CIF-252): ningún componente de `src/ui/**` lleva un `#RRGGBB` suelto.
  */
 
 interface ColorOption {
@@ -30,9 +33,9 @@ interface ColorOption {
 
 const COLOR_OPTIONS: readonly ColorOption[] = [
   { id: 'ninguno', code: 'sin-color', hex: null },
-  { id: 'ral-9010', code: 'RAL 9010', hex: '#F1EDE1' },
-  { id: 'ral-7016', code: 'RAL 7016', hex: '#383E42' },
-  { id: 'roble', code: 'Roble rústico', hex: '#B98A54' },
+  { id: 'ral-9010', code: 'RAL 9010', hex: DEMO_COLOR_HEX.ral9010 },
+  { id: 'ral-7016', code: 'RAL 7016', hex: DEMO_COLOR_HEX.ral7016 },
+  { id: 'roble', code: 'Roble rústico', hex: DEMO_COLOR_HEX.robleRustico },
 ]
 
 const FINISH_OPTIONS = [
@@ -149,7 +152,7 @@ export function Preview2DConfigurator(): React.JSX.Element {
       : [],
     moulding,
     twoToneFrame,
-    secondColorHex: twoToneFrame ? '#9AA2A9' : null,
+    secondColorHex: twoToneFrame ? TWO_TONE_FRAME_HEX : null,
   })
 
   const number = (value: string, fallback: number): number => {

@@ -13,6 +13,8 @@ apartado _Seguridad_).
 | `CATALOG_DEMO_MODE`    | `false`                             | `false`                          | `false`                     | Vercel (opcional) y `.env.local`                                             |
 | `QUOTE_VALIDITY_DAYS`  | `30`                                | `30`                             | `30`                        | Vercel (opcional) y `.env.local`                                             |
 | `ADMIN_API_TOKEN`      | valor propio del despliegue         | no definida                      | valor de desarrollo         | Vercel (Production) y `.env.local`                                           |
+| `ADMIN_SESSION_SECRET` | valor propio del despliegue (≥ 32)  | no definida                      | valor de desarrollo         | Vercel (Production) y `.env.local`                                           |
+| `ADMIN_PANEL_PASSWORD` | valor propio del despliegue (≥ 16)  | no definida                      | valor de desarrollo         | Vercel (Production) y `.env.local`                                           |
 | `NODE_ENV`             | lo fija Vercel (`production`)       | lo fija Vercel (`production`)    | lo fija Next.js             | No se configura a mano                                                       |
 | `VERCEL_ENV`           | lo fija Vercel (`production`)       | lo fija Vercel (`preview`)       | no definida                 | No se configura a mano                                                       |
 
@@ -45,6 +47,18 @@ consume el bootstrap de Vercel.
   [api.md](api.md)). `scripts/despliegue-preflight.sh` marca `PENDIENTE` si falta en _Production_, y
   `scripts/despliegue-preflight.test.sh` prueba ese aviso: la falta se detecta en la comprobación
   periódica, no abriendo el panel (CIF-123).
+- `ADMIN_SESSION_SECRET` y `ADMIN_PANEL_PASSWORD` son la **sesión de la interfaz del panel**
+  ([ADR-0024](adr/0024-autenticacion-panel-sesion-firmada.md)): con ellas, `/[locale]/acceso` canjea
+  la credencial del propietario por una cookie `admin_session` firmada (HttpOnly, `SameSite=Lax`,
+  `Secure` sobre HTTPS, 8 h) y `/[locale]/admin/**` deja de redirigir al acceso. Se marcan como
+  _Sensitive_ en Vercel. **Falla cerrado**: si falta cualquiera de las dos, o el secreto mide menos de
+  32 caracteres o la credencial menos de 16, no se emite sesión (`503 ADMIN_ACCESS_DISABLED`), el
+  panel queda denegado y el sitio público sigue funcionando. El MVP tiene un **único propietario**:
+  no hay usuarios ni roles.
+- **Rotación:** cambiar `ADMIN_PANEL_PASSWORD` o `ADMIN_SESSION_SECRET` invalida en el acto todas las
+  sesiones abiertas (la clave de firma se deriva de ambas). El cierre de sesión del navegador borra la
+  cookie; una copia de esa cookie seguiría siendo válida hasta su caducidad, así que ante una sospecha
+  se rota ([ADR-0014](adr/0014-manejo-y-rotacion-de-secretos.md)).
 - `.env.example` solo contiene valores de ejemplo sin credenciales y sirve de plantilla local.
 
 ### 1.1 Estado real del inventario (2026-09-12)
@@ -52,11 +66,28 @@ consume el bootstrap de Vercel.
 Inventario de _Production_ y _Preview_ del proyecto `presupuesto-cifuentes` leído de la API de Vercel
 (metadatos, nunca valores):
 
-| Entorno       | Claves definidas                                         |
-| ------------- | -------------------------------------------------------- |
-| _Production_  | `DATABASE_URL` (Sensitive), `NEXT_PUBLIC_SITE_URL`       |
-| _Preview_     | `DATABASE_URL` (Sensitive)                               |
-| _Development_ | ninguna (las credenciales locales viven en `.env.local`) |
+| Entorno       | Claves definidas                                                                                                           |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| _Production_  | `DATABASE_URL` (Sensitive), `NEXT_PUBLIC_SITE_URL`, `ADMIN_SESSION_SECRET` (Sensitive), `ADMIN_PANEL_PASSWORD` (Sensitive) |
+| _Preview_     | `DATABASE_URL` (Sensitive)                                                                                                 |
+| _Development_ | ninguna (las credenciales locales viven en `.env.local`)                                                                   |
+
+Pendiente de inyectar en _Production_: `ADMIN_API_TOKEN` (CIF-123, en revisión). `ADMIN_SESSION_SECRET`
+y `ADMIN_PANEL_PASSWORD` se inyectaron como _Sensitive_ el 2026-09-12 (CIF-245); no se han inyectado
+en _Preview_ por el mismo criterio que `ADMIN_API_TOKEN`: no hay consumidor y la base de preview es
+desechable.
+
+**Una variable definida en Vercel no está en vigor hasta el siguiente despliegue de _Production_**
+(regla 1 de §2). Al cierre de esta anotación, `main@fbef05f` (el _squash_ del PR #49, CIF-241) sigue
+**sin despliegue de producción**: el merge se topó con la cuota de despliegues del plan gratuito
+([ADR-0019](adr/0019-cuota-despliegues-vercel.md), runbook de [despliegue.md](despliegue.md) §4.1) y
+producción continúa sirviendo el deployment anterior, que no incluye las rutas del panel. Por tanto
+`ADMIN_SESSION_SECRET` y `ADMIN_PANEL_PASSWORD` están **inyectadas pero todavía no activas**; la
+verificación en producción de `POST /api/admin/session`, de la guarda de `/[locale]/admin/**` y de
+`/[locale]/acceso` queda pendiente de ese despliegue (CIF-248).
+
+El valor de `ADMIN_PANEL_PASSWORD` se propuso al consejo en el gestor de secretos (ADR-0014) para que
+el propietario pueda **leerlo**; la propuesta sigue pendiente de aprobación. Nunca se escribe aquí.
 
 `ADMIN_API_TOKEN` **no está definida en ningún entorno**, así que el API del panel responde `503`
 (`ADMIN_API_DISABLED`) en producción. La decisión es definirla **solo en _Production_** por ahora: el
@@ -207,4 +238,6 @@ Informe de solo lectura (usuario del token, alcances, repositorio, protección d
 Vercel, variables por entorno y accesibilidad de la base de datos). No imprime valores y devuelve 1
 si queda algo pendiente: es la primera parada cuando el despliegue no arranca. Además de
 `DATABASE_URL`, exige `ADMIN_API_TOKEN` en _Production_ (sin ella el API del panel responde `503`,
-CIF-123).
+CIF-123) y `ADMIN_SESSION_SECRET` y `ADMIN_PANEL_PASSWORD` (sin ellas la sesión del panel falla
+cerrada, `/[locale]/admin/**` queda denegado y `POST /api/admin/session` responde
+`503 ADMIN_ACCESS_DISABLED`, CIF-241).

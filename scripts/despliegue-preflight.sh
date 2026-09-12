@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
 # Comprobación de solo lectura de la puesta en marcha del despliegue (CIF-11, docs/despliegue.md 6).
-# Exige que Production defina DATABASE_URL y ADMIN_API_TOKEN (sin esta última el API del panel
-# responde 503, CIF-123). Los avisos de esta comprobación se prueban en
-# scripts/despliegue-preflight.test.sh.
+# Exige que Production defina DATABASE_URL, ADMIN_API_TOKEN (sin esta última el API del panel
+# responde 503, CIF-123), ADMIN_SESSION_SECRET y ADMIN_PANEL_PASSWORD (sin estas dos el panel
+# deniega /[locale]/admin/** y el propietario no puede entrar, CIF-241). Los avisos de esta
+# comprobación se prueban en scripts/despliegue-preflight.test.sh.
 #
 # No crea, no modifica ni borra nada y no imprime ningún valor secreto: solo metadatos (usuario,
 # repositorio, proyecto, nombres de variables). Funciona sin las CLI de GitHub y de Vercel, así que
@@ -134,6 +135,11 @@ print(", ".join(sorted({x["key"] for x in e if "production" in (x.get("target") 
       # Sin ADMIN_API_TOKEN el API del panel responde 503 y el propietario no puede publicar
       # ni archivar tarifas (CIF-123): la falta tiene que doler aquí, antes del despliegue.
       [[ "$keys" == *ADMIN_API_TOKEN* ]] || ko "falta ADMIN_API_TOKEN en Production: el API del panel responde 503 (CIF-123)"
+      # Sin ADMIN_SESSION_SECRET/ADMIN_PANEL_PASSWORD la sesión falla cerrada: /[locale]/admin/**
+      # queda denegado y /api/admin/session responde 503 ADMIN_ACCESS_DISABLED, así que el
+      # propietario no puede entrar al panel (ADR-0024, CIF-241).
+      [[ "$keys" == *ADMIN_SESSION_SECRET* ]] || ko "falta ADMIN_SESSION_SECRET en Production: la sesión del panel falla cerrada y /api/admin/session responde 503 (CIF-241)"
+      [[ "$keys" == *ADMIN_PANEL_PASSWORD* ]] || ko "falta ADMIN_PANEL_PASSWORD en Production: el propietario no puede canjear la credencial del panel (CIF-241)"
     else
       ko "no se pudo listar las variables (HTTP $code)"
     fi

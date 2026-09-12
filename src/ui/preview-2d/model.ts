@@ -86,8 +86,12 @@ export type Planking =
   | 'duelas-verticales'
   | 'duelas-horizontales'
 
-export type PreviewPaintPattern =
-  'sheen' | 'grain' | 'anodized' | 'metalFinish' | 'glass' | 'metal' | 'wall'
+/**
+ * Patrón de pintura que el modelo puede emitir. Se deriva del orden canónico
+ * (`PATTERN_SPEC_ORDER`): hay una sola lista de `kind`s, así que no puede existir un patrón que se
+ * pinte y falte en el `<defs>` (H3 de CIF-261).
+ */
+export type PreviewPaintPattern = (typeof PATTERN_SPEC_ORDER)[number]
 
 export type PreviewTone =
   'base' | 'frame' | 'glass' | 'metal' | 'shadow' | 'wall' | 'danger' | 'second'
@@ -145,11 +149,67 @@ export interface PreviewShape {
   readonly paint: PreviewPaint
 }
 
+/** Parada de un gradiente de patrón: pintura del modelo, no token de UI (`modelo-visual-2d` §4). */
+export interface PreviewPatternStop {
+  readonly offset: string
+  readonly color: string
+  readonly opacity: string
+}
+
+/** Rect de un patrón en mosaico (`anodizado`). `x`/`y` se omiten cuando valen 0, como en el SVG. */
+export interface PreviewPatternTile {
+  readonly x?: string
+  readonly y?: string
+  readonly w: string
+  readonly h: string
+  readonly fill: string
+}
+
+/** Veta del veteado procedural (`grain`): trazo ya resuelto a partir de `veins`/`seed`. */
+export interface PreviewPatternVein {
+  readonly d: string
+  readonly width: string
+}
+
+/**
+ * Definición **resuelta** de un patrón (`modelo-visual-2d` rev 5 §4, cierre del hallazgo 7/A2 de
+ * CIF-240). El componente la serializa literal: no mantiene ningún mapa `kind → <defs>` ni deduce
+ * color, textura ni contorno. Los colores de estas definiciones son pintura del modelo, no tokens
+ * de UI, y por eso viven aquí junto a `NEUTRAL_FILL` (`sistema-de-diseno` §8.1).
+ *
+ * `grain` usa la variante `veins` (no `stops` ni `tiles`) porque su textura es procedural: el
+ * modelo entrega el `d` y el grosor ya calculados con el hash del código de color.
+ */
+export type PreviewPatternPaint =
+  | {
+      readonly variant: 'linearGradient'
+      readonly x1: string
+      readonly y1: string
+      readonly x2: string
+      readonly y2: string
+      readonly stops: readonly PreviewPatternStop[]
+    }
+  | {
+      readonly variant: 'tile'
+      readonly width: string
+      readonly height: string
+      readonly patternUnits: 'userSpaceOnUse' | 'objectBoundingBox'
+      readonly tiles: readonly PreviewPatternTile[]
+    }
+  | {
+      readonly variant: 'veins'
+      readonly width: string
+      readonly height: string
+      readonly patternUnits: 'userSpaceOnUse' | 'objectBoundingBox'
+      readonly stroke: string
+      readonly veins: readonly PreviewPatternVein[]
+    }
+
 export interface PreviewPatternSpec {
   readonly kind: PreviewPaintPattern
   readonly id: string
-  readonly veins: number
-  readonly seed: number
+  /** Definición del `<defs>`; el componente solo la serializa (B2/§4). */
+  readonly paint: PreviewPatternPaint
 }
 
 export interface PreviewGeometry {
@@ -173,16 +233,155 @@ export const DANGER_STROKE = 'rgba(179,38,30,.9)'
 export const MOULDING_STROKE = '#98a2ab'
 /** Eje de giro de las pivotantes: guía de revisión, va oculto en el producto real. */
 export const AXIS_STROKE = '#f7f7f5'
+/**
+ * Color del bastidor bicolor: valor de vista fijo, no dato de catálogo (`docs/configurador.md`
+ * §valores fijos). Vive en el modelo para que ningún componente de `src/ui/**` lleve hex suelto
+ * (A2 de CIF-252).
+ */
+export const TWO_TONE_FRAME_HEX = '#9AA2A9'
+/**
+ * Paleta de demostración del panel de vista previa de CIF-6 (sustituida por el catálogo en CIF-7):
+ * valores de vista fijos, no catálogo. Viven aquí por el mismo motivo que `TWO_TONE_FRAME_HEX`.
+ */
+export const DEMO_COLOR_HEX = {
+  ral9010: '#F1EDE1',
+  ral7016: '#383E42',
+  robleRustico: '#B98A54',
+} as const
 
-const PATTERN_KINDS: readonly PreviewPaintPattern[] = [
+/**
+ * Orden canónico de `patternSpecs`, que es el orden en el que el componente emitía el `<defs>` en
+ * `main @ 8b63b39`. Fijarlo en el modelo mantiene el SVG idéntico byte a byte al trasladar la
+ * pintura (hallazgo 7/A2 de CIF-240) y es la única lista de `kind`s del módulo: `PreviewPaintPattern`
+ * se deriva de ella, así que un patrón nuevo no puede quedarse fuera del `<defs>` en silencio
+ * (H3 de CIF-261).
+ */
+export const PATTERN_SPEC_ORDER = [
   'sheen',
-  'grain',
-  'anodized',
-  'metalFinish',
   'glass',
   'metal',
   'wall',
-]
+  'metalFinish',
+  'anodized',
+  'grain',
+] as const
+
+/** Nº de vetas del veteado procedural (`grain`, §4). */
+const GRAIN_VEINS = 12
+
+/** Trazo de la veta: pintura del modelo, no token de UI. */
+const GRAIN_STROKE = 'rgba(0,0,0,.10)'
+
+/** Vetas resueltas del patrón `grain`: deterministas por `seed` (hash del código de color). */
+function grainVeins(veins: number, seed: number): readonly PreviewPatternVein[] {
+  const paths: PreviewPatternVein[] = []
+
+  for (let index = 0; index < veins; index += 1) {
+    const x = ((index + (seed % 7) / 7) * 100) / veins
+    const width = 0.6 + ((seed + index * 13) % 5) / 4
+
+    paths.push({
+      d: `M${x.toFixed(2)} 0 C ${(x + 1.2).toFixed(2)} 30, ${x.toFixed(2)} 70, ${(x + 0.6).toFixed(2)} 100`,
+      width: width.toFixed(2),
+    })
+  }
+
+  return paths
+}
+
+/** Definiciones lineales del §4, tal y como las emitía el componente (mismos offsets y opacidades). */
+const LINEAR_PATTERNS: Record<
+  'sheen' | 'glass' | 'metal' | 'wall' | 'metalFinish',
+  PreviewPatternPaint
+> = {
+  sheen: {
+    variant: 'linearGradient',
+    x1: '0',
+    y1: '0',
+    x2: '0',
+    y2: '1',
+    stops: [
+      { offset: '0', color: '#fff', opacity: '.16' },
+      { offset: '.35', color: '#fff', opacity: '0' },
+    ],
+  },
+  glass: {
+    variant: 'linearGradient',
+    x1: '0',
+    y1: '0',
+    x2: '0',
+    y2: '1',
+    stops: [
+      { offset: '0', color: '#dbe8f0', opacity: '1' },
+      { offset: '1', color: '#b9cddd', opacity: '1' },
+    ],
+  },
+  metal: {
+    variant: 'linearGradient',
+    x1: '0',
+    y1: '0',
+    x2: '0',
+    y2: '1',
+    stops: [
+      { offset: '0', color: '#f2f4f5', opacity: '1' },
+      { offset: '.45', color: '#c6ccd1', opacity: '1' },
+      { offset: '1', color: '#9aa2a9', opacity: '1' },
+    ],
+  },
+  wall: {
+    variant: 'linearGradient',
+    x1: '0',
+    y1: '0',
+    x2: '0',
+    y2: '1',
+    stops: [
+      { offset: '0', color: '#000', opacity: '.10' },
+      { offset: '1', color: '#000', opacity: '.05' },
+    ],
+  },
+  metalFinish: {
+    variant: 'linearGradient',
+    x1: '0',
+    y1: '0',
+    x2: '1',
+    y2: '0',
+    stops: [
+      { offset: '0', color: '#000', opacity: '.12' },
+      { offset: '.5', color: '#fff', opacity: '.12' },
+      { offset: '1', color: '#000', opacity: '.12' },
+    ],
+  },
+}
+
+/** Definición del patrón que corresponde a `kind`, ya resuelta. */
+function patternPaint(kind: PreviewPaintPattern, veins: number, seed: number): PreviewPatternPaint {
+  if (kind === 'grain') {
+    return {
+      variant: 'veins',
+      width: '100',
+      height: '100',
+      patternUnits: 'objectBoundingBox',
+      stroke: GRAIN_STROKE,
+      veins: grainVeins(veins, seed),
+    }
+  }
+
+  if (kind === 'anodized') {
+    return {
+      variant: 'tile',
+      width: '6',
+      height: '6',
+      patternUnits: 'userSpaceOnUse',
+      tiles: [
+        { w: '6', h: '6', fill: 'none' },
+        { w: '1.2', h: '6', fill: 'rgba(255,255,255,.10)' },
+        { x: '3', w: '0.8', h: '6', fill: 'rgba(0,0,0,.06)' },
+      ],
+    }
+  }
+
+  return LINEAR_PATTERNS[kind]
+}
 
 export function clamp(value: number, low: number, high: number): number {
   return Math.min(high, Math.max(low, value))
@@ -269,13 +468,16 @@ export function buildPreviewGeometry(config: PreviewConfig): PreviewGeometry {
   const seed = hashString(config.colorCode || 'x')
   let insertAt = 0
 
+  /**
+   * Declara el patrón la primera vez que una forma lo usa y devuelve su `url(#…)`. `kind` está
+   * acotado por `PATTERN_SPEC_ORDER`, así que no hay rama de descarte silencioso: todo patrón
+   * pintado acaba en el `<defs>` (H3 de CIF-261).
+   */
   const patternFill = (kind: PreviewPaintPattern): string => {
-    if (!PATTERN_KINDS.includes(kind)) {
-      return 'none'
-    }
-
     if (!patternSpecs.has(kind)) {
-      patternSpecs.set(kind, { kind, id: kind, veins: kind === 'grain' ? 12 : 0, seed })
+      const veins = kind === 'grain' ? GRAIN_VEINS : 0
+
+      patternSpecs.set(kind, { kind, id: kind, paint: patternPaint(kind, veins, seed) })
     }
 
     return `url(#${kind})`
@@ -777,7 +979,11 @@ export function buildPreviewGeometry(config: PreviewConfig): PreviewGeometry {
     shapes,
     outOfRange: !config.withinSeriesRange,
     finishPattern: neutral ? null : patternForFinish(finish),
-    patternSpecs: [...patternSpecs.values()],
+    patternSpecs: PATTERN_SPEC_ORDER.flatMap((kind) => {
+      const spec = patternSpecs.get(kind)
+
+      return spec ? [spec] : []
+    }),
     alcance: isMvp ? 'mvp' : 'referencia',
     notImplemented: !isMvp,
   }
