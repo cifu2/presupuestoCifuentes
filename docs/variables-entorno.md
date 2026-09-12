@@ -238,4 +238,6 @@ Informe de solo lectura (usuario del token, alcances, repositorio, protección d
 Vercel, variables por entorno y accesibilidad de la base de datos). No imprime valores y devuelve 1
 si queda algo pendiente: es la primera parada cuando el despliegue no arranca. Además de
 `DATABASE_URL`, exige `ADMIN_API_TOKEN` en _Production_ (sin ella el API del panel responde `503`,
-CIF-123).
+CIF-123) y `ADMIN_SESSION_SECRET` y `ADMIN_PANEL_PASSWORD` (sin ellas la sesión del panel falla
+cerrada, `/[locale]/admin/**` queda denegado y `POST /api/admin/session` responde
+`503 ADMIN_ACCESS_DISABLED`, CIF-241).
