@@ -43,8 +43,6 @@ export const PRODUCTION_HOSTS: readonly string[] = [
  */
 const MAIN_BRANCH_ALIAS = /^presupuesto-cifuentes-git-main(?:[.-]|$)/
 
-const SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i
-
 function normalizeHost(host: string): string {
   return host
     .trim()
@@ -53,20 +51,33 @@ function normalizeHost(host: string): string {
     .replace(/^www\./, '')
 }
 
-/** Host de una URL, sin esquema, puerto ni `www.`; `undefined` si no se puede leer una URL. */
+/**
+ * Host de una URL, sin esquema, puerto ni `www.`; `undefined` si no se puede leer un host.
+ *
+ * Se lee con el mismo `new URL` que usa Playwright y se prueban dos candidatos: el valor tal cual y
+ * con `http://` delante (para formas sin esquema como `127.0.0.1:3000` que Playwright sí acepta). El
+ * primer candidato no es opcional: Playwright normaliza `https:/host` y `https:host` a
+ * `https://host/` —parser WHATWG—, así que sin él la guarda leería el host `https` y dejaría pasar
+ * producción por una barra de menos (hallazgo §2 de la revisión de CIF-528).
+ */
 export function hostOf(rawValue: string): string | undefined {
   const value = rawValue.trim()
 
   if (value === '') return undefined
 
-  try {
-    const { hostname } = new URL(SCHEME.test(value) ? value : `http://${value}`)
+  for (const candidate of [value, `http://${value}`]) {
+    try {
+      const { hostname } = new URL(candidate)
 
-    return hostname === '' ? undefined : normalizeHost(hostname)
-  } catch {
-    // Una URL ilegible no es un destino de producción demostrable; que lo reporte Playwright.
-    return undefined
+      if (hostname !== '') return normalizeHost(hostname)
+    } catch {
+      // El candidato no es una URL: se prueba el siguiente.
+    }
   }
+
+  // Sin host legible, Playwright tampoco puede resolver `baseURL` y el primer test falla sin salir
+  // de la máquina; no hay destino de producción que demostrar aquí.
+  return undefined
 }
 
 /** ¿El host (ya normalizado o no) es un destino de producción declarado? */

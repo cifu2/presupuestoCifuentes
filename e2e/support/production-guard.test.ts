@@ -51,10 +51,31 @@ describe('hosts de producción declarados', () => {
     expect(isProductionHost('www.puertascifuentes.com.')).toBe(true)
   })
 
-  it('no inventa hosts cuando la URL no se puede leer', () => {
+  it('lee el host igual que Playwright, con el mismo `new URL` (CIF-528 §2)', () => {
+    const shapes = [
+      'https://puertascifuentes.com',
+      'https://puertascifuentes.com/path',
+      // El parser WHATWG normaliza estas tres a `https://puertascifuentes.com/`: son las formas que
+      // la guarda leía como el host `https` y por las que producción se colaba.
+      'https:/puertascifuentes.com',
+      'https:puertascifuentes.com',
+      'https:///puertascifuentes.com',
+      'HTTPS:/puertascifuentes.com',
+      'http:/127.0.0.1:4055',
+      'https://usuario:secreto@puertascifuentes.com',
+    ]
+
+    for (const shape of shapes) {
+      expect(hostOf(shape)).toBe(new URL(shape).hostname)
+    }
+  })
+
+  it('no inventa hosts cuando el valor no se puede leer', () => {
     expect(hostOf('')).toBeUndefined()
-    expect(hostOf('http://')).toBeUndefined()
     expect(isProductionHost('')).toBe(false)
+    // `http://` no declara host y Playwright tampoco puede resolver `baseURL` con él, así que la
+    // guarda no lo trata como producción: el fallo lo da Playwright al resolver el primer test.
+    expect(isProductionHost(hostOf('http://') ?? '')).toBe(false)
   })
 })
 
@@ -78,6 +99,36 @@ describe('detección de destinos prohibidos', () => {
         E2E_ADMIN_BASE_URL: 'http://127.0.0.1:3001',
       }),
     ).toEqual([])
+
+    // Sin esquema y con una sola barra siguen siendo destinos válidos: no son producción.
+    expect(
+      targetsWith({
+        E2E_BASE_URL: 'presupuesto-cifuentes-git-cif525-guarda-equipo.vercel.app',
+        E2E_ADMIN_BASE_URL: 'https:/presupuesto-cifuentes-git-cif525-guarda-equipo.vercel.app',
+      }),
+    ).toEqual([])
+  })
+
+  it('aborta con las formas que Playwright normaliza a `https://host/` (CIF-528 §2)', () => {
+    const shapes = [
+      'https:/puertascifuentes.com',
+      'https:puertascifuentes.com',
+      'HTTPS:/puertascifuentes.com',
+      'http:/puertascifuentes.com',
+      'https:///puertascifuentes.com',
+      // Protocolo relativo: Playwright no lo resuelve como `baseURL`, pero la guarda lo cierra igual.
+      '//puertascifuentes.com',
+    ]
+
+    for (const shape of shapes) {
+      expect(targetsWith({ E2E_BASE_URL: shape })).toEqual(['E2E_BASE_URL=puertascifuentes.com'])
+      expect(() => assertE2eTargetsAreNotProduction({ E2E_BASE_URL: shape })).toThrow(
+        /guarda de destino/,
+      )
+      expect(targetsWith({ E2E_ADMIN_BASE_URL: shape })).toEqual([
+        `E2E_ADMIN_BASE_URL=puertascifuentes.com`,
+      ])
+    }
   })
 
   it('aborta nombrando ADR-0025 §5 / ADR-0026 §7 y el entorno válido', () => {

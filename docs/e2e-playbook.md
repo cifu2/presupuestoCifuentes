@@ -81,6 +81,10 @@ servidores y antes del primer test**.
   (dominio del propietario, CIF-14). También aborta con el alias de la rama `main` de Vercel
   (`presupuesto-cifuentes-git-main-…`), que sirve el despliegue de _Production_ aunque parezca un
   preview. La comparación ignora esquema, puerto, `www.` y mayúsculas.
+- El host se lee con el mismo `new URL` que usa Playwright, probando el valor tal cual y con
+  `http://` delante (formas sin esquema como `127.0.0.1:3000`). Así también abortan las formas que
+  el parser normaliza a `https://host/` —`https:/host`, `https:host`, `https:///host`—: **una barra
+  de menos no abre un agujero** (hallazgo §2 de la revisión de CIF-528).
 - **No hay variable de escape.** Si un host deja de ser producción, se corrige la lista declarada, con
   su test (`e2e/support/production-guard.test.ts`).
 - El E2E hermético de CI y local (**sin** `E2E_BASE_URL`) y el preview sembrado siguen igual: la
