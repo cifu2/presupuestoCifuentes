@@ -84,3 +84,11 @@
 Solo el CTO puede aceptar una excepción, y debe quedar escrita en el PR con el motivo, el riesgo
 asumido y la tarea hija que lo resuelve. Una excepción temporal no puede convertirse en la norma:
 si se repite, se cambia la DoD o se arregla la causa.
+
+Una excepción de **método de fusión** se acoge al procedimiento de
+[ADR-0021](adr/0021-metodo-de-fusion-y-trazabilidad-squash.md): la fusión a `main` es siempre
+squash, el mensaje del commit registra `Head revisado: <sha40>` y la aceptación exige identidad de
+árbol con el head revisado, `calidad` + `e2e` en verde sobre ese head y la revisión registrada en la
+tarea. Los cambios temporales de los ajustes del repositorio (método de fusión o protección de rama)
+necesitan autorización del CTO y se verifican con el comando de `docs/despliegue.md` §2.1 antes de
+cerrar.

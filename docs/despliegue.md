@@ -38,12 +38,65 @@ servidores propios en ningún entorno ([ADR-0007](adr/0007-despliegue-vercel-git
    [Definition of Done](definition-of-done.md) se registra en la incidencia de Paperclip: GitHub no
    permite exigirla mientras el autor del PR y el dueño del token sean la misma cuenta de GitHub.
    Cuando exista un segundo colaborador, se vuelve a activar `required_pull_request_reviews`
-   (`REPO_REQUIRED_APPROVALS=1`, apartado 6.2).
+   (`REPO_REQUIRED_APPROVALS=1`, apartado 6.2). El método de fusión y la trazabilidad del gate están
+   en el apartado siguiente y en [ADR-0021](adr/0021-metodo-de-fusion-y-trazabilidad-squash.md).
 3. La configuración del proyecto de Vercel (framework Next.js, `pnpm build`, Node de `.nvmrc`) se
    detecta sola y no se duplica en el repositorio. El `vercel.json` versionado solo declara qué ramas
    **no** generan despliegue (`git.deploymentEnabled`, [ADR-0019](adr/0019-cuota-despliegues-vercel.md)):
    `dependabot/**`, `archive/**` y `docs/**`. Nunca lleva configuración de build y su contenido está
    fijado por `src/config/vercel-config.test.ts`.
+
+### 2.1 Método de fusión y trazabilidad del gate (ADR-0021)
+
+4. **La fusión a `main` es siempre squash**
+   ([ADR-0021](adr/0021-metodo-de-fusion-y-trazabilidad-squash.md)): el repositorio tiene
+   `allow_squash_merge=true`, `allow_merge_commit=false` y `allow_rebase_merge=false`
+   (`scripts/github-bootstrap.sh`, apartado 6.2). Ninguna tarea pide `merge_method=merge` ni rebase;
+   si una tarea lo pide, el error es de la tarea, no del ejecutor.
+5. **El commit de squash registra el head revisado.** Como el SHA revisado ya **no** será ancestro de
+   `main`, su mensaje lleva `Head revisado: <sha40>` y el run de CI. La fusión se acepta solo si,
+   sobre el head revisado (`<sha>`):
+
+   ```bash
+   git fetch --quiet origin main
+   # (a) el árbol fusionado es exactamente el revisado
+   test "$(git rev-parse <sha>^{tree})" = "$(git rev-parse origin/main^{tree})"
+   # (b) el mensaje del squash referencia el head revisado
+   git log -1 --format=%B origin/main | grep -F 'Head revisado: <sha40>'
+   ```
+
+   además de `calidad` y `e2e` en verde sobre `<sha>` (pestaña _Checks_ del PR) y de la decisión
+   `approved` de la revisión registrada en la tarea de Paperclip. `main` **no se reescribe**: no se
+   añaden merge commits de seguimiento para «restaurar» la ancestría de un SHA ya revisado.
+
+6. **Ajustes del repositorio: la restauración no depende de la memoria.** Cambiar temporalmente el
+   método de fusión o la protección de `main` requiere autorización explícita del CTO, constancia en
+   la tarea y **verificación de la restauración** contra `scripts/github-bootstrap.sh`. La guarda es
+   este comando, desde la raíz del repositorio (solo lectura, sin secretos; falla con código 1 si el
+   estado vivo diverge del versionado):
+
+   ```bash
+   # Fusión: squash-only (scripts/github-bootstrap.sh, apartado 6.2).
+   esperado_fusion="$(sed -n 's/.*-F allow_squash_merge=\(true\|false\).*/\1/p;s/.*-F allow_merge_commit=\(true\|false\).*/\1/p;s/.*-F allow_rebase_merge=\(true\|false\).*/\1/p' scripts/github-bootstrap.sh | paste -sd,)"
+   vivo_fusion="$(gh api repos/cifu2/presupuestoCifuentes --jq '[.allow_squash_merge,.allow_merge_commit,.allow_rebase_merge]|@csv' | tr -d '"')"
+   [ "$vivo_fusion" = "$esperado_fusion" ] || { echo "fusión divergente: vivo=$vivo_fusion versionado=$esperado_fusion"; exit 1; }
+
+   # Protección de main: checks requeridos, strict y enforce_admins.
+   esperado_prot="$(sed -n 's/^ *"strict": \(true\|false\).*/\1/p;s/^ *"enforce_admins": \(true\|false\).*/\1/p' scripts/github-bootstrap.sh | paste -sd'|')|$(sed -n 's/^ *"\(calidad[^"]*\|e2e[^"]*\)",\{0,1\}$/\1/p' scripts/github-bootstrap.sh | paste -sd'|')"
+   vivo_prot="$(gh api repos/cifu2/presupuestoCifuentes/branches/main/protection --jq '[(.required_status_checks.strict|tostring),(.enforce_admins.enabled|tostring),(.required_status_checks.contexts|sort|join("|"))]|join("|")')"
+   [ "$vivo_prot" = "$esperado_prot" ] || { echo "protección divergente: vivo=$vivo_prot versionado=$esperado_prot"; exit 1; }
+
+   echo "ajustes del repositorio acordes a scripts/github-bootstrap.sh"
+   ```
+
+   Verificado el 2026-09-12 tras el incidente de CIF-203: los dos bloques salen en verde con
+   `allow_merge_commit=false` ya restaurado (`calidad` + `e2e`, `strict` y `enforce_admins` vivos).
+
+7. **Coste de un cambio solo de documentación:** las ramas `docs/**` **no generan preview** de Vercel
+   (`git.deploymentEnabled`, [ADR-0019](adr/0019-cuota-despliegues-vercel.md)), así que un PR que solo
+   toca `docs/**` y ficheros `*.md` no consume cuota de despliegue. Por eso CIF-209 elige el comando
+   de arriba (paso de runbook) en vez de un script con su test: es la guarda más barata que deja la
+   restauración comprobada sin abrir una rama con código ni gastar un preview.
 
 ### Flujo de un cambio
 
@@ -56,7 +109,8 @@ servidores propios en ningún entorno ([ADR-0007](adr/0007-despliegue-vercel-git
    y `shellcheck` de `scripts/`, guardia de contenido de ramas `docs/**`, lint, tipos y unitarios) y
    `e2e`.
 4. Revisión de otro agente distinto del autor. QA valida el flujo en la URL de preview.
-5. Con CI en verde y aprobación, se fusiona a `main`.
+5. Con CI en verde y aprobación, se fusiona a `main` por **squash** (apartado 2.1), con
+   `Head revisado: <sha40>` en el mensaje del commit.
 6. Vercel despliega **producción** desde `main` automáticamente.
 7. Si el merge incluye migración de esquema, se ejecuta el paso de migración del apartado 3 y se
    comprueba `/api/health` en producción.
