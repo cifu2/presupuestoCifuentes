@@ -8,14 +8,22 @@
 
 import { randomUUID } from 'node:crypto'
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { ManualQuoteRequest } from '@/domain/catalog/manual-quote-request'
 import { Dimensions } from '@/domain/catalog/measurement'
 import { QuoteDelivery, quoteDeliveryKey } from '@/domain/quote/quote-delivery'
 import type { Quote } from '@/domain/quote/quote'
 import type { QuoteDocument } from '@/domain/quote/quote-document'
-import { AmbiguousTariffError } from '@/domain/shared/errors'
+import {
+  AmbiguousTariffError,
+  ConflictError,
+  EmptyPriceTableError,
+  ItemInUseError,
+  SeriesInUseError,
+  TariffVersionNotEditableError,
+} from '@/domain/shared/errors'
+import { makeSeries } from '@/domain/catalog/testing/factories'
 import { CurrentInstantClock } from '@/infrastructure/clock/system-clock'
 
 import { QUOTE_DELIVERY_CLAIM_LEASE_MS } from '@/application/ports/quote-delivery-repository'
@@ -31,17 +39,30 @@ import {
 } from '@/application/use-cases/deliver-quote'
 import { issueQuote } from '@/application/use-cases/issue-quote'
 import { publishTariffVersion } from '@/application/use-cases/publish-tariff-version'
+import { deactivateCatalogItem } from '@/application/use-cases/deactivate-catalog-item'
+import { deactivateSeries } from '@/application/use-cases/deactivate-series'
+import { updateSeries } from '@/application/use-cases/update-series'
+import { updateTariffPrice } from '@/application/use-cases/update-tariff-price'
+import { upsertAccessory } from '@/application/use-cases/upsert-accessory'
+import { upsertColor } from '@/application/use-cases/upsert-color'
+import { upsertFinish } from '@/application/use-cases/upsert-finish'
+import { upsertSeries } from '@/application/use-cases/upsert-series'
 import { PrismaAdminCatalogReader } from './admin-catalog-reader'
 import { createPrismaClient } from './client'
 import { PrismaQuoteDeliveryRepository } from './quote-delivery-repository'
 import {
   PrismaAccessoryRepository,
+  PrismaAccessoryWriteRepository,
+  PrismaCatalogUsageReader,
   PrismaColorRepository,
+  PrismaColorWriteRepository,
   PrismaFinishRepository,
+  PrismaFinishWriteRepository,
   PrismaManualQuoteRequestRepository,
   PrismaQuoteNumberSequence,
   PrismaQuoteRepository,
   PrismaSeriesRepository,
+  PrismaSeriesWriteRepository,
   PrismaTariffPricingRepository,
   PrismaTariffVersionRepository,
   isPublishedTariffOverlapViolation,
@@ -352,6 +373,15 @@ async function seed(prisma: PrismaClient): Promise<void> {
         taxRatePercent: '21',
         currency: 'EUR',
       },
+    ],
+  })
+
+  // `createMany` no anida relaciones, y las dos publicaciones de la carrera pasan por el caso de
+  // uso: sin tabla de precios no se publican (ADR-0027 §4).
+  await prisma.tariffPriceTable.createMany({
+    data: [
+      { tariffVersionId: IDS.tariffRaceA, perSquareMetreCents: 40_000n },
+      { tariffVersionId: IDS.tariffRaceC, perSquareMetreCents: 41_000n },
     ],
   })
 }
@@ -1347,6 +1377,496 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
           { code: 'es', isActive: true, missingSeries: 3 },
           { code: 'en', isActive: true, missingSeries: 3 },
         ])
+      })
+    })
+
+    /**
+     * Escritura de catálogo contra PostgreSQL real (CIF-126a, ADR-0027).
+     *
+     * Datos sintéticos y aislados por id: el bloque limpia lo suyo al terminar porque el describe de
+     * «catálogo vacío» que va detrás cuenta filas. Ejercita los casos de uso contra los adaptadores
+     * Prisma —idempotencia por `code` y por `(finishId, code)`, textos multi-idioma, guardas de
+     * desactivación e invariante de publicación—, no los adaptadores por dentro.
+     */
+    describe('escritura de catálogo (CIF-126a)', () => {
+      const WRITE_IDS = {
+        series: 'c1f126a0-0000-4000-8000-000000000001',
+        seriesOtroSlug: 'c1f126a0-0000-4000-8000-000000000002',
+        finish: 'c1f126a0-0000-4000-8000-000000000003',
+        finishSuelto: 'c1f126a0-0000-4000-8000-000000000004',
+        color: 'c1f126a0-0000-4000-8000-000000000005',
+        accessory: 'c1f126a0-0000-4000-8000-000000000006',
+        tariff: 'c1f126a0-0000-4000-8000-000000000007',
+        tariffBorrador: 'c1f126a0-0000-4000-8000-000000000008',
+        band: 'c1f126a0-0000-4000-8000-000000000009',
+      } as const
+
+      const seriesWriteRepository = new PrismaSeriesWriteRepository(prisma)
+      const finishWriteRepository = new PrismaFinishWriteRepository(prisma)
+      const colorWriteRepository = new PrismaColorWriteRepository(prisma)
+      const accessoryWriteRepository = new PrismaAccessoryWriteRepository(prisma)
+      const tariffVersionRepository = new PrismaTariffVersionRepository(prisma)
+      const catalogUsageReader = new PrismaCatalogUsageReader(prisma)
+
+      const writeDeps = {
+        seriesRepository,
+        finishRepository,
+        colorRepository,
+        accessoryRepository,
+        seriesWriteRepository,
+        finishWriteRepository,
+        colorWriteRepository,
+        accessoryWriteRepository,
+        catalogUsageReader,
+        idGenerator: { nextId: () => randomUUID() },
+        clock,
+      }
+
+      async function cleanWrite(): Promise<void> {
+        await prisma.tariffVersion.deleteMany({
+          where: { id: { in: [WRITE_IDS.tariff, WRITE_IDS.tariffBorrador] } },
+        })
+        await prisma.color.deleteMany({ where: { id: WRITE_IDS.color } })
+        await prisma.doorSeries.deleteMany({
+          where: { id: { in: [WRITE_IDS.series, WRITE_IDS.seriesOtroSlug] } },
+        })
+        await prisma.catalogText.deleteMany({
+          where: {
+            entityId: {
+              in: Object.values(WRITE_IDS).slice(0, 6),
+            },
+          },
+        })
+        await prisma.finish.deleteMany({
+          where: { id: { in: [WRITE_IDS.finish, WRITE_IDS.finishSuelto] } },
+        })
+        await prisma.accessory.deleteMany({ where: { id: { in: [WRITE_IDS.accessory] } } })
+      }
+
+      /**
+       * Borra lo que los casos hayan creado de más (códigos `CI126A-*` con id fuera del seed), para
+       * que un fallo a mitad de un caso no contamine los bloques siguientes: el describe de
+       * «catálogo vacío» que va detrás cuenta filas. Las filas del seed se conservan porque los
+       * casos siguientes las necesitan.
+       */
+      async function cleanWriteLeftovers(): Promise<void> {
+        const seededIds = Object.values(WRITE_IDS)
+        const createdSeries = await prisma.doorSeries.findMany({
+          where: { code: { startsWith: 'CI126A' }, id: { notIn: [...seededIds] } },
+          select: { id: true },
+        })
+        const createdFinishes = await prisma.finish.findMany({
+          where: { code: { startsWith: 'CI126A' }, id: { notIn: [...seededIds] } },
+          select: { id: true },
+        })
+        const createdAccessories = await prisma.accessory.findMany({
+          where: { code: { startsWith: 'CI126A' }, id: { notIn: [...seededIds] } },
+          select: { id: true },
+        })
+        const createdEntityIds = [
+          ...createdSeries.map((row) => row.id),
+          ...createdFinishes.map((row) => row.id),
+          ...createdAccessories.map((row) => row.id),
+        ]
+
+        await prisma.tariffVersion.deleteMany({
+          where: { seriesId: { in: createdSeries.map((row) => row.id) } },
+        })
+        await prisma.catalogText.deleteMany({
+          where: { entityId: { in: createdEntityIds } },
+        })
+        await prisma.color.deleteMany({
+          where: {
+            OR: [
+              { finishId: { in: createdFinishes.map((row) => row.id) } },
+              { code: { startsWith: 'CI126A' }, id: { notIn: [...seededIds] } },
+            ],
+          },
+        })
+        await prisma.accessory.deleteMany({
+          where: { code: { startsWith: 'CI126A' }, id: { notIn: [...seededIds] } },
+        })
+        await prisma.finish.deleteMany({
+          where: { code: { startsWith: 'CI126A' }, id: { notIn: [...seededIds] } },
+        })
+        await prisma.doorSeries.deleteMany({
+          where: { code: { startsWith: 'CI126A' }, id: { notIn: [...seededIds] } },
+        })
+      }
+
+      /** Serie publicada con tarifa vigente y vínculos vivos: el catálogo del que parte el bloque. */
+      async function seedWrite(): Promise<void> {
+        await prisma.finish.create({
+          data: {
+            id: WRITE_IDS.finish,
+            code: 'CI126A-LACADO',
+            status: 'PUBLISHED',
+            sortOrder: 1,
+          },
+        })
+        await prisma.finish.create({
+          data: {
+            id: WRITE_IDS.finishSuelto,
+            code: 'CI126A-SUELTO',
+            status: 'DRAFT',
+            sortOrder: 2,
+          },
+        })
+        await prisma.color.create({
+          data: {
+            id: WRITE_IDS.color,
+            finishId: WRITE_IDS.finish,
+            code: 'CI126A-RAL-9010',
+            hex: '#F1EDE1',
+            status: 'PUBLISHED',
+            sortOrder: 1,
+          },
+        })
+        await prisma.accessory.create({
+          data: {
+            id: WRITE_IDS.accessory,
+            code: 'CI126A-MANILLA',
+            category: 'HARDWARE',
+            status: 'PUBLISHED',
+            sortOrder: 1,
+          },
+        })
+        await prisma.doorSeries.create({
+          data: {
+            id: WRITE_IDS.series,
+            code: 'CI126A',
+            slug: 'ci126a',
+            status: 'PUBLISHED',
+            minWidthMm: 600,
+            maxWidthMm: 1100,
+            minHeightMm: 1800,
+            maxHeightMm: 2300,
+            sortOrder: 1,
+            finishLinks: { create: [{ finishId: WRITE_IDS.finish }] },
+            accessoryLinks: { create: [{ accessoryId: WRITE_IDS.accessory }] },
+          },
+        })
+        await prisma.doorSeries.create({
+          data: {
+            id: WRITE_IDS.seriesOtroSlug,
+            code: 'CI126A-OTRA',
+            slug: 'ci126a-otra',
+            status: 'DRAFT',
+            minWidthMm: 600,
+            maxWidthMm: 1000,
+            minHeightMm: 1800,
+            maxHeightMm: 2200,
+            sortOrder: 2,
+          },
+        })
+        await prisma.catalogText.createMany({
+          data: [
+            {
+              entityType: 'SERIES',
+              entityId: WRITE_IDS.series,
+              field: 'NAME',
+              locale: 'es',
+              value: 'Serie de escritura',
+            },
+            {
+              entityType: 'SERIES',
+              entityId: WRITE_IDS.series,
+              field: 'NAME',
+              locale: 'en',
+              value: 'Write series',
+            },
+          ],
+        })
+        await prisma.tariffVersion.create({
+          data: {
+            id: WRITE_IDS.tariff,
+            seriesId: WRITE_IDS.series,
+            versionNumber: 1,
+            status: 'PUBLISHED',
+            strategy: 'PER_SQUARE_METRE',
+            validFrom: new Date('2026-01-01T00:00:00.000Z'),
+            taxRatePercent: '21',
+            currency: 'EUR',
+            publishedAt: new Date('2026-01-01T00:00:00.000Z'),
+            priceTable: { create: { perSquareMetreCents: 40_000n } },
+          },
+        })
+        await prisma.tariffVersion.create({
+          data: {
+            id: WRITE_IDS.tariffBorrador,
+            seriesId: WRITE_IDS.series,
+            versionNumber: 2,
+            status: 'DRAFT',
+            strategy: 'SIZE_BANDS',
+            validFrom: new Date('2027-01-01T00:00:00.000Z'),
+            taxRatePercent: '21',
+            currency: 'EUR',
+          },
+        })
+      }
+
+      beforeAll(async () => {
+        await cleanWrite()
+        await seedWrite()
+      })
+
+      afterEach(async () => {
+        await cleanWriteLeftovers()
+      })
+
+      afterAll(async () => {
+        await cleanWrite()
+      })
+
+      it('da de alta una serie con vínculos y textos por idioma', async () => {
+        const created = await upsertSeries(writeDeps, {
+          code: 'CI126A-NUEVA',
+          slug: 'ci126a-nueva',
+          name: { es: 'Serie nueva', en: 'New series' },
+          description: { es: 'Descripción' },
+          limits: { minWidthMm: 700, maxWidthMm: 1200, minHeightMm: 1900, maxHeightMm: 2400 },
+          allowedFinishIds: [WRITE_IDS.finish],
+          allowedAccessoryIds: [WRITE_IDS.accessory],
+        })
+
+        const row = await prisma.doorSeries.findUnique({
+          where: { id: created.id },
+          include: {
+            finishLinks: true,
+            accessoryLinks: true,
+          },
+        })
+        const texts = await prisma.catalogText.findMany({
+          where: { entityType: 'SERIES', entityId: created.id },
+          orderBy: [{ field: 'asc' }, { locale: 'asc' }],
+        })
+
+        expect(row?.code).toBe('CI126A-NUEVA')
+        expect(row?.minWidthMm).toBe(700)
+        expect(row?.finishLinks.map((link) => link.finishId)).toEqual([WRITE_IDS.finish])
+        expect(row?.accessoryLinks.map((link) => link.accessoryId)).toEqual([WRITE_IDS.accessory])
+        expect(texts.map((text) => `${text.field}:${text.locale}=${text.value}`)).toEqual([
+          // PostgreSQL ordena el enum `catalog_text_field` por orden de declaración (NAME, DESCRIPTION),
+          // no alfabéticamente.
+          'NAME:en=New series',
+          'NAME:es=Serie nueva',
+          'DESCRIPTION:es=Descripción',
+        ])
+      })
+
+      it('es idempotente por code y borra la traducción que ya no viene', async () => {
+        const first = await upsertSeries(writeDeps, {
+          code: 'CI126A-OTRA',
+          slug: 'ci126a-otra',
+          name: { es: 'Serie otra revisada', en: 'Other series' },
+          limits: { minWidthMm: 600, maxWidthMm: 1000, minHeightMm: 1800, maxHeightMm: 2200 },
+        })
+        const second = await upsertSeries(writeDeps, {
+          code: 'CI126A-OTRA',
+          slug: 'ci126a-otra',
+          name: { es: 'Serie otra definitiva' },
+          limits: { minWidthMm: 650, maxWidthMm: 1050, minHeightMm: 1800, maxHeightMm: 2200 },
+        })
+
+        const rows = await prisma.doorSeries.findMany({ where: { code: 'CI126A-OTRA' } })
+        const texts = await prisma.catalogText.findMany({
+          where: { entityType: 'SERIES', entityId: WRITE_IDS.seriesOtroSlug },
+        })
+
+        expect(first.id).toBe(WRITE_IDS.seriesOtroSlug)
+        expect(second.id).toBe(first.id)
+        expect(rows).toHaveLength(1)
+        expect(rows[0]?.minWidthMm).toBe(650)
+        expect(texts.map((text) => `${text.field}:${text.locale}=${text.value}`)).toEqual([
+          'NAME:es=Serie otra definitiva',
+        ])
+      })
+
+      it('traduce la violación de unicidad de slug a ConflictError, no a 500 (escritura directa)', async () => {
+        const current = await seriesWriteRepository.findByCode('CI126A-OTRA')
+
+        expect(current).not.toBeNull()
+
+        await expect(
+          seriesWriteRepository.save(
+            makeSeries({ ...current!, id: WRITE_IDS.series, slug: current!.slug }),
+          ),
+        ).rejects.toThrow(ConflictError)
+      })
+
+      it('edita los límites de una serie y conserva sus textos', async () => {
+        const updated = await updateSeries(
+          { seriesRepository, seriesWriteRepository, clock },
+          {
+            seriesId: WRITE_IDS.series,
+            limits: { minWidthMm: 550, maxWidthMm: 1300, minHeightMm: 1700, maxHeightMm: 2500 },
+            name: { en: 'Write series (rev)' },
+          },
+        )
+
+        const row = await prisma.doorSeries.findUnique({ where: { id: WRITE_IDS.series } })
+
+        expect(updated.limits.maxWidthMm).toBe(1300)
+        expect(updated.name).toEqual({ es: 'Serie de escritura', en: 'Write series (rev)' })
+        expect(row?.maxWidthMm).toBe(1300)
+      })
+
+      it('da de alta y actualiza acabados, colores y complementos sin duplicar (upsert)', async () => {
+        const finish = await upsertFinish(writeDeps, {
+          code: 'CI126A-MADERA',
+          name: { es: 'Madera', en: 'Wood' },
+        })
+        await upsertFinish(writeDeps, {
+          code: 'CI126A-MADERA',
+          name: { es: 'Madera natural' },
+        })
+
+        const color = await upsertColor(writeDeps, {
+          finishId: WRITE_IDS.finish,
+          code: 'CI126A-RAL-7016',
+          name: { es: 'Antracita' },
+          hex: '#383e42',
+        })
+        await upsertColor(writeDeps, {
+          finishId: WRITE_IDS.finish,
+          code: 'CI126A-RAL-7016',
+          name: { es: 'Gris antracita' },
+        })
+
+        await upsertAccessory(writeDeps, {
+          code: 'CI126A-CIERRE',
+          name: { es: 'Cierrapuertas' },
+          category: 'closing',
+        })
+        await upsertAccessory(writeDeps, {
+          code: 'CI126A-CIERRE',
+          name: { es: 'Cierrapuertas hidráulico' },
+          category: 'closing',
+        })
+
+        const finishes = await prisma.finish.findMany({ where: { code: 'CI126A-MADERA' } })
+        const colors = await prisma.color.findMany({ where: { code: 'CI126A-RAL-7016' } })
+        const accessories = await prisma.accessory.findMany({ where: { code: 'CI126A-CIERRE' } })
+        const finishTexts = await prisma.catalogText.findMany({
+          where: { entityType: 'FINISH', entityId: finish.id },
+        })
+
+        expect(finishes).toHaveLength(1)
+        expect(colors).toHaveLength(1)
+        expect(colors[0]?.hex).toBe('#383E42')
+        expect(accessories).toHaveLength(1)
+        expect(color.finishId).toBe(WRITE_IDS.finish)
+        expect(finishTexts.map((text) => text.value)).toEqual(['Madera natural'])
+
+        await prisma.color.deleteMany({ where: { id: color.id } })
+        await prisma.finish.deleteMany({ where: { id: finish.id } })
+        await prisma.accessory.deleteMany({ where: { code: 'CI126A-CIERRE' } })
+        await prisma.catalogText.deleteMany({ where: { entityId: finish.id } })
+      })
+
+      it('rechaza desactivar una serie con tarifa publicada y vigente sin escribir', async () => {
+        await expect(deactivateSeries(writeDeps, { seriesId: WRITE_IDS.series })).rejects.toThrow(
+          SeriesInUseError,
+        )
+
+        const row = await prisma.doorSeries.findUnique({ where: { id: WRITE_IDS.series } })
+
+        expect(row?.status).toBe('PUBLISHED')
+        await expect(
+          catalogUsageReader.seriesHasTariffInForce(WRITE_IDS.series, clock.now()),
+        ).resolves.toBe(true)
+      })
+
+      it('rechaza desactivar un acabado que una serie viva permite sin escribir', async () => {
+        await expect(
+          deactivateCatalogItem(writeDeps, { entity: 'finish', id: WRITE_IDS.finish }),
+        ).rejects.toThrow(ItemInUseError)
+
+        const row = await prisma.finish.findUnique({ where: { id: WRITE_IDS.finish } })
+
+        expect(row?.status).toBe('PUBLISHED')
+        await expect(
+          catalogUsageReader.isFinishAllowedByLiveSeries(WRITE_IDS.finish),
+        ).resolves.toBe(true)
+      })
+
+      it('desactiva un acabado sin uso y lo deja archivado', async () => {
+        const result = await deactivateCatalogItem(writeDeps, {
+          entity: 'finish',
+          id: WRITE_IDS.finishSuelto,
+        })
+
+        const row = await prisma.finish.findUnique({ where: { id: WRITE_IDS.finishSuelto } })
+
+        expect(result.item.status).toBe('archived')
+        expect(row?.status).toBe('ARCHIVED')
+      })
+
+      it('escribe la tabla de precios de un borrador con sus bandas y modificadores', async () => {
+        const table = await updateTariffPrice(
+          { tariffVersionRepository, idGenerator: { nextId: () => randomUUID() } },
+          {
+            tariffVersionId: WRITE_IDS.tariffBorrador,
+            bands: [
+              {
+                id: WRITE_IDS.band,
+                minWidthMm: 600,
+                maxWidthMm: 1000,
+                minHeightMm: 1800,
+                maxHeightMm: 2200,
+                price: '480.00',
+              },
+            ],
+            modifiers: [
+              { code: 'INSTALACION', kind: 'fixed', target: 'installation', amount: '180' },
+            ],
+          },
+        )
+
+        const stored = await tariffVersionRepository.findPriceTableByVersionId(
+          WRITE_IDS.tariffBorrador,
+        )
+
+        expect(table.bands).toHaveLength(1)
+        expect(stored?.bands.map((band) => band.id)).toEqual([WRITE_IDS.band])
+        expect(stored?.modifiers.map((modifier) => modifier.code)).toEqual(['INSTALACION'])
+      })
+
+      it('no publica la tarifa sin tabla de precios y deja la fila intacta (ADR-0027 §4)', async () => {
+        const id = randomUUID()
+
+        await prisma.tariffVersion.create({
+          data: {
+            id,
+            seriesId: WRITE_IDS.seriesOtroSlug,
+            versionNumber: 5,
+            status: 'DRAFT',
+            strategy: 'PER_SQUARE_METRE',
+            validFrom: new Date('2027-06-01T00:00:00.000Z'),
+            taxRatePercent: '21',
+            currency: 'EUR',
+          },
+        })
+
+        await expect(
+          publishTariffVersion({ tariffVersionRepository, clock }, { tariffVersionId: id }),
+        ).rejects.toThrow(EmptyPriceTableError)
+
+        const stored = await prisma.tariffVersion.findUnique({ where: { id } })
+
+        expect(stored?.status).toBe('DRAFT')
+        expect(stored?.publishedAt).toBeNull()
+
+        await prisma.tariffVersion.delete({ where: { id } })
+      })
+
+      it('rechaza editar los precios de una tarifa publicada', async () => {
+        await expect(
+          updateTariffPrice(
+            { tariffVersionRepository, idGenerator: { nextId: () => randomUUID() } },
+            { tariffVersionId: WRITE_IDS.tariff, perSquareMetre: '1.00' },
+          ),
+        ).rejects.toThrow(TariffVersionNotEditableError)
       })
     })
 

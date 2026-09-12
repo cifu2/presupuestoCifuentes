@@ -10,6 +10,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { makeTariffVersion, TEST_NOW } from '@/domain/catalog/testing/factories'
 import { ValidityPeriod } from '@/domain/catalog/validity-period'
 import type { TariffVersion } from '@/domain/catalog/tariff-version'
+import { makePriceTable } from '@/domain/pricing/testing/factories'
+import type { PriceTable } from '@/domain/pricing/price-table'
 
 const TOKEN = 'token-de-prueba-suficientemente-largo'
 
@@ -17,6 +19,8 @@ const store = vi.hoisted(() => ({
   versions: [] as unknown[],
   saves: [] as unknown[],
   findByIdCalls: [] as string[],
+  /** Tablas de precios por versión: el doble del puerto devuelve una si el test la sembró. */
+  priceTables: new Map<string, unknown>(),
 }))
 
 vi.mock('@/config/env', () => ({
@@ -37,6 +41,10 @@ vi.mock('@/composition/container', () => ({
         (store.versions as { seriesId: string }[]).filter(
           (version) => version.seriesId === seriesId,
         ),
+      findPriceTableByVersionId: async (id: string) => store.priceTables.get(id) ?? null,
+      savePriceTable: async (priceTable: PriceTable) => {
+        store.priceTables.set(priceTable.tariffVersionId, priceTable)
+      },
       save: async (version: { id: string }) => {
         store.saves.push(version)
         const versions = store.versions as { id: string }[]
@@ -67,7 +75,13 @@ function seed(versions: readonly TariffVersion[]): void {
   store.versions.length = 0
   store.saves.length = 0
   store.findByIdCalls.length = 0
+  store.priceTables.clear()
   store.versions.push(...versions)
+}
+
+/** Todo borrador que vaya a publicarse necesita su tabla de precios (ADR-0027 §4). */
+function seedPriceTable(tariffVersionId: string): void {
+  store.priceTables.set(tariffVersionId, makePriceTable({ tariffVersionId }))
 }
 
 const CI_100_V1 = '0192f1b0-0000-7000-8000-000000000101'
@@ -87,6 +101,7 @@ describe('POST /api/admin/tariff-versions/[id]/publish', () => {
         publishedAt: null,
       }),
     ])
+    seedPriceTable(CI_400_V1)
 
     const response = await publish(CI_400_V1)
     const body = await response.json()
