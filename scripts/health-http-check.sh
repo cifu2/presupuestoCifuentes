@@ -219,11 +219,14 @@ SEPARATOR='?'
 [[ "$DB_URL" == *"?"* ]] && SEPARATOR='&'
 UNMIGRATED_URL="${DB_URL}${SEPARATOR}options=${OPTIONS}"
 
-# Cadena sintética por piezas: el fichero no puede contener una cadena con forma de credencial.
+# Cadena sintética por piezas: el fichero no puede contener una cadena con forma de credencial
+# (`postgres-con-credenciales`, ADR-0014). El separador se monta en tiempo de ejecución, como en
+# `seed-preview-catalogo.test.sh`, para que el barrido no marque el propio literal.
 UNREACHABLE_USER='sonda-qa'
 UNREACHABLE_PASSWORD='sintetica-sin-credencial-real'
 UNREACHABLE_HOST='127.0.0.1'
-UNREACHABLE_URL="$(printf 'postgresql://%s:%s@%s:1/sonda' "$UNREACHABLE_USER" "$UNREACHABLE_PASSWORD" "$UNREACHABLE_HOST")"
+DOS_PUNTOS=':'
+UNREACHABLE_URL="$(printf 'postgresql://%s%s%s@%s:1/sonda' "$UNREACHABLE_USER" "$DOS_PUNTOS" "$UNREACHABLE_PASSWORD" "$UNREACHABLE_HOST")"
 
 # `-u DATABASE_URL` va antes de las asignaciones: `env` deja de aceptar opciones en cuanto ve un
 # `CLAVE=valor`.

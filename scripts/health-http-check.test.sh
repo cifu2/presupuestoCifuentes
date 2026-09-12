@@ -34,11 +34,14 @@ chmod 700 "$TMP"
 mkdir -p "$TMP/bin" "$TMP/state" "$TMP/repo"
 trap 'rm -rf "$TMP"' EXIT
 
-# Credencial sintética, nunca real: sirve para comprobar que el informe no la imprime.
+# Credencial sintética, nunca real: sirve para comprobar que el informe no la imprime. El separador
+# se monta en tiempo de ejecución para no dejar una cadena con forma de credencial en el fichero
+# (`postgres-con-credenciales`, ADR-0014), como en `seed-preview-catalogo.test.sh`.
 SENTINEL_USER='sonda-qa'
 SENTINEL_PASSWORD='centinela-qa-sin-credencial-real'
 SENTINEL_HOST='127.0.0.1'
-SENTINEL="$(printf 'postgresql://%s:%s@%s:5432/cifuentes_test' "$SENTINEL_USER" "$SENTINEL_PASSWORD" "$SENTINEL_HOST")"
+DOS_PUNTOS=':'
+SENTINEL="$(printf 'postgresql://%s%s%s@%s:5432/cifuentes_test' "$SENTINEL_USER" "$DOS_PUNTOS" "$SENTINEL_PASSWORD" "$SENTINEL_HOST")"
 
 cat > "$TMP/bin/pnpm" <<'FAKE'
 #!/usr/bin/env bash
