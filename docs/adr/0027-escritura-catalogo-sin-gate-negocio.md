@@ -18,7 +18,7 @@
    `error`).
 2. ADR-0023 §8 ya fijó el principio para la lectura: **leer no necesita ninguna decisión de negocio**.
    Por eso CIF-242 (lectura real) se construyó con CIF-114 parada. El **modelo** de escritura —puertos,
-   casos de uso y adaptadores— es la misma clase de trabajo: no depende de *quién* aporta el catálogo ni
+   casos de uso y adaptadores— es la misma clase de trabajo: no depende de _quién_ aporta el catálogo ni
    en qué formato, sino de reglas de dominio que ya están decididas (ADR-0003, ADR-0008, ADR-0017 §8).
    Lo que sí depende de CIF-114 es la **carga inicial**: quién aporta el catálogo, en qué formato y con
    qué fecha (items 1, 3, 4, 6 y 7 de CIF-126).
@@ -37,7 +37,7 @@
 1. **Split de CIF-126 en dos tareas**, con CIF-126 como paraguas cancelada por quedar cubierta:
 
    - **CIF-126a — modelo de escritura compartido** (item 2 de CIF-126; tarea CIF-483): puertos de
-     escritura en `src/application/ports`, casos de uso de *upsert* en `src/application/use-cases` y
+     escritura en `src/application/ports`, casos de uso de _upsert_ en `src/application/use-cases` y
      adaptadores Prisma y en memoria, idempotentes por `code` (series, acabados, complementos) y
      `(finishId, code)` (colores), incluidos los textos multi-idioma de `catalog_text`. Tests con
      catálogo sintético. **No depende de CIF-114.**
@@ -88,11 +88,11 @@
   el orden correcto y el que ADR-0023 §7 no garantizaba.
 - CIF-126b conserva el gate de CIF-114 sin relajarlo: ni el CLI, ni el ADR-0017, ni el procedimiento de
   carga se escriben antes de que exista la decisión de negocio.
-- Coste asumido: el modelo de escritura se diseña sin el catálogo real delante. Se mitiga con *upsert*
+- Coste asumido: el modelo de escritura se diseña sin el catálogo real delante. Se mitiga con _upsert_
   idempotente por `code`, tests sintéticos y `--dry-run` por defecto en el CLI de CIF-126b.
 - Coste de secuencia: CIF-243 espera al merge de CIF-126a (no a CIF-114). Es un retraso acotado y
   preferible a editar `container.ts` y el caso de uso de publicación en paralelo.
-- Riesgo asumido: si la decisión de CIF-114 cambia el formato del catálogo, el modelo de *upsert* puede
+- Riesgo asumido: si la decisión de CIF-114 cambia el formato del catálogo, el modelo de _upsert_ puede
   necesitar ajustes; al ser idempotente por `code` y aditivo, el ajuste es local.
 
 ## Alternativas consideradas
