@@ -1,5 +1,5 @@
 import { createContainer } from '@/composition/container'
-import { requireAdminToken } from '@/app/api/_lib/admin-auth'
+import { requireAdminAuth } from '@/app/api/_lib/admin-auth'
 import { errorResponse, jsonResponse } from '@/app/api/_lib/http'
 import { uuidSchema } from '@/app/api/_lib/schemas'
 import { publishTariffVersion } from '@/application/use-cases/publish-tariff-version'
@@ -20,7 +20,7 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const auth = requireAdminToken(request)
+  const auth = requireAdminAuth(request)
 
   if (!auth.ok) {
     return auth.response
