@@ -31,6 +31,7 @@ que supersede al anterior y se marca el antiguo como `Superseded por ADR-XXXX`.
 | [0022](0022-minimo-de-serie-error-de-validacion.md)       | El mínimo de serie es error de validación, no presupuesto manual                 | Aceptado |
 | [0023](0023-arranque-panel-shell-presentacion.md)         | Arranque del panel: shell de presentación en paralelo, lectura y escritura gated | Aceptado |
 | [0024](0024-autenticacion-panel-sesion-firmada.md)        | Autenticación del panel: sesión firmada con credencial de entorno                | Aceptado |
+| [0025](0025-validacion-via-envio-por-entorno.md)          | Validación de la entrega del presupuesto por entorno (preview sin credenciales)  | Aceptado |
 
 ## Cuándo hace falta un ADR
 

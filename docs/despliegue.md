@@ -111,7 +111,9 @@ servidores propios en ningún entorno ([ADR-0007](adr/0007-despliegue-vercel-git
 3. Vercel publica el **preview** del PR y comenta la URL; el CI arranca `calidad` (formato, sintaxis
    y `shellcheck` de `scripts/`, guardia de contenido de ramas `docs/**`, lint, tipos y unitarios) y
    `e2e`.
-4. Revisión de otro agente distinto del autor. QA valida el flujo en la URL de preview.
+4. Revisión de otro agente distinto del autor. QA valida en la URL de preview el **camino público**
+   del flujo; los flujos detrás de una credencial de administración se validan en CI, porque esa
+   credencial no se despliega en preview ([ADR-0025](adr/0025-validacion-via-envio-por-entorno.md)).
 5. Con CI en verde y aprobación, se fusiona a `main` por **squash** (apartado 2.1), con
    `Head revisado: <sha40>` en el mensaje del commit.
 6. Vercel despliega **producción** desde `main` automáticamente.
