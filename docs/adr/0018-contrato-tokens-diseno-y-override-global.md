@@ -116,9 +116,9 @@ radio de las tarjetas de la home.
   explicación del porqué ante una regresión percibida.
 - **Cambio visible en la home:** `rounded-lg` 8px → 16px (M10 aceptado). No es un bug ni una regresión;
   no debe revertirse sin un ADR que supersede a este.
-- **Trabajo generado:** CIF-6, CIF-7 y CIF-9 adoptan los tokens en componentes; el PR #33 (CIF-117) queda
-  **desbloqueado** por este ADR (no se condiciona su merge a que este ADR exista, pero sí queda
-  documentado por él).
+- **Trabajo generado:** CIF-6, CIF-7 y CIF-9 adoptan los tokens en componentes. El PR #33 (CIF-117) se
+  fusionó en `main` (`b98be32`, 2026-09-12) antes de existir este ADR: este documento lo registra **a
+  posteriori** y su merge no se condicionó a él.
 - El ADR se registra después de la implementación, porque la decisión se tomó fuera del repositorio; a
   partir de aquí rige el orden "ADR en el mismo PR que el cambio".
 
