@@ -100,6 +100,18 @@ export const priceResultSchema = z.discriminatedUnion('status', [
   }),
 ])
 
+/**
+ * `POST /api/manual-quote-requests` responde así cuando la configuración enviada sí tenía precio
+ * (docs/api.md): el servidor recalculó y el cliente debe volver al precio en vivo, no mostrar un
+ * error de contrato.
+ */
+export const priceAvailableSchema = z.object({
+  status: z.literal('price_available'),
+  seriesId: z.string(),
+  seriesCode: z.string(),
+  breakdown: breakdownSchema,
+})
+
 export const quoteIssuedSchema = z.object({
   status: z.literal('issued'),
   quote: z.object({
@@ -142,6 +154,7 @@ export type PriceBreakdownDto = z.infer<typeof breakdownSchema>
 export type MoneyDto = z.infer<typeof moneySchema>
 export type QuoteIssuedDto = z.infer<typeof quoteIssuedSchema>
 export type ManualQuoteCreatedDto = z.infer<typeof manualQuoteCreatedSchema>
+export type PriceAvailableDto = z.infer<typeof priceAvailableSchema>
 
 /** Código de error estable de la API, o `INTERNAL_ERROR` si la respuesta no trae el contrato. */
 export function readApiErrorCode(payload: unknown): string {

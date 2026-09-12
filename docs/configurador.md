@@ -38,6 +38,17 @@ El catálogo y los precios son **datos**, no código ([ADR-0020](adr/0020-config
    `PC-AAAA-NNNNNN` vigente hasta la fecha de validez); sin precio automático, deja sus datos y se
    registra la solicitud de presupuesto manual.
 
+## Recuperación ante fallos
+
+- Un fallo del precio muestra el error traducido con un botón **Reintentar** que relanza la petición
+  con la misma configuración (no basta con limpiar el error: volvería a quedar vacío).
+- Si la ficha de una serie no carga (red o `INVALID_RESPONSE`), la serie no se marca como pedida: al
+  volver a seleccionarla se reintenta y el aviso desaparece.
+- `POST /api/manual-quote-requests` puede responder `200 { status: "price_available" }` si la
+  configuración sí tenía precio cuando el servidor la recalculó (carrera con la publicación de una
+  tarifa). No es un error de contrato: la vista refresca el precio en vivo con esa misma
+  configuración en vez de mostrar un fallo genérico.
+
 ## Borradores recuperables
 
 - La configuración se guarda en `localStorage` con la clave `cifuentes:configurador:<locale>:v1`, en

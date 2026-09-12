@@ -14,11 +14,13 @@ import {
   manualQuoteCreatedSchema,
   parseResponse,
   parseWrappedData,
+  priceAvailableSchema,
   priceResultSchema,
   quoteIssuedSchema,
   readApiErrorCode,
   seriesDetailSchema,
   type ManualQuoteCreatedDto,
+  type PriceAvailableDto,
   type PriceBreakdownDto,
   type PriceResultDto,
   type QuoteIssuedDto,
@@ -176,6 +178,8 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
   const [contactErrors, setContactErrors] = useState<ReturnType<typeof validateContact>>({})
   const [contactKey, setContactKey] = useState<string | null>(null)
   const [storedPrice, setPrice] = useState<PriceState>({ status: 'idle' })
+  /** Sube al pulsar «Reintentar»: fuerza una nueva petición de precio con la misma configuración. */
+  const [priceAttempt, setPriceAttempt] = useState(0)
   const [quoteEntry, setQuoteEntry] = useState<{ key: string; state: QuoteState }>({
     key: '',
     state: { status: 'idle' },
@@ -206,13 +210,15 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
   // Ficha de la serie desde la API pública: acabados, colores y accesorios publicados.
   useEffect(() => {
     const slug = activeSeries.slug
+    const requested = requestedSlugs.current
 
-    if (requestedSlugs.current.has(slug)) {
+    if (requested.has(slug)) {
       return
     }
 
-    requestedSlugs.current.add(slug)
+    requested.add(slug)
     const controller = new AbortController()
+    let loaded = false
 
     void requestJson(
       `/api/catalog/series/${encodeURIComponent(slug)}?locale=${locale}`,
@@ -224,15 +230,25 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
       }
 
       if (!result.ok) {
+        // La ficha fallida no se cachea como pedida: al volver a la serie se reintenta sola.
+        requested.delete(slug)
         setDetailFailed(true)
         return
       }
 
+      loaded = true
       setDetails((previous) => ({ ...previous, [slug]: result.data }))
       setDetailFailed(false)
     })
 
-    return () => controller.abort()
+    return () => {
+      // Petición cancelada sin ficha: se permite reintentar al volver a la serie.
+      if (!loaded) {
+        requested.delete(slug)
+      }
+
+      controller.abort()
+    }
   }, [activeSeries.slug, locale])
 
   // Borrador recuperable: se lee al montar (nunca en el servidor) y se guarda en cada cambio.
@@ -336,7 +352,8 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [measurementsValid, priceKey])
+    // `priceAttempt` no interviene en la petición: solo fuerza repetirla al pulsar «Reintentar».
+  }, [measurementsValid, priceAttempt, priceKey])
 
   const update = useCallback((patch: Partial<ConfiguratorSelection>) => {
     setRawSelection((previous) => ({ ...previous, ...patch }))
@@ -404,7 +421,7 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
 
     if (target === 'manual') {
       const result = await requestJson<
-        ManualQuoteCreatedDto | Extract<PriceResultDto, { status: 'priced' }>
+        ManualQuoteCreatedDto | PriceAvailableDto | Extract<PriceResultDto, { status: 'priced' }>
       >(
         '/api/manual-quote-requests',
         {
@@ -419,6 +436,12 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
             return created
           }
 
+          const available = parseResponse(priceAvailableSchema, payload)
+
+          if (available !== null) {
+            return available
+          }
+
           const priced = parseResponse(priceResultSchema, payload)
 
           return priced !== null && priced.status === 'priced' ? priced : null
@@ -430,7 +453,15 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
         return
       }
 
-      if ('status' in result.data && result.data.status === 'priced') {
+      if (result.data.status === 'price_available') {
+        // El servidor recalculó y la configuración sí tiene precio: se refresca el precio en vivo
+        // (con su CTA de presupuesto) en vez de fallar el contrato contra un estado documentado.
+        setQuote({ status: 'idle' })
+        setPriceAttempt((attempt) => attempt + 1)
+        return
+      }
+
+      if (result.data.status === 'priced') {
         setPrice({ status: 'priced', result: result.data })
         setQuote({ status: 'idle' })
         return
@@ -896,7 +927,7 @@ function ConfiguratorPanel({ locale, firstSeries, series, initialDetail }: Confi
             locale={locale}
             price={price}
             errorKey={priceErrorKey}
-            onRetry={() => setPrice({ status: 'idle' })}
+            onRetry={() => setPriceAttempt((attempt) => attempt + 1)}
           />
 
           <section aria-labelledby="presupuesto" className="flex flex-col gap-3">

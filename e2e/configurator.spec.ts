@@ -225,3 +225,121 @@ test('el configurador está traducido en los dos idiomas y declara su canónica'
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\/es\/configurador$/)
   await expect(page.getByTestId('request-quote')).toHaveText('Solicitar presupuesto')
 })
+
+test('el botón de reintentar vuelve a pedir el precio tras un fallo', async ({ page }) => {
+  let calls = 0
+
+  await page.route('**/api/quotes/price', async (route) => {
+    calls += 1
+
+    if (calls === 1) {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 'INTERNAL_ERROR', message: 'Fallo simulado' } }),
+      })
+      return
+    }
+
+    await route.continue()
+  })
+
+  await page.goto(CONFIGURATOR_PATH)
+
+  await expect(page.getByTestId('price-error')).toBeVisible()
+  await page.getByTestId('price-retry').click()
+
+  // Reintentar relanza la petición: el panel no puede quedarse en el estado vacío.
+  await expect(page.getByTestId('price-total')).toBeVisible()
+  expect(calls).toBeGreaterThan(1)
+})
+
+test('una ficha de serie que falla se reintenta al volver a la serie', async ({ page }) => {
+  let calls = 0
+
+  await page.route('**/api/catalog/series/ci-400*', async (route) => {
+    calls += 1
+
+    if (calls === 1) {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 'INTERNAL_ERROR', message: 'Fallo simulado' } }),
+      })
+      return
+    }
+
+    await route.continue()
+  })
+
+  await page.goto(CONFIGURATOR_PATH)
+  await expect(page.getByTestId('price-total')).toBeVisible()
+
+  await page.getByTestId('configurator-series').selectOption('ci-400')
+  await expect(page.getByTestId('catalog-error')).toBeVisible()
+
+  await page.getByTestId('configurator-series').selectOption('ci-100')
+  await page.getByTestId('configurator-series').selectOption('ci-400')
+
+  await expect(page.getByTestId('catalog-error')).toHaveCount(0)
+  await expect(page.getByTestId('accessories-empty')).toBeVisible()
+  expect(calls).toBeGreaterThan(1)
+})
+
+test('si el servidor responde que la configuración sí tiene precio, se refresca el precio en vivo', async ({
+  page,
+}) => {
+  let priceCalls = 0
+
+  await page.route('**/api/quotes/price', async (route) => {
+    priceCalls += 1
+
+    if (priceCalls === 1) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          status: 'manual_quote_required',
+          seriesId: 'series-ci-100',
+          seriesCode: 'CI-100',
+          reason: 'no_tariff_in_force',
+          detail: 'La serie no tiene tarifa vigente',
+        }),
+      })
+      return
+    }
+
+    await route.continue()
+  })
+
+  await page.route('**/api/manual-quote-requests', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        status: 'price_available',
+        seriesId: 'series-ci-100',
+        seriesCode: 'CI-100',
+        breakdown: {
+          currency: 'EUR',
+          lines: [],
+          basePrice: { amount: '1.00', currency: 'EUR' },
+          subtotal: { amount: '1.00', currency: 'EUR' },
+          taxRatePercent: '21.00',
+          taxAmount: { amount: '0.21', currency: 'EUR' },
+          total: { amount: '1.21', currency: 'EUR' },
+        },
+      }),
+    }),
+  )
+
+  await page.goto(CONFIGURATOR_PATH)
+  await expect(page.getByTestId('manual-quote-reason')).toBeVisible()
+
+  await fillContact(page)
+  await page.getByTestId('contact-submit').click()
+
+  // `price_available` es un estado documentado, no un error de contrato: la vista vuelve al precio.
+  await expect(page.getByTestId('quote-error')).toHaveCount(0)
+  await expect(page.getByTestId('price-total')).toBeVisible()
+})
