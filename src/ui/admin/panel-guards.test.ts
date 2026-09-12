@@ -79,18 +79,96 @@ function panelKeySet(locale: (typeof SUPPORTED_LOCALES)[number]): Set<string> {
   )
 }
 
-/** Fuera de los comentarios no hay razón para un color ni un texto literal. */
-export function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+/**
+ * Quita los comentarios de bloque y de línea. El escáner distingue strings y plantillas, así que un
+ * `//` dentro de un literal (`href="https://…"`) no borra media línea de código (H3 de CIF-302).
+ */
+export function stripComments(source: string, syntax: 'js' | 'css' = 'js'): string {
+  let result = ''
+  let index = 0
+
+  while (index < source.length) {
+    const char = source[index]
+
+    if (char === '"' || char === "'" || char === '`') {
+      const end = endOfString(source, index)
+
+      result += source.slice(index, end)
+      index = end
+      continue
+    }
+
+    if (char === '/' && source[index + 1] === '*') {
+      const end = source.indexOf('*/', index + 2)
+
+      result += ' '
+      index = end === -1 ? source.length : end + 2
+      continue
+    }
+
+    if (syntax === 'js' && char === '/' && source[index + 1] === '/') {
+      const end = source.indexOf('\n', index)
+
+      index = end === -1 ? source.length : end
+      continue
+    }
+
+    result += char
+    index += 1
+  }
+
+  return result
 }
 
-function matchingBrace(source: string, open: number): number {
+/** Comentarios de CSS: solo los de bloque; en una hoja de estilos `//` no comenta nada. */
+export function stripCssComments(css: string): string {
+  return stripComments(css, 'css')
+}
+
+/** Índice del primer carácter tras el literal (comillas o plantilla) que abre en `start`. */
+function endOfString(source: string, start: number): number {
+  const quote = source[start]
+  let index = start + 1
+
+  while (index < source.length) {
+    const char = source[index]
+
+    if (char === '\\') {
+      index += 2
+      continue
+    }
+
+    if (quote === '`' && char === '$' && source[index + 1] === '{') {
+      const close = matchingClose(source, index + 1, '}')
+
+      index = close === -1 ? source.length : close + 1
+      continue
+    }
+
+    if (char === quote) return index + 1
+
+    index += 1
+  }
+
+  return source.length
+}
+
+/** Índice del cierre que equilibra el delimitador abierto en `open`, ignorando strings. */
+function matchingClose(source: string, open: number, close: string): number {
+  const opening = source[open]
   let depth = 0
 
   for (let index = open; index < source.length; index += 1) {
-    if (source[index] === '{') {
+    const char = source[index]
+
+    if (char === '"' || char === "'" || char === '`') {
+      index = endOfString(source, index) - 1
+      continue
+    }
+
+    if (char === opening) {
       depth += 1
-    } else if (source[index] === '}') {
+    } else if (char === close) {
       depth -= 1
 
       if (depth === 0) return index
@@ -113,7 +191,7 @@ export function withoutThemeBlocks(css: string): string {
     result += remaining.slice(0, start)
 
     const open = remaining.indexOf('{', start)
-    const close = open === -1 ? -1 : matchingBrace(remaining, open)
+    const close = open === -1 ? -1 : matchingClose(remaining, open, '}')
 
     if (close === -1) return result
 
@@ -121,22 +199,213 @@ export function withoutThemeBlocks(css: string): string {
   }
 }
 
-const COLOR_LITERALS = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\([^)]*\)/g
+/**
+ * Colores con nombre de CSS (`white`, `transparent`…). El lookaround descarta el nombre cuando forma
+ * parte de otra palabra o de una clase de Tailwind (`white-space`, `bg-transparent`, `text-white`):
+ * ahí el nombre no es un valor de color y no debe contar como literal (H1 de CIF-302).
+ */
+const NAMED_COLORS = [
+  'aliceblue',
+  'antiquewhite',
+  'aqua',
+  'aquamarine',
+  'azure',
+  'beige',
+  'bisque',
+  'black',
+  'blanchedalmond',
+  'blue',
+  'blueviolet',
+  'brown',
+  'burlywood',
+  'cadetblue',
+  'chartreuse',
+  'chocolate',
+  'coral',
+  'cornflowerblue',
+  'cornsilk',
+  'crimson',
+  'cyan',
+  'darkblue',
+  'darkcyan',
+  'darkgoldenrod',
+  'darkgray',
+  'darkgreen',
+  'darkgrey',
+  'darkkhaki',
+  'darkmagenta',
+  'darkolivegreen',
+  'darkorange',
+  'darkorchid',
+  'darkred',
+  'darksalmon',
+  'darkseagreen',
+  'darkslateblue',
+  'darkslategray',
+  'darkslategrey',
+  'darkturquoise',
+  'darkviolet',
+  'deeppink',
+  'deepskyblue',
+  'dimgray',
+  'dimgrey',
+  'dodgerblue',
+  'firebrick',
+  'floralwhite',
+  'forestgreen',
+  'fuchsia',
+  'gainsboro',
+  'ghostwhite',
+  'gold',
+  'goldenrod',
+  'gray',
+  'green',
+  'greenyellow',
+  'grey',
+  'honeydew',
+  'hotpink',
+  'indianred',
+  'indigo',
+  'ivory',
+  'khaki',
+  'lavender',
+  'lavenderblush',
+  'lawngreen',
+  'lemonchiffon',
+  'lightblue',
+  'lightcoral',
+  'lightcyan',
+  'lightgoldenrodyellow',
+  'lightgray',
+  'lightgreen',
+  'lightgrey',
+  'lightpink',
+  'lightsalmon',
+  'lightseagreen',
+  'lightskyblue',
+  'lightslategray',
+  'lightslategrey',
+  'lightsteelblue',
+  'lightyellow',
+  'lime',
+  'limegreen',
+  'linen',
+  'magenta',
+  'maroon',
+  'mediumaquamarine',
+  'mediumblue',
+  'mediumorchid',
+  'mediumpurple',
+  'mediumseagreen',
+  'mediumslateblue',
+  'mediumspringgreen',
+  'mediumturquoise',
+  'mediumvioletred',
+  'midnightblue',
+  'mintcream',
+  'mistyrose',
+  'moccasin',
+  'navajowhite',
+  'navy',
+  'oldlace',
+  'olive',
+  'olivedrab',
+  'orange',
+  'orangered',
+  'orchid',
+  'palegoldenrod',
+  'palegreen',
+  'paleturquoise',
+  'palevioletred',
+  'papayawhip',
+  'peachpuff',
+  'peru',
+  'pink',
+  'plum',
+  'powderblue',
+  'purple',
+  'rebeccapurple',
+  'red',
+  'rosybrown',
+  'royalblue',
+  'saddlebrown',
+  'salmon',
+  'sandybrown',
+  'seagreen',
+  'seashell',
+  'sienna',
+  'silver',
+  'skyblue',
+  'slateblue',
+  'slategray',
+  'slategrey',
+  'snow',
+  'springgreen',
+  'steelblue',
+  'tan',
+  'teal',
+  'thistle',
+  'tomato',
+  'transparent',
+  'turquoise',
+  'violet',
+  'wheat',
+  'white',
+  'whitesmoke',
+  'yellow',
+  'yellowgreen',
+] as const
 
-/** Literales de color de un fragmento: `#fff`, `rgb(…)`, `hsl(…)` y sus equivalentes modernos. */
+const COLOR_LITERALS = new RegExp(
+  [
+    '#[0-9a-fA-F]{3,8}\\b',
+    '\\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\\([^)]*\\)',
+    `(?<![\\w-])(?:${NAMED_COLORS.join('|')})(?![\\w-])`,
+  ].join('|'),
+  'g',
+)
+
+/**
+ * Literales de color de un fragmento: `#fff`, `rgb(…)`, `hsl(…)`, sus equivalentes modernos y los
+ * colores con nombre (`white`, `transparent`).
+ */
 export function findColorLiterals(source: string): string[] {
   return [...source.matchAll(COLOR_LITERALS)].map((match) => match[0])
 }
 
 /** Igual que `findColorLiterals`, pero el bloque `@theme` queda exento. */
 export function findColorLiteralsOutsideTheme(css: string): string[] {
-  return findColorLiterals(stripComments(withoutThemeBlocks(css)))
+  return findColorLiterals(withoutThemeBlocks(stripCssComments(css)))
 }
 
-/** `background` del `::backdrop` de un `dialog`, o `null` si la regla no existe. */
+/**
+ * Cuerpos de las reglas `dialog::backdrop`, en orden de aparición. La cascada la gana la última, así
+ * que una segunda regla al final del fichero no puede esconder el color de la primera (H1 de CIF-302).
+ */
+export function backdropRules(css: string): string[] {
+  const scanned = stripCssComments(css)
+  const pattern = /dialog::backdrop[^{}]*\{/g
+  const rules: string[] = []
+  let match: RegExpExecArray | null
+
+  while ((match = pattern.exec(scanned)) !== null) {
+    const open = match.index + match[0].length - 1
+    const close = matchingClose(scanned, open, '}')
+
+    if (close === -1) break
+
+    rules.push(scanned.slice(open + 1, close))
+    pattern.lastIndex = close + 1
+  }
+
+  return rules
+}
+
+/** `background` del `::backdrop` que gana la cascada, o `null` si la regla no existe. */
 export function backdropBackground(css: string): string | null {
-  const rule = /dialog::backdrop\s*\{([^}]*)\}/.exec(stripComments(css))
-  const background = rule?.[1]?.match(/background\s*:\s*([^;]+);/)
+  const background = backdropRules(css)
+    .at(-1)
+    ?.match(/background\s*:\s*([^;]+);/)
 
   return background?.[1]?.trim() ?? null
 }
@@ -147,23 +416,179 @@ const TEXT_ATTRIBUTES = ['aria-label', 'title', 'alt'] as const
 /** La marca no se traduce y `alt=""` (imagen decorativa) es legítimo; el resto, no. */
 const TEXT_ATTRIBUTE_ALLOWLIST = new Set(['Cifuentes'])
 
-/** Valores literales de `aria-label`/`title`/`alt`, incluidos los escritos como expresión. */
+type AttributeValue = { kind: 'quoted' | 'expression'; text: string }
+
+/** Valor del atributo que empieza en `start`: el texto entrecomillado o el interior de `{…}`. */
+function readAttributeValue(source: string, start: number): AttributeValue | null {
+  const char = source[start]
+
+  if (char === '"' || char === "'") {
+    return { kind: 'quoted', text: source.slice(start + 1, endOfString(source, start) - 1) }
+  }
+
+  if (char === '{') {
+    const close = matchingClose(source, start, '}')
+
+    return close === -1 ? null : { kind: 'expression', text: source.slice(start + 1, close) }
+  }
+
+  return null
+}
+
+/** `true` si la posición cae dentro de una etiqueta JSX (`<a …>`), no en una expresión suelta. */
+function isInsideJsxTag(source: string, index: number): boolean {
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    const char = source[cursor]
+
+    if (char === '<') return true
+
+    // El `=>` de una prop anterior no cierra la etiqueta; el `>` de cierre, sí.
+    if (char === '>' && source[cursor - 1] !== '=') return false
+  }
+
+  return false
+}
+
+/**
+ * Quita las llamadas `t(…)`: su string es una clave de traducción, no texto de interfaz. Respeta los
+ * paréntesis anidados (`t('a11y.sortBy', { column: t(labelKey) })`).
+ */
+function withoutTranslationCalls(expression: string): string {
+  let result = ''
+  let index = 0
+
+  while (index < expression.length) {
+    const char = expression[index]
+
+    if (
+      char === 't' &&
+      !/[\w$.]/.test(expression[index - 1] ?? '') &&
+      /^\s*\(/.test(expression.slice(index + 1))
+    ) {
+      const close = matchingClose(expression, expression.indexOf('(', index), ')')
+
+      if (close === -1) return result + expression.slice(index)
+
+      result += 't()'
+      index = close + 1
+      continue
+    }
+
+    result += char
+    index += 1
+  }
+
+  return result
+}
+
+/** Trozos literales de una plantilla y su forma normalizada (`tab-${x}` → `tab-*`). */
+function templateParts(body: string): { texts: string[]; pattern: string } {
+  const texts: string[] = []
+  let pattern = ''
+  let chunk = ''
+  let index = 0
+
+  while (index < body.length) {
+    const char = body[index]
+
+    if (char === '\\') {
+      chunk += body[index + 1] ?? ''
+      index += 2
+      continue
+    }
+
+    if (char === '$' && body[index + 1] === '{') {
+      const close = matchingClose(body, index + 1, '}')
+
+      texts.push(chunk)
+      pattern += chunk
+      chunk = ''
+      pattern += '*'
+      index = close === -1 ? body.length : close + 1
+      continue
+    }
+
+    chunk += char
+    index += 1
+  }
+
+  texts.push(chunk)
+  pattern += chunk
+
+  return { texts, pattern }
+}
+
+type StringLiteral = { text: string; templatePattern: string | null }
+
+/** Strings y plantillas de una expresión, con la plantilla normalizada para comparar ids. */
+function collectLiterals(expression: string): StringLiteral[] {
+  const literals: StringLiteral[] = []
+  let index = 0
+
+  while (index < expression.length) {
+    const char = expression[index]
+
+    if (char === '"' || char === "'") {
+      const end = endOfString(expression, index)
+
+      literals.push({ text: expression.slice(index + 1, end - 1), templatePattern: null })
+      index = end
+      continue
+    }
+
+    if (char === '`') {
+      const end = endOfString(expression, index)
+      const { texts, pattern } = templateParts(expression.slice(index + 1, end - 1))
+      const chunks = texts.filter((text) => text.trim() !== '')
+
+      for (const text of chunks) {
+        literals.push({ text, templatePattern: pattern })
+      }
+
+      if (chunks.length === 0) {
+        literals.push({ text: '', templatePattern: pattern })
+      }
+
+      index = end
+      continue
+    }
+
+    index += 1
+  }
+
+  return literals
+}
+
+/**
+ * Literales de `aria-label`/`title`/`alt`, incluidos los escritos como plantilla o ternario. Quedan
+ * fuera los valores dinámicos, las claves de `t(…)` y lo que no es una etiqueta JSX (M2 de CIF-101,
+ * H2/H3 de CIF-302).
+ */
 export function findLiteralTextAttributes(source: string): string[] {
   const scanned = stripComments(source)
+  const pattern = new RegExp(`(?<![\\w.$-])(${TEXT_ATTRIBUTES.join('|')})\\s*=\\s*`, 'g')
   const offenders: string[] = []
+  let match: RegExpExecArray | null
 
-  for (const attribute of TEXT_ATTRIBUTES) {
-    const pattern = new RegExp(
-      `\\b${attribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|\\{\\s*["']([^"']*)["']\\s*\\})`,
-      'g',
-    )
+  while ((match = pattern.exec(scanned)) !== null) {
+    if (!isInsideJsxTag(scanned, match.index)) continue
 
-    for (const match of scanned.matchAll(pattern)) {
-      const value = (match[1] ?? match[2] ?? match[3] ?? '').trim()
+    const attribute = match[1] ?? ''
+    const value = readAttributeValue(scanned, match.index + match[0].length)
 
-      if (/[A-Za-zÀ-ÿ]{2,}/.test(value) && !TEXT_ATTRIBUTE_ALLOWLIST.has(value)) {
-        offenders.push(`${attribute}="${value}"`)
-      }
+    if (value === null) continue
+
+    const literals: StringLiteral[] =
+      value.kind === 'quoted'
+        ? [{ text: value.text, templatePattern: null }]
+        : collectLiterals(withoutTranslationCalls(value.text))
+
+    for (const literal of literals) {
+      const text = literal.text.trim()
+
+      if (!/[A-Za-zÀ-ÿ]{2,}/.test(text) || TEXT_ATTRIBUTE_ALLOWLIST.has(text)) continue
+
+      offenders.push(`${attribute}="${text}"`)
     }
   }
 
@@ -178,6 +603,100 @@ export function findForeignLabelReferences(source: string): string[] {
       (value) =>
         value !== '' && !value.split(/\s+/).every((token) => /^[a-z][a-z0-9-]*$/.test(token)),
     )
+}
+
+/** Referencias de `aria-labelledby`: tokens estáticos y formas de plantilla (`tab-${x}` → `tab-*`). */
+function labelReferences(source: string): string[] {
+  const scanned = stripComments(source)
+  const pattern = /(?<![\w.$-])aria-labelledby\s*=\s*/g
+  const references: string[] = []
+  let match: RegExpExecArray | null
+
+  while ((match = pattern.exec(scanned)) !== null) {
+    if (!isInsideJsxTag(scanned, match.index)) continue
+
+    const value = readAttributeValue(scanned, match.index + match[0].length)
+
+    if (value === null) continue
+
+    if (value.kind === 'quoted') {
+      references.push(...tokens(value.text))
+      continue
+    }
+
+    for (const literal of collectLiterals(withoutTranslationCalls(value.text))) {
+      references.push(
+        ...(literal.templatePattern === null ? tokens(literal.text) : [literal.templatePattern]),
+      )
+    }
+  }
+
+  return references
+}
+
+function tokens(value: string): string[] {
+  return value
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token !== '')
+}
+
+/** ids declarados en el documento: literales y plantillas (`id={`tab-${x}`}` → `tab-*`). */
+export function declaredIdPatterns(source: string): string[] {
+  const scanned = stripComments(source)
+  const pattern = /(?<![\w.$-])id\s*=\s*/g
+  const ids: string[] = []
+  let match: RegExpExecArray | null
+
+  while ((match = pattern.exec(scanned)) !== null) {
+    if (!isInsideJsxTag(scanned, match.index)) continue
+
+    const value = readAttributeValue(scanned, match.index + match[0].length)
+
+    if (value === null) continue
+
+    if (value.kind === 'quoted') {
+      ids.push(value.text.trim())
+      continue
+    }
+
+    for (const literal of collectLiterals(withoutTranslationCalls(value.text))) {
+      ids.push(literal.templatePattern ?? literal.text.trim())
+    }
+  }
+
+  return ids
+}
+
+/** Cada trozo literal de la referencia tiene que aparecer, en orden, en el id declarado. */
+function referencesMatch(reference: string, declared: string): boolean {
+  const segments = reference.split('*').filter((segment) => segment !== '')
+
+  if (segments.length === 0) return true
+
+  let cursor = 0
+
+  for (const segment of segments) {
+    const found = declared.indexOf(segment, cursor)
+
+    if (found === -1) return false
+
+    cursor = found + segment.length
+  }
+
+  return true
+}
+
+/**
+ * Referencias `aria-labelledby` que no casan con ningún `id` declarado. `declaredIds` permite pasar
+ * el corpus completo del panel: la etiqueta y el id pueden vivir en ficheros distintos (H2 de CIF-302).
+ */
+export function findDanglingLabelReferences(source: string, declaredIds?: string[]): string[] {
+  const declared = declaredIds ?? declaredIdPatterns(source)
+
+  return labelReferences(source).filter(
+    (reference) => !declared.some((candidate) => referencesMatch(reference, candidate)),
+  )
 }
 
 describe('guardas estáticas del panel', () => {
@@ -205,10 +724,13 @@ describe('guardas estáticas del panel', () => {
     expect(offenders).toEqual([])
   })
 
-  it('el backdrop del diálogo usa el token de scrim (M1 de CIF-101)', () => {
+  it('el backdrop del diálogo se declara una sola vez y usa el token de scrim (M1 de CIF-101)', () => {
     const adminCss = styleFiles.find(({ path }) => path.endsWith('admin.css'))
+    const backdrop = backdropRules(adminCss?.content ?? '')
 
     expect(adminCss).toBeDefined()
+    // Una segunda regla `dialog::backdrop` gana la cascada y escondería el color real (H1 de CIF-302).
+    expect(backdrop).toHaveLength(1)
     expect(backdropBackground(adminCss?.content ?? '')).toBe('var(--color-scrim)')
   })
 
@@ -246,13 +768,18 @@ describe('guardas estáticas del panel', () => {
   })
 
   it('aria-labelledby referencia ids del documento, nunca texto traducido', () => {
-    const offenders = files
-      .filter(({ path }) => path.endsWith('.tsx'))
-      .flatMap(({ path, content }) =>
-        findForeignLabelReferences(content).map((value) => `${path}: ${value}`),
-      )
+    const panels = files.filter(({ path }) => path.endsWith('.tsx'))
+    const declaredIds = panels.flatMap(({ content }) => declaredIdPatterns(content))
+    const translated = panels.flatMap(({ path, content }) =>
+      findForeignLabelReferences(content).map((value) => `${path}: ${value}`),
+    )
+    const dangling = panels.flatMap(({ path, content }) =>
+      findDanglingLabelReferences(content, declaredIds).map((value) => `${path}: ${value}`),
+    )
 
-    expect(offenders).toEqual([])
+    expect(declaredIds.length).toBeGreaterThan(0)
+    expect(translated).toEqual([])
+    expect(dangling).toEqual([])
   })
 
   it('la guarda de atributos mira JSX real y no es vacua', () => {
@@ -340,6 +867,32 @@ describe('control de mutación de las guardas de CIF-101', () => {
     expect(findLiteralTextAttributes(panelShell)).toEqual([])
   })
 
+  it('H1: una segunda regla dialog::backdrop con color con nombre haría fallar la guarda', () => {
+    const mutated = `${adminCss}\ndialog::backdrop {\n  background: white;\n}\n`
+
+    expect(findColorLiteralsOutsideTheme(mutated)).toEqual(['white'])
+    expect(backdropRules(mutated)).toHaveLength(2)
+    expect(backdropBackground(mutated)).toBe('white')
+    expect(backdropBackground(adminCss)).toBe('var(--color-scrim)')
+  })
+
+  it('H2: un aria-label de plantilla literal en panel-shell.tsx haría fallar la guarda', () => {
+    const mutated = panelShell.replace("aria-label={t('a11y.locale')}", 'aria-label={`Idioma`}')
+
+    expect(mutated).not.toBe(panelShell)
+    expect(findLiteralTextAttributes(mutated)).toContain('aria-label="Idioma"')
+    expect(findLiteralTextAttributes(panelShell)).toEqual([])
+  })
+
+  it('H2: renombrar el id de la pestaña sin tocar la referencia haría fallar la guarda de ids', () => {
+    const seriesDetail = readFileSync(join(panelDirectory, 'series-detail.tsx'), 'utf8')
+    const mutated = seriesDetail.replace('id={`tab-${item.tab}`}', 'id={`pestana-${item.tab}`}')
+
+    expect(mutated).not.toBe(seriesDetail)
+    expect(declaredIdPatterns(seriesDetail)).toContain('tab-*')
+    expect(findDanglingLabelReferences(mutated, declaredIdPatterns(mutated))).toEqual(['tab-*'])
+  })
+
   it('respeta las excepciones: @theme para los colores, la marca y los ids para los textos', () => {
     expect(
       findColorLiteralsOutsideTheme('@theme { --color-scrim: rgb(23 32 42 / 0.45); }'),
@@ -347,10 +900,107 @@ describe('control de mutación de las guardas de CIF-101', () => {
     expect(findColorLiteralsOutsideTheme('dialog::backdrop { background: #ffffff; }')).toEqual([
       '#ffffff',
     ])
-    expect(findLiteralTextAttributes('aria-label="Cifuentes"')).toEqual([])
-    expect(findLiteralTextAttributes("title={t('a11y.locale')}")).toEqual([])
-    expect(findLiteralTextAttributes('alt=""')).toEqual([])
+    expect(findLiteralTextAttributes('<div aria-label="Cifuentes">Cifuentes</div>')).toEqual([])
+    expect(findLiteralTextAttributes("<div title={t('a11y.locale')} />")).toEqual([])
+    expect(findLiteralTextAttributes('<img alt="" />')).toEqual([])
     expect(findForeignLabelReferences('aria-labelledby="tariff-dialog-title"')).toEqual([])
     expect(findForeignLabelReferences('aria-labelledby="Idioma"')).toEqual(['Idioma'])
+  })
+})
+
+/**
+ * Cobertura de los huecos H1–H3 que dejó la revisión CIF-298: colores con nombre, reglas de backdrop
+ * duplicadas, atributos escritos como expresión y un `stripComments` que distinga strings de código.
+ */
+describe('endurecimiento de las guardas (H1–H3 de CIF-302)', () => {
+  it('H1: los colores con nombre de CSS cuentan como literales', () => {
+    expect(findColorLiterals('dialog::backdrop { background: white; }')).toEqual(['white'])
+    expect(findColorLiterals('a { color: transparent; }')).toEqual(['transparent'])
+    expect(findColorLiterals('a { opacity: 1; }')).toEqual([])
+  })
+
+  it('H1: no confunde nombres de color con clases de Tailwind ni con otras palabras', () => {
+    expect(findColorLiterals('className="bg-transparent text-white border-black/50"')).toEqual([])
+    expect(findColorLiterals('white-space: nowrap;')).toEqual([])
+    expect(findColorLiterals('const rendered = 1')).toEqual([])
+  })
+
+  it('H1: el backdrop exige una única regla y lee la que gana la cascada', () => {
+    const duplicated =
+      'dialog::backdrop { background: var(--color-scrim); }\ndialog::backdrop { background: white; }'
+
+    expect(backdropRules(duplicated)).toHaveLength(2)
+    expect(backdropBackground(duplicated)).toBe('white')
+    expect(findColorLiteralsOutsideTheme(duplicated)).toEqual(['white'])
+  })
+
+  it('H2: detecta literales en plantillas, ternarios y strings de expresión', () => {
+    expect(findLiteralTextAttributes('<span aria-label={`Idioma`}>x</span>')).toEqual([
+      'aria-label="Idioma"',
+    ])
+    expect(
+      findLiteralTextAttributes("<span aria-label={cond ? 'Idioma' : t('x')}>x</span>"),
+    ).toEqual(['aria-label="Idioma"'])
+    expect(findLiteralTextAttributes("<span aria-label={'Idioma'}>x</span>")).toEqual([
+      'aria-label="Idioma"',
+    ])
+    expect(findLiteralTextAttributes("<span title={t('a11y.locale')}>x</span>")).toEqual([])
+    expect(findLiteralTextAttributes('<span aria-label={label}>x</span>')).toEqual([])
+    expect(findLiteralTextAttributes('<span aria-label={`${label}`}>x</span>')).toEqual([])
+  })
+
+  it('H2: no marca prefijos data-* ni asignaciones fuera de una etiqueta JSX', () => {
+    expect(findLiteralTextAttributes('<span data-aria-label="Idioma">x</span>')).toEqual([])
+    expect(findLiteralTextAttributes("img.alt = 'Foto'")).toEqual([])
+    expect(findLiteralTextAttributes("const title = 'Foto'")).toEqual([])
+    expect(findLiteralTextAttributes('<img alt="Foto" />')).toEqual(['alt="Foto"'])
+    // Un `=>` en una prop anterior no puede cegar la guarda: la etiqueta sigue abierta.
+    expect(
+      findLiteralTextAttributes('<button onClick={() => go()} aria-label="Idioma" />'),
+    ).toEqual(['aria-label="Idioma"'])
+  })
+
+  it('H2: un aria-labelledby estático tiene que apuntar a un id declarado', () => {
+    expect(findDanglingLabelReferences('<div aria-labelledby="tab-nope" />')).toEqual(['tab-nope'])
+    expect(findDanglingLabelReferences('<div id="tab-real" aria-labelledby="tab-real" />')).toEqual(
+      [],
+    )
+    expect(
+      findDanglingLabelReferences('<div aria-labelledby="tab-1 tab-2" />', ['tab-1', 'tab-2']),
+    ).toEqual([])
+    expect(
+      findDanglingLabelReferences('<div aria-labelledby="tab-1 tab-nope" />', ['tab-1']),
+    ).toEqual(['tab-nope'])
+  })
+
+  it('H2: un aria-labelledby de plantilla casa con un id de plantilla compatible', () => {
+    expect(
+      findDanglingLabelReferences(
+        '<button aria-labelledby={`tab-${tab}`} /><div id={`tab-${item.tab}`} />',
+      ),
+    ).toEqual([])
+    expect(
+      findDanglingLabelReferences(
+        '<button aria-labelledby={`tab-${tab}`} /><div id={`otro-${item.tab}`} />',
+      ),
+    ).toEqual(['tab-*'])
+  })
+
+  it('H3: stripComments no borra media línea por un // dentro de un string', () => {
+    const jsx = '<a href="https://x" aria-label="Idioma">x</a>'
+
+    expect(stripComments(jsx)).toContain('href="https://x"')
+    expect(findLiteralTextAttributes(jsx)).toEqual(['aria-label="Idioma"'])
+    expect(stripComments('// aria-label="Idioma"\nconst visible = 1')).not.toContain('Idioma')
+    expect(stripComments('const url = "https://x" // nota\n')).toContain('https://x')
+  })
+
+  it('H3: en CSS `url(//cdn/x.png)` no es un comentario y no oculta el color', () => {
+    expect(findColorLiteralsOutsideTheme('a { background: url(//cdn/x.png) rgb(1 2 3); }')).toEqual(
+      ['rgb(1 2 3)'],
+    )
+    expect(backdropRules('dialog::backdrop { background: url(//cdn/x.png) white; }')).toHaveLength(
+      1,
+    )
   })
 })
