@@ -166,24 +166,42 @@ describe('contraste no textual de `--color-border-strong` (§2.1 / WCAG 2.1 1.4.
 /**
  * §2.1 punto 2: ningún separador usa `border-strong`; su peso queda reservado al contorno de
  * control. La guarda es estática a propósito: si reaparece un uso decorativo en cualquier
- * componente de `src/**` (fuera de tests), la lista de apariciones deja de cuadrar con los cuatro
- * usos de control, aunque el uso nuevo no cambie ningún ratio.
+ * fichero de `src/**` (fuera de tests), la lista de apariciones deja de cuadrar con los cuatro usos
+ * de control y la declaración del token, aunque el uso nuevo no cambie ningún ratio.
  *
- * Control de mutación: pasar a `border-border-strong` el marco de `EmptyState` o el borde de la
- * barra de precio pone este test y el de «los dos usos decorativos» en rojo.
+ * La guarda cuenta el **token** (`border-strong`), no una grafía: `divide-border-strong`,
+ * `border-t-border-strong`, `border-[var(--color-border-strong)]` o un
+ * `border-color: var(--color-border-strong)` en CSS cuentan igual que `border-border-strong`. El
+ * `\b` final evita falsos positivos (`border-stronger`).
+ *
+ * Control de mutación: el `it.each` de grafías cubre la regresión que se coló (un separador con
+ * otra utilidad de Tailwind v4); devolver `border-strong` al marco de `EmptyState` pone en rojo
+ * esta guarda y la de «los dos usos decorativos»; un `divide-border-strong` decorativo en un
+ * fichero nuevo pone en rojo solo esta.
  */
 describe('guarda estática de `border-strong` decorativo (§2.1 punto 2, CIF-365)', () => {
-  const USOS_DE_CONTROL = new Map([
+  /**
+   * Apariciones del token `border-strong` en un fuente, sea cual sea la utilidad de Tailwind v4 que
+   * lo consume: clase (`border-border-strong`), variante de eje (`border-t-*`, `divide-*`), valor
+   * arbitrario (`border-[var(--color-border-strong)]`), `var(--color-border-strong)` en un
+   * `style`/CSS o la declaración del `@theme`.
+   */
+  function cuentaBorderStrong(fuente: string): number {
+    return (fuente.match(/border-strong\b/g) ?? []).length
+  }
+
+  const USOS_PERMITIDOS = new Map([
     ['ui/admin/panel-primitives.tsx', 1], // Button secundario
     ['ui/admin/panel-shell.tsx', 2], // chips ES|EN + IconButton del menú
-    ['ui/admin/series-detail.tsx', 1], // campos de formulario
+    ['ui/admin/series-detail.tsx', 1], // campos de formulario (MeasurementField)
+    ['app/globals.css', 1], // declaración del token en el @theme
   ])
 
   const srcRoot = fileURLToPath(new URL('..', import.meta.url))
 
-  function componentes(): string[] {
+  function fuentesDeSrc(): string[] {
     return readdirSync(srcRoot, { recursive: true, encoding: 'utf8' }).filter(
-      (relative) => /\.(ts|tsx)$/.test(relative) && !relative.includes('.test.'),
+      (relative) => /\.(ts|tsx|css)$/.test(relative) && !relative.includes('.test.'),
     )
   }
 
@@ -191,18 +209,37 @@ describe('guarda estática de `border-strong` decorativo (§2.1 punto 2, CIF-365
     return readFileSync(join(srcRoot, relative), 'utf8')
   }
 
-  it('solo los cuatro usos de control declaran `border-strong` en src/**', () => {
+  it.each([
+    'border-border-strong',
+    'divide-y divide-border-strong',
+    'border-t-border-strong',
+    'border-x-border-strong',
+    'border-l-border-strong',
+    'border-[var(--color-border-strong)]',
+    'ring-1 ring-border-strong',
+    'outline-border-strong',
+    'style={{ borderColor: "var(--color-border-strong)" }}',
+    '--color-border-strong: #857f75;',
+  ])('cuenta la grafía `%s` del token', (grafia) => {
+    expect(cuentaBorderStrong(`<div className="${grafia}" />`)).toBe(1)
+  })
+
+  it('no cuenta una utilidad distinta que solo empieza igual (`border-stronger`)', () => {
+    expect(cuentaBorderStrong('border-stronger')).toBe(0)
+  })
+
+  it('solo los usos de control y la declaración del @theme citan `border-strong` en src/**', () => {
     const apariciones = new Map<string, number>()
 
-    for (const relative of componentes()) {
-      const count = (fuente(relative).match(/border-border-strong/g) ?? []).length
+    for (const relative of fuentesDeSrc()) {
+      const count = cuentaBorderStrong(fuente(relative))
       if (count > 0) apariciones.set(relative, count)
     }
 
     const comoLineas = (entries: Iterable<[string, number]>) =>
       [...entries].map(([file, count]) => `${file}:${count}`).sort()
 
-    expect(comoLineas(apariciones)).toEqual(comoLineas(USOS_DE_CONTROL))
+    expect(comoLineas(apariciones)).toEqual(comoLineas(USOS_PERMITIDOS))
   })
 
   it('los dos usos decorativos reasignados usan `--color-border`', () => {
