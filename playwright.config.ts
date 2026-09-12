@@ -2,7 +2,9 @@ import { defineConfig, devices } from '@playwright/test'
 
 import {
   E2E_ADMIN_BASE_URL,
+  E2E_ADMIN_PANEL_PASSWORD,
   E2E_ADMIN_PORT,
+  E2E_ADMIN_SESSION_SECRET,
   E2E_ADMIN_TOKEN,
   E2E_BASE_URL,
   E2E_PORT,
@@ -46,7 +48,15 @@ export default defineConfig({
       // El E2E usa el catálogo de demostración en memoria: no depende de PostgreSQL (CIF-10/CIF-11).
       // `ADMIN_API_TOKEN` vacío (= sin configurar) fija el caso 503 aunque el entorno del
       // desarrollador tenga un token en `.env.local`.
-      env: { CATALOG_DEMO_MODE: 'true', ADMIN_API_TOKEN: '' },
+      // También se vacían las credenciales de sesión del panel (CIF-241) para que la guarda de
+      // `/[locale]/admin` se observe **sin** sesión aunque el entorno del desarrollador tenga
+      // `.env.local`: el caso «no configurado» tiene que ser determinista.
+      env: {
+        CATALOG_DEMO_MODE: 'true',
+        ADMIN_API_TOKEN: '',
+        ADMIN_SESSION_SECRET: '',
+        ADMIN_PANEL_PASSWORD: '',
+      },
       url: E2E_BASE_URL,
       reuseExistingServer: externalEnvironment,
       timeout: 240_000,
@@ -58,6 +68,8 @@ export default defineConfig({
       env: {
         CATALOG_DEMO_MODE: 'true',
         ADMIN_API_TOKEN: E2E_ADMIN_TOKEN,
+        ADMIN_SESSION_SECRET: E2E_ADMIN_SESSION_SECRET,
+        ADMIN_PANEL_PASSWORD: E2E_ADMIN_PANEL_PASSWORD,
         QUOTE_INTERNAL_RECIPIENTS: E2E_SALES_MAILBOX,
       },
       url: E2E_ADMIN_BASE_URL,

@@ -37,10 +37,15 @@ const TARIFF_CI_300_V1 = '0192f1b0-0000-7000-8000-000000000301'
  *
  * - `TARIFF_CI_400_2027_DRAFT`: vigencia futura, así que publicarla no cambia el precio vigente de
  *   la serie (el configurador sigue pasando a presupuesto manual); es el caso **sin** solape.
+ * - `TARIFF_CI_400_2029_DRAFT`: mismo caso sin solape que el anterior pero en otra ventana, para que
+ *   cada proyecto de Playwright (`chromium` y `movil`) publique **su propio** borrador: con
+ *   `fullyParallel` los dos proyectos mutan a la vez el mismo servidor y no pueden compartirlo
+ *   (criterio 2 de la revisión CIF-86 → CIF-9). Las dos ventanas no se solapan entre sí.
  * - `TARIFF_CI_100_V2_DRAFT`: solapa con la v1 publicada de la serie CI-100 (vigencia abierta), así
  *   que la invariante de no solapamiento debe rechazarla sin escribir.
  */
 const TARIFF_CI_400_2027_DRAFT = '0192f1b0-0000-7000-8000-000000000401'
+const TARIFF_CI_400_2029_DRAFT = '0192f1b0-0000-7000-8000-000000000402'
 const TARIFF_CI_100_V2_DRAFT = '0192f1b0-0000-7000-8000-000000000102'
 
 function money(value: string): Money {
@@ -428,6 +433,14 @@ export function buildDemoCatalog(): CatalogStoreSnapshot {
       strategy: 'per_square_metre',
       validFrom: new Date('2027-01-01T00:00:00.000Z'),
       validUntil: new Date('2028-01-01T00:00:00.000Z'),
+    }),
+    draftTariff({
+      id: TARIFF_CI_400_2029_DRAFT,
+      seriesId: ci400.id,
+      strategy: 'per_square_metre',
+      versionNumber: 2,
+      validFrom: new Date('2029-01-01T00:00:00.000Z'),
+      validUntil: new Date('2030-01-01T00:00:00.000Z'),
     }),
     draftTariff({
       id: TARIFF_CI_100_V2_DRAFT,

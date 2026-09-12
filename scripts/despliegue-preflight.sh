@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 #
 # Comprobación de solo lectura de la puesta en marcha del despliegue (CIF-11, docs/despliegue.md 6).
-# Exige que Production defina DATABASE_URL y ADMIN_API_TOKEN (sin esta última el API del panel
-# responde 503, CIF-123). Los avisos de esta comprobación se prueban en
-# scripts/despliegue-preflight.test.sh.
+# Exige que Production defina DATABASE_URL y las dos variables de la sesión del panel
+# (ADMIN_SESSION_SECRET y ADMIN_PANEL_PASSWORD): sin estas dos el panel deniega /[locale]/admin/**
+# y el propietario no puede entrar (CIF-241). `ADMIN_API_TOKEN` es la credencial **opcional** de
+# automatización por `Bearer` (ADR-0024 §7) y no se exige, porque el propietario entra con la sesión
+# (CIF-123). Las claves se comparan por nombre exacto, nunca por subcadena (CIF-129). Los avisos de
+# esta comprobación se prueban en scripts/despliegue-preflight.test.sh.
+#
+# Interruptores de la guarda del shell del panel (ADR-0023 §5, CIF-282): bloquea si
+# `CATALOG_DEMO_MODE` está activa en Production (sustituye los datos reales por fixtures y abre la
+# guarda) e informa del estado de `ADMIN_PANEL_ENABLED`, que es un interruptor legítimo.
 #
 # No crea, no modifica ni borra nada y no imprime ningún valor secreto: solo metadatos (usuario,
 # repositorio, proyecto, nombres de variables). Funciona sin las CLI de GitHub y de Vercel, así que
@@ -29,6 +36,7 @@ DB_URL="${PRODUCTION_DATABASE_URL:-${NEON_PRODUCTION_DATABASE_URL:-}}"
 pending=0
 ok() { printf '  OK        %s\n' "$1"; }
 ko() { printf '  PENDIENTE %s\n' "$1"; pending=1; }
+info() { printf '  INFO      %s\n' "$1"; }
 
 command -v curl >/dev/null 2>&1 || { echo "falta curl" >&2; exit 69; }
 command -v python3 >/dev/null 2>&1 || { echo "falta python3" >&2; exit 69; }
@@ -47,6 +55,37 @@ except Exception: print(""); raise SystemExit
 v = d.get(sys.argv[2])
 print(v if isinstance(v, (str, int, bool)) else ("" if v is None else json.dumps(v, ensure_ascii=False)))' "$1" "$2"
 }
+
+tiene_clave() { # tiene_clave <fichero-json> <clave> -> 0 si esa clave exacta está en Production
+  python3 -c 'import json,sys
+e = json.load(open(sys.argv[1])).get("envs", [])
+raise SystemExit(0 if any(x.get("key") == sys.argv[2] and "production" in (x.get("target") or []) for x in e) else 1)' "$1" "$2"
+}
+
+valor_produccion() { # valor_produccion <fichero-json> <clave> -> valor legible, vacío si no lo es
+  # De Vercel solo llega el valor de las variables no sensibles (`plain`); en las demás viene vacío
+  # o ausente, así que el preflight nunca imprime un secreto y solo compara estos dos interruptores.
+  python3 -c 'import json,sys
+e = json.load(open(sys.argv[1])).get("envs", [])
+v = next((x.get("value") for x in e if x.get("key") == sys.argv[2] and "production" in (x.get("target") or [])), None)
+print(v if isinstance(v, str) else "")' "$1" "$2"
+}
+
+# Los dos interruptores que el código interpreta con `environmentFlag` (booleano textual, CIF-74):
+# mismos valores verdaderos y falsos que `z.stringbool()` de Zod 4.6, que pasa el valor a minúsculas
+# pero **no lo recorta**. `z.stringbool()` rechaza `"true "`, y con `CATALOG_DEMO_MODE` eso tumba el
+# arranque y con `ADMIN_PANEL_ENABLED` la guarda falla en cada petición, así que el preflight no
+# puede dar por bueno lo que el código rechaza (CIF-282, hallazgo H5).
+interruptor_activo() {
+  case "$1" in true | 1 | yes | on | y | enabled) return 0 ;; *) return 1 ;; esac
+}
+interruptor_inactivo() {
+  case "$1" in false | 0 | no | off | n | disabled) return 0 ;; *) return 1 ;; esac
+}
+normalizar_interruptor() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+# `environmentFlag` recorta solo para decidir si el valor está vacío (`z.preprocess`): un valor con
+# únicamente espacios es «ausente» y cae al `false` por defecto, no es un valor ilegible.
+interruptor_solo_espacios() { [[ -n "$1" && -z "${1//[[:space:]]/}" ]]; }
 
 echo "== 1/6 GitHub: token"
 if [[ -z "$GH_TOKEN_RESOLVED" ]]; then
@@ -130,10 +169,55 @@ if [[ -n "$VERCEL_TOKEN_RESOLVED" ]]; then
 e = json.load(open(sys.argv[1])).get("envs", [])
 print(", ".join(sorted({x["key"] for x in e if "production" in (x.get("target") or [])})))' "$TMP/env.json")"
       ok "variables de Production definidas: ${keys:-ninguna}"
-      [[ "$keys" == *DATABASE_URL* ]] || ko "falta DATABASE_URL en Production"
-      # Sin ADMIN_API_TOKEN el API del panel responde 503 y el propietario no puede publicar
-      # ni archivar tarifas (CIF-123): la falta tiene que doler aquí, antes del despliegue.
-      [[ "$keys" == *ADMIN_API_TOKEN* ]] || ko "falta ADMIN_API_TOKEN en Production: el API del panel responde 503 (CIF-123)"
+      # Por nombre exacto: `DATABASE_URL_UNPOOLED` no cubre `DATABASE_URL`, ni
+      # `ADMIN_PANEL_PASSWORD_OLD` cubre `ADMIN_PANEL_PASSWORD` (CIF-129).
+      tiene_clave "$TMP/env.json" DATABASE_URL || ko "falta DATABASE_URL en Production"
+      # Sin ADMIN_SESSION_SECRET/ADMIN_PANEL_PASSWORD la sesión falla cerrada: /[locale]/admin/**
+      # queda denegado y /api/admin/session responde 503 ADMIN_ACCESS_DISABLED, así que el
+      # propietario no puede entrar al panel (ADR-0024, CIF-241). `ADMIN_API_TOKEN` no se exige:
+      # es la credencial opcional de automatización (ADR-0024 §7) y el propietario entra con la
+      # sesión (CIF-123).
+      tiene_clave "$TMP/env.json" ADMIN_SESSION_SECRET || ko "falta ADMIN_SESSION_SECRET en Production: la sesión del panel falla cerrada y /api/admin/session responde 503 (CIF-241)"
+      tiene_clave "$TMP/env.json" ADMIN_PANEL_PASSWORD || ko "falta ADMIN_PANEL_PASSWORD en Production: el propietario no puede canjear la credencial del panel (CIF-241)"
+
+      # Guarda del shell del panel (ADR-0023 §5). `CATALOG_DEMO_MODE` sirve el catálogo en memoria y
+      # además abre la guarda en Production: es la configuración del E2E hermético, nunca la de
+      # producción, así que su activación bloquea la puesta en marcha. `ADMIN_PANEL_ENABLED` sí es
+      # un interruptor legítimo: solo se informa de su estado.
+      if tiene_clave "$TMP/env.json" CATALOG_DEMO_MODE; then
+        demo_crudo="$(valor_produccion "$TMP/env.json" CATALOG_DEMO_MODE)"
+        demo="$(normalizar_interruptor "$demo_crudo")"
+        if interruptor_activo "$demo"; then
+          ko "CATALOG_DEMO_MODE activa el catálogo de demostración en Production: sirve datos de fixture y abre el shell del panel (ADR-0023 §5). Desactívala y redespliega"
+        elif interruptor_inactivo "$demo"; then
+          ok "CATALOG_DEMO_MODE desactivado en Production (catálogo real)"
+        elif interruptor_solo_espacios "$demo"; then
+          ok "CATALOG_DEMO_MODE solo tiene espacios en Production: environmentFlag la recorta y se usa el catálogo real (false por defecto)"
+        elif [[ -z "$demo_crudo" ]]; then
+          info "CATALOG_DEMO_MODE está definida en Production pero su valor no es legible desde la API: compruébala a mano"
+        else
+          ko "CATALOG_DEMO_MODE tiene un valor que el arranque rechaza (environmentFlag, CIF-74): el despliegue no arranca hasta corregirlo"
+        fi
+      else
+        ok "CATALOG_DEMO_MODE no está definida en Production (valor por defecto false: catálogo real)"
+      fi
+      if tiene_clave "$TMP/env.json" ADMIN_PANEL_ENABLED; then
+        panel_crudo="$(valor_produccion "$TMP/env.json" ADMIN_PANEL_ENABLED)"
+        panel="$(normalizar_interruptor "$panel_crudo")"
+        if interruptor_activo "$panel"; then
+          ok "ADMIN_PANEL_ENABLED activado en Production: /[locale]/admin/** se sirve detrás de la sesión del propietario (ADR-0024)"
+        elif interruptor_inactivo "$panel"; then
+          ok "ADMIN_PANEL_ENABLED desactivado en Production: el shell no se sirve (404 con sesión válida)"
+        elif interruptor_solo_espacios "$panel"; then
+          ok "ADMIN_PANEL_ENABLED solo tiene espacios en Production: environmentFlag lo recorta y el shell queda cerrado (false por defecto)"
+        elif [[ -z "$panel_crudo" ]]; then
+          info "ADMIN_PANEL_ENABLED está definida en Production pero su valor no es legible desde la API: compruébala a mano"
+        else
+          ko "ADMIN_PANEL_ENABLED tiene un valor que la guarda rechaza (environmentFlag): /[locale]/admin/** falla en cada petición"
+        fi
+      else
+        ok "ADMIN_PANEL_ENABLED no está definida en Production: shell cerrado por defecto (sin sesión manda el acceso, ADR-0024)"
+      fi
     else
       ko "no se pudo listar las variables (HTTP $code)"
     fi

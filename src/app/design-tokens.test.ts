@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -141,14 +142,24 @@ describe('conformidad visual y de accesibilidad (CIF-211)', () => {
     expect(globalsCss).not.toMatch(/background-color:\s*#f7f7f5/)
   })
 
-  it('los componentes del configurador no llevan colores sueltos en clases (A2)', () => {
-    for (const file of [
-      '../ui/configurator/configurator-app.tsx',
-      '../ui/preview-2d/configurator.tsx',
-    ]) {
-      const source = readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8')
+  it('ningún componente de src/ui lleva un color suelto (A2, hallazgo 7 de CIF-240)', () => {
+    const root = fileURLToPath(new URL('../ui', import.meta.url))
+    // Única excepción: la pintura normativa del modelo 2D (`modelo-visual-2d` rev 5 §4).
+    const allowlist = new Set(['preview-2d/model.ts'])
+    const offenders: string[] = []
 
-      expect(source, file).not.toMatch(/bg-\[#[0-9a-fA-F]{3,8}\]/)
+    for (const relative of readdirSync(root, { recursive: true, encoding: 'utf8' })) {
+      if (!/\.(ts|tsx)$/.test(relative) || relative.includes('.test.') || allowlist.has(relative)) {
+        continue
+      }
+
+      const source = readFileSync(join(root, relative), 'utf8')
+
+      for (const [hex] of source.matchAll(/#[0-9a-fA-F]{3,8}\b/g)) {
+        offenders.push(`${relative}: ${hex}`)
+      }
     }
+
+    expect(offenders).toEqual([])
   })
 })

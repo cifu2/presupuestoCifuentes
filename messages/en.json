@@ -85,25 +85,169 @@
     "amount": "Amount",
     "extrasTitle": "Extras"
   },
+  "AdminAccess": {
+    "metadataTitle": "Admin access",
+    "metadataDescription": "Restricted access to the Puertas Cifuentes admin panel.",
+    "eyebrow": "Administration",
+    "title": "Admin access",
+    "intro": "Enter the owner credential to manage the catalogue and prices.",
+    "passwordLabel": "Credential",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "invalid": "That credential is not valid. Try again.",
+    "unavailable": "The credential could not be checked. Try again.",
+    "disabled": "Admin access is not configured in this deployment.",
+    "backHome": "Back to the home page"
+  },
   "CatalogAdmin": {
-    "title": "Catalogue",
-    "loading": "Loading the catalogue…",
-    "error": "The catalogue could not be loaded. Please try again.",
+    "a11y": {
+      "skip": "Skip to content",
+      "openMenu": "Open menu",
+      "closeMenu": "Close menu",
+      "sortBy": "Sort by {column}",
+      "editSeries": "Edit {name}",
+      "locale": "Language",
+      "sidebarSections": "Panel sections",
+      "tabs": "Series sections"
+    },
+    "appTag": "admin",
+    "colors": {
+      "help": "Each colour is defined with a name and RAL/hex; it is what the 2D preview paints."
+    },
+    "confirm": {
+      "publishTitle": "Publish series",
+      "cancel": "Cancel",
+      "publishCta": "Publish now"
+    },
+    "deactivate": "Deactivate",
+    "detail": {
+      "title": "Series A",
+      "nameEs": "Name (ES)",
+      "nameEn": "Name (EN)",
+      "translated": "Translated",
+      "slug": "Web identifier",
+      "slugHelp": "Generated automatically and kept when renaming, so links don't break.",
+      "status": "Status",
+      "draftNotice": "Changes are saved as a draft until you publish. Publishing does not change quotes already sent (frozen price)."
+    },
+    "editPrice": "Edit price",
     "empty": "There are no items in the catalogue yet.",
+    "error": {
+      "title": "We couldn't load the data.",
+      "retry": "Retry"
+    },
     "fields": {
       "name": "Name",
       "description": "Description"
     },
-    "translations": "Translations",
-    "translatedInto": "Translated into {language}",
-    "missingTranslation": "Missing translation into {language}",
+    "finish": {
+      "lacquered": "Lacquered (RAL colours)",
+      "naturalVeneer": "Natural veneer",
+      "aluminium": "Aluminium",
+      "steel": "Stainless steel"
+    },
+    "finishes": {
+      "help": "Tick the finishes this series offers. Colour is defined in the Colours section."
+    },
+    "forbidden": {
+      "help": "Ask the account owner for access."
+    },
+    "history": "Change history",
+    "i18n": {
+      "es": "Spanish (ES)",
+      "en": "English (EN)",
+      "complete": "Complete",
+      "help": "A series is not published in a language until its name and description are translated."
+    },
+    "languages": {
+      "title": "Catalogue languages",
+      "active": "Active"
+    },
+    "loading": "Loading…",
+    "measures": {
+      "minWidth": "Minimum width",
+      "maxWidth": "Maximum width",
+      "minHeight": "Minimum height",
+      "maxHeight": "Maximum height",
+      "help": "Above the maximum, the configurator switches to a manual quote. Below the minimum, it shows an error and gives no price."
+    },
+    "missingTranslation": "Missing translation",
     "missingTranslations": "Missing translations",
-    "save": "Save",
+    "nav": {
+      "section": "Catalogue",
+      "series": "Series",
+      "finishes": "Finishes",
+      "colors": "Colours",
+      "accessories": "Accessories",
+      "tariffs": "Price lists",
+      "languages": "Languages",
+      "viewSite": "View site"
+    },
+    "newSeries": "+ New series",
+    "newSeriesHint": "Available once editing is enabled.",
+    "newTariffVersion": "+ New version",
+    "placeholder": "Sample section of the prototype.",
     "publish": "Publish",
-    "unpublish": "Unpublish",
-    "deactivate": "Deactivate",
-    "editPrice": "Edit price",
-    "history": "Change history"
+    "publishConfirm": "Publishing makes the series and its prices visible on the website. Continue?",
+    "retry": "Retry",
+    "save": "Save",
+    "saveDraft": "Save draft",
+    "sectionForbidden": "You don't have access to this section.",
+    "series": {
+      "title": "Series",
+      "caption": "Catalogue series. The current price list is the one shown in the configurator.",
+      "col": {
+        "status": "Status",
+        "name": "Name",
+        "max": "Max. size",
+        "finishes": "Finishes",
+        "tariff": "Price list",
+        "actions": "Actions"
+      },
+      "edit": "Edit"
+    },
+    "seriesEmpty": "There are no series yet.",
+    "seriesEmptyHelp": "Create the first series to publish it in the configurator.",
+    "session": {
+      "owner": "Owner"
+    },
+    "status": {
+      "draft": "Draft",
+      "published": "Published",
+      "archived": "Archived"
+    },
+    "tabs": {
+      "general": "General",
+      "measures": "Sizes",
+      "finishes": "Finishes",
+      "tariffs": "Price lists",
+      "translations": "ES | EN"
+    },
+    "tariffs": {
+      "col": {
+        "version": "Version",
+        "status": "Status",
+        "from": "Effective from",
+        "prices": "Prices",
+        "series": "Series"
+      },
+      "current": "Current",
+      "view": "View",
+      "edit": "Edit",
+      "caption": "Price list versions for the series. Only one is current.",
+      "allCaption": "All price list versions in the catalogue.",
+      "frozen": "The price is frozen when a quote is issued: publishing a new price list does not change quotes already sent."
+    },
+    "tariffsEmpty": "No price lists for this series.",
+    "title": "Catalogue",
+    "toast": {
+      "saved": "Draft saved.",
+      "published": "Series published. It is now visible on the website.",
+      "retrying": "Retrying…"
+    },
+    "translatedInto": "Translated into {language}",
+    "translations": "Translations",
+    "unpublish": "Unpublish"
   },
   "DomainErrors": {
     "INVALID_VALUE": "Some data has a value that is not valid.",

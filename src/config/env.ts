@@ -38,7 +38,27 @@ export const envSchema = z.object({
    * Token compartido del API del panel (provisional, CIF-9/CIF-14). Sin él, los endpoints de
    * administración responden 503 y nunca quedan accesibles en abierto.
    */
-  ADMIN_API_TOKEN: optionalText,
+  ADMIN_API_TOKEN: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().min(1).optional(),
+  ),
+  /**
+   * Secreto de firma de la cookie de sesión del panel (CIF-241/ADR-0024). Sin él, la sesión de la
+   * interfaz no existe y `/[locale]/admin/**` queda denegado.
+   */
+  ADMIN_SESSION_SECRET: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().min(1).optional(),
+  ),
+  /**
+   * Credencial del propietario del panel (CIF-241/ADR-0024). El MVP tiene un único dueño: no hay
+   * usuarios ni roles. Los mínimos de longitud los aplica la guarda (`admin-session.ts`), que falla
+   * cerrada en vez de tumbar el sitio público.
+   */
+  ADMIN_PANEL_PASSWORD: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().min(1).optional(),
+  ),
   /**
    * Remitente verificado del envío de presupuestos (p. ej. `Puertas Cifuentes <presupuestos@…>`).
    * **Sin esta variable no se envía correo real**: la aplicación usa el adaptador de consola
