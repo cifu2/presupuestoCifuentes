@@ -251,13 +251,13 @@ tarea **caduca** (`cancelled`) en vez de reintentarse: gastar un hueco de previe
 fusionada es trabajo y cuota perdidos.
 
 Caso real: CIF-291 esperaba hueco para el preview de `feat/cif101-fase1-panel @ 5fa43dc`; el PR #55 se
-fusionó a las 11:22Z, la rama se borró y el fix de CIF-284 ya estaba en `main@3fe42c9a`, con producción
-`READY` y `/api/health` 200. El reintento no llegó a ejecutarse.
+fusionó a las 11:08Z (CIF-277 cerró a las 11:22Z), la rama se borró y el fix de CIF-284 ya estaba en
+`main@3fe42c9a`, con producción `READY` y `/api/health` 200. El reintento no llegó a ejecutarse.
 
 **Medir la ventana, no el `reset`.** El `reset` que devuelve Vercel no es el vencimiento real —se mueve
-con cada sonda—, así que la hora útil sale de medir la ventana rodante: `GET /v6/deployments` con el
-`projectId` y el `teamId` del proyecto, paginando hacia atrás con `until` y contando por `createdAt`
-dentro del intervalo de 24 h que se quiera medir. La API de despliegues es de solo lectura para la
+con cada sonda—, así que la hora útil sale de medir la ventana rodante: `GET /v7/deployments` con el
+`projectId` y el `teamId` del proyecto, paginando con `since`/`until` y contando por `createdAt` dentro
+del intervalo de 24 h que se quiera medir. La API de despliegues es de solo lectura para la
 cuota: el único valor autoritativo de `remaining`/`reset` sale del error del propio intento.
 
 **Reglas de consumo** ([ADR-0019](adr/0019-cuota-despliegues-vercel.md)): un push crea un preview, así
