@@ -112,6 +112,54 @@ test('el cliente obtiene presupuesto con precio en vivo en menos de lo que tarda
   expect(Date.now() - startedAt).toBeLessThan(180_000)
 })
 
+/**
+ * Regresión de CIF-345: el patrón de moneda se tomaba de `Intl.formatToParts(1234.56)`, que en
+ * inglés parte el entero en cada límite de agrupación (`1`, `,`, `234`). La vista emitía el
+ * importe completo por cada parte y duplicaba la magnitud (`€718718.20` en lugar de `€718.20`).
+ */
+test('en inglés el precio se pinta una sola vez y con la magnitud que devuelve la API', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/en/configurador')
+
+  await page.getByTestId('configurator-series').selectOption('ci-100')
+  await page.getByTestId('preview-width').fill('900')
+  await page.getByTestId('preview-height').fill('2100')
+
+  // El acabado y el color con los que pinta la vista, para pedir a la API la misma configuración.
+  const finishId = await page.getByTestId('preview-finish').inputValue()
+  const colorId = await page.getByTestId('preview-color').inputValue()
+
+  const api = await request.post('/api/quotes/price', {
+    data: {
+      seriesSlug: 'ci-100',
+      widthMm: 900,
+      heightMm: 2100,
+      finishId: finishId === '' ? undefined : finishId,
+      colorId: colorId === '' ? undefined : colorId,
+      locale: 'en',
+    },
+  })
+  const { breakdown } = (await api.json()) as {
+    breakdown: { total: { amount: string; currency: string } }
+  }
+
+  // Oráculo independiente: el propio `Intl` en inglés sobre el importe exacto de la API.
+  const expected = new Intl.NumberFormat('en', {
+    style: 'currency',
+    currency: breakdown.total.currency,
+  }).format(Number(breakdown.total.amount))
+
+  await expect(page.getByTestId('price-total')).toHaveText(expected)
+
+  // Los dígitos pintados son los del importe exacto: nada de magnitudes duplicadas.
+  const digitsOf = (value: string) => value.replace(/\D/g, '')
+  const rendered = await page.getByTestId('price-total').innerText()
+
+  expect(digitsOf(rendered)).toBe(digitsOf(breakdown.total.amount))
+})
+
 test('una medida por encima del máximo de la serie pasa a presupuesto manual', async ({ page }) => {
   await page.goto(CONFIGURATOR_PATH)
 

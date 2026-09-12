@@ -177,6 +177,26 @@ un merge a `main` no se da por desplegado hasta que su deployment está `READY` 
 - Toda migración se versiona en `prisma/migrations` y se revisa en el PR (Definition of Done,
   apartado _Datos_).
 
+### 3.1 Catálogo de demostración en la base de preview (CIF-330)
+
+- La base de preview arranca **vacía**, así que el configurador muestra «todavía no hay ninguna serie
+  publicada» y QA no puede ejercer ningún flujo que emita presupuesto (ni el PDF ni la entrega).
+- `CATALOG_DEMO_MODE=true` en el entorno _Preview_ de Vercel **no resuelve el caso**: el catálogo de
+  demostración vive en memoria del proceso y cada ruta es una función distinta, de modo que el
+  presupuesto emitido por `POST /api/quotes` no lo ve `GET /api/quotes/:ref/pdf`. La variable sigue
+  siendo para desarrollo y E2E locales.
+- El paso es un seed de datos **inventados** (los mismos de
+  `src/infrastructure/demo/demo-catalog.ts`: cuatro series, tres tarifas publicadas y sus textos en
+  español e inglés). No son tarifas comerciales ni datos de clientes:
+
+  ```bash
+  PREVIEW_DATABASE_URL='postgresql://…/presupuesto_preview' scripts/seed-preview-catalogo.sh
+  ```
+
+  La guarda de destino aborta con código 78 si el nombre de la base no contiene «preview» o si
+  menciona producción, y el script es idempotente: se puede repetir sin borrar los presupuestos que
+  QA haya emitido. `scripts/seed-preview-catalogo.test.sh` corre en el job `calidad`.
+
 ## 4. Release
 
 - **Unidad de release:** la fusión a `main`. Vercel despliega producción en cuanto `main` avanza.

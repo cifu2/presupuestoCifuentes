@@ -27,6 +27,15 @@ están en verde sobre ambos SHA.
    b. `calidad` y `e2e` verdes sobre el head revisado; y
    c. la decisión `approved` de la etapa de revisión queda registrada en la tarea de Paperclip.
 
+   > **Extensión del veredicto cuando el head se mueve (CIF-346).** Si el head del PR cambia después
+   > del veredicto por un delta que no toca runtime, el veredicto se extiende al head nuevo bajo las
+   > condiciones de la
+   > [DoD, «Cobertura del veredicto cuando el head se mueve»](../definition-of-done.md#cobertura-del-veredicto-cuando-el-head-se-mueve):
+   > el delta se limita a `docs/**` y `*.md`, `calidad` y `e2e` quedan verdes sobre el head nuevo y se
+   > comprueba la identidad de árbol del punto 2a. Si el delta toca runtime, el gate se reabre y QA
+   > revalida. La extensión la dictamina el revisor original (QA) y se registra en la tarea de
+   > Paperclip, no solo en el mensaje del commit. No relaja el punto 5.
+
 3. `main` **no se reescribe**: no se añaden merge commits de seguimiento para «restaurar» la
    ancestría de un SHA ya revisado. El SHA revisado es inmutable y queda referenciado en el mensaje
    del squash.

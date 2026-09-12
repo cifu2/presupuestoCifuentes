@@ -77,6 +77,8 @@ jobs:
         run: ./scripts/docs-preview-guard.test.sh
       - name: Guardia de contenido de las ramas docs/** (sin preview de Vercel)
         run: ./scripts/docs-preview-guard.sh
+      - name: Guarda y paso de siembra del catálogo de preview (CIF-330)
+        run: ./scripts/seed-preview-catalogo.test.sh
       - run: pnpm lint
       - run: pnpm typecheck
       - name: migraciones en la base de datos de test
