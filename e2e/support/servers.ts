@@ -1,13 +1,14 @@
 /**
- * Servidores que levanta la suite E2E (CIF-86).
+ * Servidores que levanta la suite E2E (CIF-86, CIF-436).
  *
  * Las guardas del panel tienen dos comportamientos excluyentes según el entorno del **servidor**: el
  * API responde `503` sin `ADMIN_API_TOKEN` y exige credenciales con él (`401`), y el acceso a la
  * interfaz (`/[locale]/admin`, CIF-241) redirige al acceso sin `ADMIN_SESSION_SECRET` ni
- * `ADMIN_PANEL_PASSWORD` y abre sesión con ellos. No se pueden observar en el mismo proceso, así que
- * la suite levanta dos servidores de producción: el principal, sin ninguna credencial, y el de
- * administración, con token y sesión. Este módulo es la única fuente de sus puertos y credenciales,
- * compartida por `playwright.config.ts` y por los specs.
+ * `ADMIN_PANEL_PASSWORD` y abre sesión con ellos. Como no se pueden observar en el mismo proceso, la
+ * suite levanta dos servidores de producción —el principal, sin ninguna credencial, y el de
+ * administración, con token y sesión— más un tercero que sirve el catálogo de demostración **vacío**,
+ * el estado previo a la carga del catálogo (CIF-436; ADR-0015 §7, ADR-0026 §3). Este módulo es la
+ * única fuente de sus puertos y credenciales, compartida por `playwright.config.ts` y por los specs.
  *
  * Los valores por defecto son de pruebas: el token no es un secreto real y vive en el repositorio a
  * propósito, porque el E2E lo usa contra su propio servidor (Definition of Done, apartado
@@ -25,10 +26,21 @@ export const E2E_PORT = readPort('E2E_PORT', '3000')
 /** Puerto del servidor con `ADMIN_API_TOKEN`; por defecto, el siguiente al principal. */
 export const E2E_ADMIN_PORT = readPort('E2E_ADMIN_PORT', String(Number(E2E_PORT) + 1))
 
+/** Puerto del servidor con el catálogo de demostración **vacío**; por defecto, el siguiente al del panel. */
+export const E2E_EMPTY_PORT = readPort('E2E_EMPTY_PORT', String(Number(E2E_PORT) + 2))
+
 export const E2E_BASE_URL = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${E2E_PORT}`
 
 export const E2E_ADMIN_BASE_URL =
   process.env.E2E_ADMIN_BASE_URL ?? `http://127.0.0.1:${E2E_ADMIN_PORT}`
+
+/**
+ * Servidor hermético que sirve el catálogo de demostración **vacío** (CIF-436). Es un entorno
+ * distinto del principal a propósito: el configurador del servidor principal siempre arranca con las
+ * cuatro series de demostración, así que el estado sin catálogo solo se observa aquí.
+ */
+export const E2E_EMPTY_BASE_URL =
+  process.env.E2E_EMPTY_BASE_URL ?? `http://127.0.0.1:${E2E_EMPTY_PORT}`
 
 /** Token del servidor de administración del E2E. No es un secreto: es un valor de pruebas. */
 export const E2E_ADMIN_TOKEN = process.env.E2E_ADMIN_TOKEN ?? 'token-de-e2e-solo-para-pruebas'

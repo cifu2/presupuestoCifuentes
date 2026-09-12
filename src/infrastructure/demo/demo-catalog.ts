@@ -462,6 +462,28 @@ export function buildDemoCatalog(): CatalogStoreSnapshot {
   }
 }
 
-export function createDemoCatalogStore(): InMemoryCatalogStore {
-  return new InMemoryCatalogStore(buildDemoCatalog())
+/**
+ * Catálogo de demostración **vacío**: ninguna serie, acabado, color, accesorio ni tarifa.
+ *
+ * Es el estado que ve el propietario antes de cargar el catálogo —en producción puede durar días o
+ * semanas (ADR-0015 §7, ADR-0026 §3)— y el que sirve el E2E hermético para observar `catalog-empty`
+ * de extremo a extremo sin PostgreSQL (CIF-436).
+ */
+const EMPTY_DEMO_CATALOG: CatalogStoreSnapshot = {
+  series: [],
+  finishes: [],
+  colors: [],
+  accessories: [],
+  pricing: [],
+  tariffVersions: [],
+}
+
+/**
+ * Almacén del catálogo de demostración. Con `empty` no siembra nada (CIF-436); por defecto siembra
+ * las cuatro series con las que trabaja el resto del E2E hermético.
+ */
+export function createDemoCatalogStore(
+  options: { readonly empty?: boolean } = {},
+): InMemoryCatalogStore {
+  return new InMemoryCatalogStore(options.empty === true ? EMPTY_DEMO_CATALOG : buildDemoCatalog())
 }

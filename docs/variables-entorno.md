@@ -11,6 +11,7 @@ apartado _Seguridad_).
 | `DATABASE_URL`                                | Neon, base `presupuesto_production` | Neon, base `presupuesto_preview` | PostgreSQL local o rama dev        | Vercel (`DATABASE_URL__PRODUCTION` / `DATABASE_URL__PREVIEW`) y `.env.local` |
 | `NEXT_PUBLIC_SITE_URL`                        | `https://<dominio-produccion>`      | URL del deployment de preview    | `http://localhost:3000`            | Vercel (Production / Preview) y `.env.local`                                 |
 | `CATALOG_DEMO_MODE`                           | `false`                             | `false`                          | `false`                            | Vercel (opcional) y `.env.local`                                             |
+| `CATALOG_DEMO_EMPTY`                          | no definida                         | no definida                      | no definida (la fija el E2E)       | Solo el servidor hermético del E2E (CIF-436)                                 |
 | `ADMIN_PANEL_ENABLED`                         | `false` (panel cerrado)             | no definida                      | no definida                        | Vercel (Production, opcional) y `.env.local`                                 |
 | `QUOTE_VALIDITY_DAYS`                         | `30`                                | `30`                             | `30`                               | Vercel (opcional) y `.env.local`                                             |
 | `ADMIN_API_TOKEN`                             | no definida (opcional)              | no definida                      | valor de desarrollo                | Vercel (Production, opcional) y `.env.local`                                 |
@@ -54,6 +55,12 @@ consume el bootstrap de Vercel.
   `/[locale]/acceso`; con sesión válida, la guarda cerrada es un `404`. En _Preview_ y en local la
   guarda no interviene y el panel se sirve sin la variable. Un valor ambiguo no abre nada: la guarda
   lo rechaza en cada petición a esa ruta (el sitio público sigue vivo).
+- `CATALOG_DEMO_EMPTY` siembra **vacío** el catálogo de demostración (cero series, acabados, colores y
+  accesorios): es el estado previo a la carga del propietario, que en producción puede durar días o
+  semanas (ADR-0015 §7, ADR-0026 §3). Solo tiene efecto **dentro** del modo demostración
+  (`CATALOG_DEMO_MODE=true` o sin `DATABASE_URL`); con el catálogo real se ignora, así que no se
+  despliega y no cambia nada en Vercel. Lo usa el tercer servidor del E2E hermético para observar
+  `catalog-empty` de extremo a extremo (`e2e/catalog-empty.spec.ts`, [playbook](e2e-playbook.md)).
 - **`ADMIN_PANEL_ENABLED` y `CATALOG_DEMO_MODE` son puertas independientes:** las dos pueden dejar
   servido el shell, pero por vías distintas. El catálogo en memoria lo sirve el contenedor cuando
   `CATALOG_DEMO_MODE=true` **o** cuando no hay `DATABASE_URL` (`src/composition/container.ts`),

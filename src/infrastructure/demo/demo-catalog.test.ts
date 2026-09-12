@@ -13,6 +13,17 @@ import { describe, expect, it } from 'vitest'
 import { createDemoCatalogStore } from './demo-catalog'
 
 describe('catálogo de demostración', () => {
+  it('con `empty` no siembra catálogo: es el estado previo a la carga del propietario (CIF-436)', () => {
+    const store = createDemoCatalogStore({ empty: true })
+
+    expect(store.series).toHaveLength(0)
+    expect(store.finishes).toHaveLength(0)
+    expect(store.colors).toHaveLength(0)
+    expect(store.accessories).toHaveLength(0)
+    expect(store.pricing).toHaveLength(0)
+    expect(store.listTariffVersions()).toHaveLength(0)
+  })
+
   it('siembra un borrador publicable por proyecto de Playwright, sin solapes entre ellos', () => {
     // El mismo adaptador que compone la aplicación en modo demostración: el E2E muta este estado,
     // así que la invariante se comprueba sobre las versiones que el servidor sirve de verdad.

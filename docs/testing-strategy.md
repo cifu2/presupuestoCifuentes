@@ -45,7 +45,7 @@ mapa de flujos a specs, los datos de prueba y la plantilla de informe de fallo e
 - Configuración en `playwright.config.ts`. En local y en CI sirve la build de producción y levanta
   **dos** servidores (principal y de administración) con la misma build, porque las guardas del panel
   cambian de comportamiento según `ADMIN_API_TOKEN` y la sesión de interfaz
-  ([e2e-playbook.md](e2e-playbook.md#guardas-del-panel-dos-servidores)).
+  ([e2e-playbook.md](e2e-playbook.md#servidores-de-la-suite)).
 - Proyectos: `chromium` (escritorio) y `movil` (Pixel 7). Un flujo nuevo se prueba en ambos.
 - Localizadores preferentes: rol y texto accesible (`getByRole`, `getByLabel`) antes que CSS.
   Solo se añade `data-testid` cuando no hay alternativa semántica.
