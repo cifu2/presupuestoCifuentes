@@ -236,7 +236,10 @@ abierta es el rol de aplicación de Neon frente al rol propietario.
 
 3. **Proyecto de Vercel y variables:** `scripts/vercel-bootstrap.sh` enlaza el proyecto con el
    repositorio e inyecta las variables de [variables-entorno.md](variables-entorno.md) en los
-   entornos _Production_, _Preview_ y _Development_.
+   entornos _Production_, _Preview_ y _Development_. La base de cada entorno se declara con sufijo
+   (`DATABASE_URL__PRODUCTION`, `DATABASE_URL__PREVIEW`, `DATABASE_URL__DEVELOPMENT`), nunca
+   `DATABASE_URL` a secas: el script aborta antes de escribir nada en Vercel si detecta un
+   `DATABASE_URL` compartido ([ADR-0015](adr/0015-base-de-datos-de-produccion.md) §4).
 4. **Base de datos:** proyecto en Neon con ramas `production` y `preview` + integración con Vercel
    ([ADR-0009](adr/0009-base-de-datos-gestionada-y-backups.md)).
 5. **Primer despliegue:** fusionar un PR trivial y comprobar preview, producción, `/api/health` y el
