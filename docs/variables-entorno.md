@@ -6,15 +6,25 @@ apartado _Seguridad_).
 
 ## 1. Inventario
 
-| Variable               | Producción                     | Preview                          | Desarrollo local            | Se define en                                 |
-| ---------------------- | ------------------------------ | -------------------------------- | --------------------------- | -------------------------------------------- |
-| `DATABASE_URL`         | Neon, rama `production`        | Neon, base `presupuesto_preview` | PostgreSQL local o rama dev | Vercel (Production / Preview) y `.env.local` |
-| `NEXT_PUBLIC_SITE_URL` | `https://<dominio-produccion>` | URL del deployment de preview    | `http://localhost:3000`     | Vercel (Production / Preview) y `.env.local` |
-| `CATALOG_DEMO_MODE`    | `false`                        | `false`                          | `false`                     | Vercel (opcional) y `.env.local`             |
-| `QUOTE_VALIDITY_DAYS`  | `30`                           | `30`                             | `30`                        | Vercel (opcional) y `.env.local`             |
-| `ADMIN_API_TOKEN`      | valor propio del despliegue    | no definida                      | valor de desarrollo         | Vercel (Production) y `.env.local`           |
-| `NODE_ENV`             | lo fija Vercel (`production`)  | lo fija Vercel (`production`)    | lo fija Next.js             | No se configura a mano                       |
-| `VERCEL_ENV`           | lo fija Vercel (`production`)  | lo fija Vercel (`preview`)       | no definida                 | No se configura a mano                       |
+| Variable               | Producción                          | Preview                          | Desarrollo local            | Se define en                                                                 |
+| ---------------------- | ----------------------------------- | -------------------------------- | --------------------------- | ---------------------------------------------------------------------------- |
+| `DATABASE_URL`         | Neon, base `presupuesto_production` | Neon, base `presupuesto_preview` | PostgreSQL local o rama dev | Vercel (`DATABASE_URL__PRODUCTION` / `DATABASE_URL__PREVIEW`) y `.env.local` |
+| `NEXT_PUBLIC_SITE_URL` | `https://<dominio-produccion>`      | URL del deployment de preview    | `http://localhost:3000`     | Vercel (Production / Preview) y `.env.local`                                 |
+| `CATALOG_DEMO_MODE`    | `false`                             | `false`                          | `false`                     | Vercel (opcional) y `.env.local`                                             |
+| `QUOTE_VALIDITY_DAYS`  | `30`                                | `30`                             | `30`                        | Vercel (opcional) y `.env.local`                                             |
+| `ADMIN_API_TOKEN`      | valor propio del despliegue         | no definida                      | valor de desarrollo         | Vercel (Production) y `.env.local`                                           |
+| `NODE_ENV`             | lo fija Vercel (`production`)       | lo fija Vercel (`production`)    | lo fija Next.js             | No se configura a mano                                                       |
+| `VERCEL_ENV`           | lo fija Vercel (`production`)       | lo fija Vercel (`preview`)       | no definida                 | No se configura a mano                                                       |
+
+`DATABASE_URL` es configuración **por entorno**, no una variable común: el fichero de valores declara
+`DATABASE_URL__PRODUCTION`, `DATABASE_URL__PREVIEW` y `DATABASE_URL__DEVELOPMENT`, y
+`scripts/vercel-bootstrap.sh` inyecta `DATABASE_URL` **solo** en el entorno que corresponde, siempre
+con `--sensitive`. Un `DATABASE_URL` sin sufijo aborta el script antes de escribir nada en Vercel
+([ADR-0015](adr/0015-base-de-datos-de-produccion.md) §4; compartir base entre entornos está prohibido
+por [ADR-0009](adr/0009-base-de-datos-gestionada-y-backups.md) §2). Producción y preview apuntan a
+bases **distintas** del proyecto de Neon: `presupuesto_production` y `presupuesto_preview`. En local,
+`.env.local` y `.env.example` siguen usando `DATABASE_URL` a secas; el sufijo es del fichero que
+consume el bootstrap de Vercel.
 
 - El esquema de validación está en `src/config/env.ts` (Zod). `DATABASE_URL` y
   `NEXT_PUBLIC_SITE_URL` son opcionales en el esquema para que el esqueleto arranque sin base de
@@ -85,7 +95,11 @@ de listar la ausencia y [api.md](api.md) pasa a describir `401` en lugar de `503
 1. Añádela al esquema Zod de `src/config/env.ts` (con valor por defecto o `.optional()` si puede
    faltar) y al inventario de la tabla de arriba.
 2. Defínela en Vercel en **todos** los entornos donde aplique (_Production_, _Preview_,
-   _Development_) — `scripts/vercel-bootstrap.sh` sincroniza una lista local.
+   _Development_) — `scripts/vercel-bootstrap.sh` sincroniza una lista local. Si el valor debe ser
+   **distinto** en cada entorno, no la declares con el nombre común: usa el sufijo por entorno
+   (`NOMBRE__PRODUCTION`, `NOMBRE__PREVIEW`, `NOMBRE__DEVELOPMENT`) y el script la inyecta con el
+   nombre común solo en su entorno. `DATABASE_URL` es el caso obligatorio
+   ([ADR-0015](adr/0015-base-de-datos-de-produccion.md) §4): sin sufijo el script aborta.
 3. Actualiza `.env.example` si un desarrollador la necesita en local.
 4. Redespliega para que surta efecto y comprueba `/api/health`.
 
