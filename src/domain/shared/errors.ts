@@ -26,6 +26,11 @@ export type DomainErrorCode =
   | 'INVALID_QUOTE_DELIVERY'
   | 'INVALID_QUOTE_DELIVERY_TRANSITION'
   | 'QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED'
+  | 'CONFLICT'
+  | 'SERIES_IN_USE'
+  | 'ITEM_IN_USE'
+  | 'EMPTY_PRICE_TABLE'
+  | 'TARIFF_NOT_EDITABLE'
   | 'NOT_FOUND'
 
 export class DomainError extends Error {
@@ -140,6 +145,41 @@ export class InvalidQuoteTransitionError extends DomainError {
 export class InvalidQuoteReferenceError extends DomainError {
   constructor(message: string) {
     super('INVALID_QUOTE_REFERENCE', message)
+  }
+}
+
+/** Identificador de catálogo ya ocupado por otra entidad (`code` o `slug`). */
+export class ConflictError extends DomainError {
+  constructor(message: string) {
+    super('CONFLICT', message)
+  }
+}
+
+/** La serie no se puede desactivar: todavía tiene precio vivo (tarifa publicada y vigente). */
+export class SeriesInUseError extends DomainError {
+  constructor(message: string) {
+    super('SERIES_IN_USE', message)
+  }
+}
+
+/** El elemento de catálogo no se puede desactivar: sigue referenciado por el catálogo vivo. */
+export class ItemInUseError extends DomainError {
+  constructor(message: string) {
+    super('ITEM_IN_USE', message)
+  }
+}
+
+/** Una versión de tarifa sin tabla de precios no se publica: la serie pasa a presupuesto manual. */
+export class EmptyPriceTableError extends DomainError {
+  constructor(message: string) {
+    super('EMPTY_PRICE_TABLE', message)
+  }
+}
+
+/** La tabla de precios solo se edita en borrador: una versión publicada es inmutable (ADR-0003). */
+export class TariffVersionNotEditableError extends DomainError {
+  constructor(message: string) {
+    super('TARIFF_NOT_EDITABLE', message)
   }
 }
 
