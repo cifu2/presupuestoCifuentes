@@ -3,7 +3,8 @@
   "git": {
     "deploymentEnabled": {
       "dependabot/**": false,
-      "archive/**": false
+      "archive/**": false,
+      "docs/**": false
     }
   }
 }
