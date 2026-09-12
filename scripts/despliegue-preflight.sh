@@ -72,14 +72,20 @@ print(v if isinstance(v, str) else "")' "$1" "$2"
 }
 
 # Los dos interruptores que el código interpreta con `environmentFlag` (booleano textual, CIF-74):
-# mismos valores verdaderos y falsos que `z.stringbool()` de Zod 4.6, sin distinguir mayúsculas.
+# mismos valores verdaderos y falsos que `z.stringbool()` de Zod 4.6, que pasa el valor a minúsculas
+# pero **no lo recorta**. `z.stringbool()` rechaza `"true "`, y con `CATALOG_DEMO_MODE` eso tumba el
+# arranque y con `ADMIN_PANEL_ENABLED` la guarda falla en cada petición, así que el preflight no
+# puede dar por bueno lo que el código rechaza (CIF-282, hallazgo H5).
 interruptor_activo() {
   case "$1" in true | 1 | yes | on | y | enabled) return 0 ;; *) return 1 ;; esac
 }
 interruptor_inactivo() {
   case "$1" in false | 0 | no | off | n | disabled) return 0 ;; *) return 1 ;; esac
 }
-normalizar_interruptor() { printf '%s' "$1" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]'; }
+normalizar_interruptor() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+# `environmentFlag` recorta solo para decidir si el valor está vacío (`z.preprocess`): un valor con
+# únicamente espacios es «ausente» y cae al `false` por defecto, no es un valor ilegible.
+interruptor_solo_espacios() { [[ -n "$1" && -z "${1//[[:space:]]/}" ]]; }
 
 echo "== 1/6 GitHub: token"
 if [[ -z "$GH_TOKEN_RESOLVED" ]]; then
@@ -179,12 +185,15 @@ print(", ".join(sorted({x["key"] for x in e if "production" in (x.get("target") 
       # producción, así que su activación bloquea la puesta en marcha. `ADMIN_PANEL_ENABLED` sí es
       # un interruptor legítimo: solo se informa de su estado.
       if tiene_clave "$TMP/env.json" CATALOG_DEMO_MODE; then
-        demo="$(normalizar_interruptor "$(valor_produccion "$TMP/env.json" CATALOG_DEMO_MODE)")"
+        demo_crudo="$(valor_produccion "$TMP/env.json" CATALOG_DEMO_MODE)"
+        demo="$(normalizar_interruptor "$demo_crudo")"
         if interruptor_activo "$demo"; then
           ko "CATALOG_DEMO_MODE activa el catálogo de demostración en Production: sirve datos de fixture y abre el shell del panel (ADR-0023 §5). Desactívala y redespliega"
         elif interruptor_inactivo "$demo"; then
           ok "CATALOG_DEMO_MODE desactivado en Production (catálogo real)"
-        elif [[ -z "$demo" ]]; then
+        elif interruptor_solo_espacios "$demo"; then
+          ok "CATALOG_DEMO_MODE solo tiene espacios en Production: environmentFlag la recorta y se usa el catálogo real (false por defecto)"
+        elif [[ -z "$demo_crudo" ]]; then
           info "CATALOG_DEMO_MODE está definida en Production pero su valor no es legible desde la API: compruébala a mano"
         else
           ko "CATALOG_DEMO_MODE tiene un valor que el arranque rechaza (environmentFlag, CIF-74): el despliegue no arranca hasta corregirlo"
@@ -193,12 +202,15 @@ print(", ".join(sorted({x["key"] for x in e if "production" in (x.get("target") 
         ok "CATALOG_DEMO_MODE no está definida en Production (valor por defecto false: catálogo real)"
       fi
       if tiene_clave "$TMP/env.json" ADMIN_PANEL_ENABLED; then
-        panel="$(normalizar_interruptor "$(valor_produccion "$TMP/env.json" ADMIN_PANEL_ENABLED)")"
+        panel_crudo="$(valor_produccion "$TMP/env.json" ADMIN_PANEL_ENABLED)"
+        panel="$(normalizar_interruptor "$panel_crudo")"
         if interruptor_activo "$panel"; then
           ok "ADMIN_PANEL_ENABLED activado en Production: /[locale]/admin/** se sirve detrás de la sesión del propietario (ADR-0024)"
         elif interruptor_inactivo "$panel"; then
           ok "ADMIN_PANEL_ENABLED desactivado en Production: el shell no se sirve (404 con sesión válida)"
-        elif [[ -z "$panel" ]]; then
+        elif interruptor_solo_espacios "$panel"; then
+          ok "ADMIN_PANEL_ENABLED solo tiene espacios en Production: environmentFlag lo recorta y el shell queda cerrado (false por defecto)"
+        elif [[ -z "$panel_crudo" ]]; then
           info "ADMIN_PANEL_ENABLED está definida en Production pero su valor no es legible desde la API: compruébala a mano"
         else
           ko "ADMIN_PANEL_ENABLED tiene un valor que la guarda rechaza (environmentFlag): /[locale]/admin/** falla en cada petición"

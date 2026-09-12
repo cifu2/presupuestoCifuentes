@@ -49,13 +49,17 @@ consume el bootstrap de Vercel.
   `/[locale]/acceso`; con sesión válida, la guarda cerrada es un `404`. En _Preview_ y en local la
   guarda no interviene y el panel se sirve sin la variable. Un valor ambiguo no abre nada: la guarda
   lo rechaza en cada petición a esa ruta (el sitio público sigue vivo).
-- **`ADMIN_PANEL_ENABLED` y `CATALOG_DEMO_MODE` son puertas independientes y suman:** con
-  `CATALOG_DEMO_MODE=true` (sin `DATABASE_URL` o con la variable activa) el contenedor sirve el
-  catálogo en memoria **y** el panel se considera accesible en _Production_, porque el E2E hermético
-  corre así. En _Production_ eso es una configuración inválida: la web no usa los datos reales de
-  Neon y la guarda de ADR-0023 §5 deja de cerrar el shell (el panel sigue detrás de la sesión de
-  ADR-0024). `scripts/despliegue-preflight.sh` marca `PENDIENTE` si `CATALOG_DEMO_MODE` está activa
-  en _Production_ y solo **informa** del estado de `ADMIN_PANEL_ENABLED`, que sí es un interruptor
+- **`ADMIN_PANEL_ENABLED` y `CATALOG_DEMO_MODE` son puertas independientes:** las dos pueden dejar
+  servido el shell, pero por vías distintas. El catálogo en memoria lo sirve el contenedor cuando
+  `CATALOG_DEMO_MODE=true` **o** cuando no hay `DATABASE_URL` (`src/composition/container.ts`),
+  mientras que la guarda de ADR-0023 §5 solo se abre con `CATALOG_DEMO_MODE=true`: un despliegue sin
+  `DATABASE_URL` y con `CATALOG_DEMO_MODE=false` sirve el catálogo de fixture pero mantiene el panel
+  **cerrado** (`404` con sesión válida). En _Production_, `CATALOG_DEMO_MODE=true` es inválido (la
+  web no usa los datos reales de Neon **y** la guarda deja de cerrar el shell, que sigue detrás de la
+  sesión de ADR-0024); la combinación válida es `CATALOG_DEMO_MODE` sin definir o a `false`, con
+  `ADMIN_PANEL_ENABLED=true` solo si el propietario decide servir el panel.
+  `scripts/despliegue-preflight.sh` marca `PENDIENTE` si `CATALOG_DEMO_MODE` está activa en
+  _Production_ y solo **informa** del estado de `ADMIN_PANEL_ENABLED`, que sí es un interruptor
   legítimo.
 - `NEXT_PUBLIC_SITE_URL` es pública por diseño (viaja al navegador). `DATABASE_URL` es un secreto: se
   marca como _Sensitive_ en Vercel y no se lee nunca desde el cliente.

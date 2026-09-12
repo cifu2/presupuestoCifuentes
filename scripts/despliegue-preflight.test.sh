@@ -13,7 +13,9 @@
 # bloquea la puesta en marcha (sirve el catálogo de fixture y abre la guarda de ADR-0023 §5); un
 # valor que `environmentFlag` rechaza también bloquea, porque el arranque no pasa de ahí;
 # `ADMIN_PANEL_ENABLED` solo se informa y su ausencia no es un pendiente; y si el valor no es
-# legible para el token, el preflight avisa sin bloquear en falso.
+# legible para el token, el preflight avisa sin bloquear en falso. La comparación replica a
+# `environmentFlag` de verdad (`z.stringbool()` no recorta): `" true "` no se da por bueno y un valor
+# con solo espacios cuenta como ausente (default `false`), no como valor ilegible.
 #
 # `curl` se sustituye por un doble que responde con datos canónicos de GitHub, Vercel y del
 # inventario de variables: no se llama a ninguna API real y no se usa ninguna credencial. Los valores
@@ -254,6 +256,25 @@ cat > "$TMP/env-demo-no-legible.json" <<'JSON'
 }
 JSON
 
+# Variantes de CIF-282: el inventario con la sesión completa más un interruptor, para no repetir
+# cinco bloques casi iguales. `sensitive` deja el valor sin leer, como hace la API de Vercel.
+con_interruptor() { # con_interruptor <destino> <clave> <tipo> [valor]
+  python3 - "$TMP/env-completo.json" "$1" "$2" "$3" "${4-}" <<'PY'
+import json
+import sys
+
+base, destino, clave, tipo, valor = sys.argv[1:6]
+with open(base, encoding="utf-8") as handle:
+    datos = json.load(handle)
+entrada = {"key": clave, "target": ["production"], "type": tipo}
+if tipo != "sensitive":
+    entrada["value"] = valor
+datos["envs"].append(entrada)
+with open(destino, "w", encoding="utf-8") as handle:
+    json.dump(datos, handle)
+PY
+}
+
 fallos=0
 pasa() { printf 'ok    %s\n' "$1"; }
 falla() {
@@ -382,7 +403,66 @@ else
   falla "un valor no legible de CATALOG_DEMO_MODE no se trata como INFO (código $codigo)"
 fi
 
-# Caso 9: contrato de redacción (ADR-0014): el informe no imprime ningún valor de credencial.
+# Caso 9: `CATALOG_DEMO_MODE=" false "` no es un booleano válido (`z.stringbool()` no recorta) y el
+# arranque no pasa, así que el preflight no puede informar OK (CIF-282 H5).
+con_interruptor "$TMP/env-demo-con-espacios.json" CATALOG_DEMO_MODE plain " false "
+ejecutar "$TMP/env-demo-con-espacios.json"
+codigo=$?
+if [[ "$codigo" -eq 1 ]] &&
+  grep -qE '^  PENDIENTE CATALOG_DEMO_MODE tiene un valor que el arranque rechaza' "$TMP/salida" &&
+  ! grep -qE 'CATALOG_DEMO_MODE desactivado' "$TMP/salida"; then
+  pasa "un valor con espacios no se recorta: CATALOG_DEMO_MODE bloquea en vez de dar un falso OK"
+else
+  falla "un CATALOG_DEMO_MODE con espacios se dio por bueno (código $codigo)"
+fi
+
+# Caso 10: ADMIN_PANEL_ENABLED=" true " revienta la guarda en cada petición -> PENDIENTE, no OK.
+con_interruptor "$TMP/env-panel-con-espacios.json" ADMIN_PANEL_ENABLED plain " true "
+ejecutar "$TMP/env-panel-con-espacios.json"
+codigo=$?
+if [[ "$codigo" -eq 1 ]] &&
+  grep -qE '^  PENDIENTE ADMIN_PANEL_ENABLED tiene un valor que la guarda rechaza' "$TMP/salida" &&
+  ! grep -qE 'ADMIN_PANEL_ENABLED activado' "$TMP/salida"; then
+  pasa "un ADMIN_PANEL_ENABLED con espacios no se informa como activado"
+else
+  falla "un ADMIN_PANEL_ENABLED con espacios se informó como activado (código $codigo)"
+fi
+
+# Caso 11: solo espacios es «ausente» (`environmentFlag` recorta y cae al default false) -> OK sin
+# bloqueo y sin tratar el valor como ilegible.
+con_interruptor "$TMP/env-demo-solo-espacios.json" CATALOG_DEMO_MODE plain "   "
+ejecutar "$TMP/env-demo-solo-espacios.json"
+codigo=$?
+if [[ "$codigo" -eq 0 ]] &&
+  grep -qE '^  OK .*CATALOG_DEMO_MODE solo tiene espacios' "$TMP/salida"; then
+  pasa "un valor con solo espacios cuenta como ausente (default false) y no bloquea"
+else
+  falla "un valor con solo espacios no se trató como ausente (código $codigo)"
+fi
+
+# Caso 12: ADMIN_PANEL_ENABLED con valor ambiguo -> PENDIENTE explícito y código 1 (rama `ko`).
+con_interruptor "$TMP/env-panel-ambiguo.json" ADMIN_PANEL_ENABLED plain "quizá"
+ejecutar "$TMP/env-panel-ambiguo.json"
+codigo=$?
+if [[ "$codigo" -eq 1 ]] &&
+  grep -qE '^  PENDIENTE ADMIN_PANEL_ENABLED tiene un valor que la guarda rechaza' "$TMP/salida"; then
+  pasa "un ADMIN_PANEL_ENABLED ambiguo bloquea y se explica"
+else
+  falla "un ADMIN_PANEL_ENABLED ambiguo no bloquea o no se explica (código $codigo)"
+fi
+
+# Caso 13: ADMIN_PANEL_ENABLED no legible (variable sensible) -> INFO, sin pendiente inventado.
+con_interruptor "$TMP/env-panel-no-legible.json" ADMIN_PANEL_ENABLED sensitive
+ejecutar "$TMP/env-panel-no-legible.json"
+codigo=$?
+if [[ "$codigo" -eq 0 ]] &&
+  grep -qE '^  INFO .*ADMIN_PANEL_ENABLED .*no es legible' "$TMP/salida"; then
+  pasa "un ADMIN_PANEL_ENABLED no legible avisa por INFO y no bloquea en falso"
+else
+  falla "un ADMIN_PANEL_ENABLED no legible no se trata como INFO (código $codigo)"
+fi
+
+# Caso 14: contrato de redacción (ADR-0014): el informe no imprime ningún valor de credencial.
 if grep -qF "$SENTINEL_GH" "$TMP/salida" || grep -qF "$SENTINEL_VERCEL" "$TMP/salida" ||
   grep -qF "$SENTINEL_DB" "$TMP/salida"; then
   falla "el informe imprime un valor de credencial"
