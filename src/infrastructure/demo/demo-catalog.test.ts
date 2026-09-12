@@ -10,11 +10,13 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { buildDemoCatalog } from './demo-catalog'
+import { createDemoCatalogStore } from './demo-catalog'
 
 describe('catálogo de demostración', () => {
   it('siembra un borrador publicable por proyecto de Playwright, sin solapes entre ellos', () => {
-    const { tariffVersions } = buildDemoCatalog()
+    // El mismo adaptador que compone la aplicación en modo demostración: el E2E muta este estado,
+    // así que la invariante se comprueba sobre las versiones que el servidor sirve de verdad.
+    const tariffVersions = createDemoCatalogStore().listTariffVersions()
     const published = tariffVersions.filter((version) => version.isPublished())
     const publishable = tariffVersions.filter(
       (version) =>
