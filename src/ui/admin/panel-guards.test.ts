@@ -54,6 +54,12 @@ const files = SOURCES.flatMap((directory) => readSources(directory, SOURCE_EXTEN
 /** Hojas de estilo del panel: `admin.css` y las que se añadan bajo las mismas raíces. */
 const styleFiles = SOURCES.flatMap((directory) => readSources(directory, STYLE_EXTENSIONS))
 
+/**
+ * El catálogo de mensajes también pinta en el panel: un pictograma metido en `messages/*.json` se
+ * ve igual que uno en el JSX, y la guarda de fuentes no lo miraba (H1 de CIF-300 → CIF-311).
+ */
+const messageFiles = readSources(MESSAGES, /\.json$/)
+
 function flatten(messages: Record<string, unknown>, prefix = ''): string[] {
   return Object.entries(messages).flatMap(([key, value]) => {
     const path = prefix === '' ? key : `${prefix}.${key}`
@@ -378,6 +384,17 @@ const NAMED_COLORS = [
   'yellow',
   'yellowgreen',
 ] as const
+
+/**
+ * Pictogramas de plataforma: emoji y glifos de presentación de texto, `U+2197` (↗) incluido. La
+ * guarda es la misma para el JSX y para `messages/`, y no lleva allowlist: la flecha salió del
+ * catálogo y la affordance la pinta un SVG del sistema de diseño.
+ */
+export function findPictographs(source: string): string[] {
+  return [
+    ...new Set([...source.matchAll(/\p{Extended_Pictographic}/gu)].map((match) => match[0] ?? '')),
+  ]
+}
 
 const COLOR_LITERALS = new RegExp(
   [
@@ -776,6 +793,10 @@ describe('guardas estáticas del panel', () => {
     expect(files.length).toBeGreaterThan(10)
   })
 
+  it('encuentra el catálogo de mensajes que debe revisar', () => {
+    expect(messageFiles.map(({ path }) => basename(path)).sort()).toEqual(['en.json', 'es.json'])
+  })
+
   it('encuentra el CSS del panel que debe revisar', () => {
     expect(styleFiles.map(({ path }) => basename(path))).toContain('admin.css')
   })
@@ -806,9 +827,9 @@ describe('guardas estáticas del panel', () => {
     expect(backdropBackground(adminCss?.content ?? '')).toBe('var(--color-scrim)')
   })
 
-  it('no usa glifos de plataforma: los iconos del panel son SVG del sistema de diseño', () => {
-    const withPictographs = files
-      .filter(({ content }) => /\p{Extended_Pictographic}/u.test(content))
+  it('no usa glifos de plataforma ni en las fuentes ni en el catálogo de mensajes', () => {
+    const withPictographs = [...files, ...messageFiles]
+      .filter(({ content }) => findPictographs(content).length > 0)
       .map(({ path }) => path)
 
     expect(withPictographs).toEqual([])
@@ -931,6 +952,15 @@ describe('control de mutación de las guardas de CIF-101', () => {
   const panelDirectory = SOURCES[0] ?? ''
   const adminCss = readFileSync(join(panelDirectory, 'admin.css'), 'utf8')
   const panelShell = readFileSync(join(panelDirectory, 'panel-shell.tsx'), 'utf8')
+  const messagesEs = readFileSync(join(MESSAGES, 'es.json'), 'utf8')
+
+  it('H1: un pictograma reintroducido en messages/es.json haría fallar la guarda de glifos', () => {
+    const mutated = messagesEs.replace('"viewSite": "Ver web"', '"viewSite": "Ver web ↗"')
+
+    expect(mutated).not.toBe(messagesEs)
+    expect(findPictographs(mutated)).toEqual(['↗'])
+    expect(findPictographs(messagesEs)).toEqual([])
+  })
 
   it('M1: un color literal en el backdrop de admin.css haría fallar la guarda de CSS', () => {
     const mutated = adminCss.replace(

@@ -81,3 +81,17 @@ export function CloseIcon({ className = 'size-5' }: { className?: string }) {
     </Glyph>
   )
 }
+
+/**
+ * Flecha de enlace saliente: acompaña a «Ver web» sin volver a pintar un glifo de plataforma (H1 de
+ * CIF-300 → CIF-311). Es decorativa: el nombre accesible del enlace lo pone su texto.
+ */
+export function ExternalIcon({ className = 'size-4' }: { className?: string }) {
+  return (
+    <Glyph className={className}>
+      <path d="M13.5 5.5h5v5" />
+      <path d="M18.5 5.5 11 13" />
+      <path d="M15.5 13.5V17a1.5 1.5 0 0 1-1.5 1.5H6.5A1.5 1.5 0 0 1 5 17V9.5A1.5 1.5 0 0 1 6.5 8H10" />
+    </Glyph>
+  )
+}

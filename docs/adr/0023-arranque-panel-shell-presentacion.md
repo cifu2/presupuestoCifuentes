@@ -72,6 +72,14 @@ Hechos verificados el 2026-09-12:
     botón muerto; y el menú móvil usa el mismo patrón que el `Modal`/`Sheet`: scrim con
     `--color-scrim`, foco al primer enlace al abrir y vuelta al botón al cerrar con `Esc` o con el
     scrim. No se abre ninguna superficie de escritura: la CTA sigue deshabilitada.
+12. **Follow-ups del polish (CIF-311).** Los dos hallazgos de severidad baja que dejó la revisión CIF-300
+    sobre el punto 11. (H1) La flecha `↗` de «Ver web» sale del catálogo de mensajes: la affordance la
+    pinta `ExternalIcon`, un SVG decorativo del mismo juego, y la guarda estática de pictogramas pasa a
+    escanear también `messages/*.json` —sin allowlist— para que un emoji introducido en una traducción
+    no se cuele. (H2) El menú móvil contiene el foco como el `Modal`/`Sheet`: `Tab` y `Shift+Tab` ciclan
+    entre el botón que lo abre y sus seis enlaces —`src/ui/admin/focus-trap.ts`, función pura con test
+    unitario— y el contenido que tapa el scrim queda `inert` mientras el menú está abierto. `Esc` y el
+    scrim siguen devolviendo el foco al botón.
 
 ## Consecuencias
 
