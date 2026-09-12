@@ -1125,7 +1125,7 @@ function PricePanel({ locale, price, errorKey, onRetry }: PricePanelProps) {
   return (
     <section
       aria-labelledby="precio"
-      className="fixed inset-x-0 bottom-0 z-30 flex flex-col gap-2 border-t border-border-strong bg-surface px-4 pb-3 pt-2 shadow-lg lg:static lg:z-auto lg:gap-3 lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none"
+      className="fixed inset-x-0 bottom-0 z-30 flex flex-col gap-2 border-t border-border bg-surface px-4 pb-3 pt-2 shadow-lg lg:static lg:z-auto lg:gap-3 lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none"
     >
       <h2 id="precio" className="sr-only text-xl font-semibold text-brand-900 lg:not-sr-only">
         {t('price.title')}

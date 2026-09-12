@@ -31,7 +31,7 @@ const DESIGN_TOKENS: readonly (readonly [string, string])[] = [
   ['--color-surface-muted', '#f7f7f5'],
   ['--color-surface-sunken', '#efeee9'],
   ['--color-border', '#e3e1dc'],
-  ['--color-border-strong', '#c9c6bf'],
+  ['--color-border-strong', '#857f75'],
   ['--color-ink-muted', '#5b6773'],
   ['--color-ink-inverse', '#ffffff'],
   ['--color-scrim', 'rgb(23 32 42 / 0.45)'],
@@ -87,6 +87,29 @@ function declaredTokens(css: string): Map<string, string> {
 
 const declared = declaredTokens(globalsCss)
 
+/** Linealiza un canal sRGB (definición de luminancia relativa de WCAG 2.1). */
+function channelToLinear(channel: number): number {
+  return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+}
+
+/** Luminancia relativa de un color `#rrggbb` según WCAG 2.1. */
+function relativeLuminance(hex: string): number {
+  const digits = hex.replace('#', '')
+  const channels = [0, 2, 4].map((offset) =>
+    channelToLinear(Number.parseInt(digits.slice(offset, offset + 2), 16) / 255),
+  )
+
+  return 0.2126 * (channels[0] ?? 0) + 0.7152 * (channels[1] ?? 0) + 0.0722 * (channels[2] ?? 0)
+}
+
+/** Ratio de contraste WCAG 2.1 entre dos colores opacos. */
+function contrastRatio(foreground: string, background: string): number {
+  const lighter = Math.max(relativeLuminance(foreground), relativeLuminance(background))
+  const darker = Math.min(relativeLuminance(foreground), relativeLuminance(background))
+
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
 describe('tokens de diseño en globals.css', () => {
   it('declara exactamente los tokens de `sistema-de-diseno` §2, sin duplicados ni sobrantes', () => {
     const expected = DESIGN_TOKENS.map(([name]) => name).sort()
@@ -112,6 +135,84 @@ describe('tokens de diseño en globals.css', () => {
     expect(globalsCss).toContain('--color-scrim: rgb(23 32 42 / 0.45);')
     expect(globalsCss).toMatch(
       /\/\*\s*backdrop de Modal\/Sheet[^*]*M1\/CIF-102[^*]*\*\/\s*--color-scrim:/,
+    )
+  })
+})
+
+/**
+ * §2.1 de `sistema-de-diseno` rev 5 fija la regla de contraste no textual (WCAG 2.1 1.4.11):
+ * cuando el contorno identifica o delimita un control, el borde da ≥3:1 contra **todas** las
+ * superficies adyacentes. El `it.each` de arriba fija el valor exacto; esto fija la regla, para que
+ * `--color-border-strong` no pueda volver a un gris claro sin romper la suite.
+ */
+describe('contraste no textual de `--color-border-strong` (§2.1 / WCAG 2.1 1.4.11)', () => {
+  it.each(['--color-surface', '--color-surface-muted', '--color-surface-sunken'] as const)(
+    'da ≥3:1 sobre %s',
+    (surface) => {
+      const border = declared.get('--color-border-strong') ?? ''
+      const background = declared.get(surface) ?? ''
+
+      expect(border).not.toBe('')
+      expect(background).not.toBe('')
+      expect(contrastRatio(border, background)).toBeGreaterThanOrEqual(3)
+    },
+  )
+
+  it('conserva el comentario que cita §2.1 y el ratio (trazabilidad del contrato)', () => {
+    expect(globalsCss).toMatch(/\/\*[^*]*§2\.1[^*]*\*\/\s*--color-border-strong:/)
+  })
+})
+
+/**
+ * §2.1 punto 2: ningún separador usa `border-strong`; su peso queda reservado al contorno de
+ * control. La guarda es estática a propósito: si reaparece un uso decorativo en cualquier
+ * componente de `src/**` (fuera de tests), la lista de apariciones deja de cuadrar con los cuatro
+ * usos de control, aunque el uso nuevo no cambie ningún ratio.
+ *
+ * Control de mutación: pasar a `border-border-strong` el marco de `EmptyState` o el borde de la
+ * barra de precio pone este test y el de «los dos usos decorativos» en rojo.
+ */
+describe('guarda estática de `border-strong` decorativo (§2.1 punto 2, CIF-365)', () => {
+  const USOS_DE_CONTROL = new Map([
+    ['ui/admin/panel-primitives.tsx', 1], // Button secundario
+    ['ui/admin/panel-shell.tsx', 2], // chips ES|EN + IconButton del menú
+    ['ui/admin/series-detail.tsx', 1], // campos de formulario
+  ])
+
+  const srcRoot = fileURLToPath(new URL('..', import.meta.url))
+
+  function componentes(): string[] {
+    return readdirSync(srcRoot, { recursive: true, encoding: 'utf8' }).filter(
+      (relative) => /\.(ts|tsx)$/.test(relative) && !relative.includes('.test.'),
+    )
+  }
+
+  function fuente(relative: string): string {
+    return readFileSync(join(srcRoot, relative), 'utf8')
+  }
+
+  it('solo los cuatro usos de control declaran `border-strong` en src/**', () => {
+    const apariciones = new Map<string, number>()
+
+    for (const relative of componentes()) {
+      const count = (fuente(relative).match(/border-border-strong/g) ?? []).length
+      if (count > 0) apariciones.set(relative, count)
+    }
+
+    const comoLineas = (entries: Iterable<[string, number]>) =>
+      [...entries].map(([file, count]) => `${file}:${count}`).sort()
+
+    expect(comoLineas(apariciones)).toEqual(comoLineas(USOS_DE_CONTROL))
+  })
+
+  it('los dos usos decorativos reasignados usan `--color-border`', () => {
+    // `EmptyState`: marco discontinuo de una región pasiva, no de un control.
+    expect(fuente('ui/admin/panel-primitives.tsx')).toContain(
+      'border border-dashed border-border bg-surface',
+    )
+    // Barra de precio fija en móvil: separador; ya se separa con `bg-surface` + `shadow-lg`.
+    expect(fuente('ui/configurator/configurator-app.tsx')).toContain(
+      'border-t border-border bg-surface',
     )
   })
 })

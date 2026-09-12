@@ -108,7 +108,7 @@ export function EmptyState({
   children?: ReactNode
 }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-card border border-dashed border-border-strong bg-surface px-6 py-12 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-card border border-dashed border-border bg-surface px-6 py-12 text-center">
       <span aria-hidden="true" className="text-brand-400">
         {icon}
       </span>

@@ -21,8 +21,9 @@
   --color-surface: #ffffff;
   --color-surface-muted: #f7f7f5; /* fondo de página (actual) */
   --color-surface-sunken: #efeee9;
-  --color-border: #e3e1dc;
-  --color-border-strong: #c9c6bf;
+  --color-border: #e3e1dc; /* separadores y bordes decorativos (exento de 1.4.11) */
+  /* contorno de control: 3.97 / 3.70 / 3.42:1 sobre surface / surface-muted / surface-sunken (§2.1 rev 5) */
+  --color-border-strong: #857f75;
   --color-ink-muted: #5b6773; /* texto secundario, 5.39:1 sobre surface-muted */
   --color-ink-inverse: #ffffff;
   /* backdrop de Modal/Sheet = brand-900 al 45 % (M1/CIF-102) */
