@@ -132,4 +132,51 @@ describe('SizeRange (tamaño máximo por serie)', () => {
       requiresManualQuote: false,
     })
   })
+
+  // N1 de CIF-62: el rango es inclusivo en sus dos extremos (`>` / `<`, no `>=` / `<=`). Un
+  // off-by-one aquí manda una puerta de 1200 × 2400 al presupuesto manual y pierde el precio
+  // automático sin que nada más se ponga rojo.
+  it('trata el mínimo y el máximo exactos como dentro de rango', () => {
+    const range = SizeRange.of({
+      minWidthMm: 700,
+      maxWidthMm: 1200,
+      minHeightMm: 1900,
+      maxHeightMm: 2400,
+    })
+
+    expect(range.assess(Dimensions.of(700, 1900))).toEqual({ status: 'within_range' })
+    expect(range.assess(Dimensions.of(1200, 2400))).toEqual({ status: 'within_range' })
+    expect(range.allows(Dimensions.of(700, 1900))).toBe(true)
+    expect(range.allows(Dimensions.of(1200, 2400))).toBe(true)
+  })
+
+  it('un solo milímetro fuera por cualquier extremo sale del rango', () => {
+    const range = SizeRange.of({
+      minWidthMm: 700,
+      maxWidthMm: 1200,
+      minHeightMm: 1900,
+      maxHeightMm: 2400,
+    })
+
+    expect(range.assess(Dimensions.of(699, 1900))).toEqual({
+      status: 'out_of_range',
+      violations: ['width_below_minimum'],
+      requiresManualQuote: false,
+    })
+    expect(range.assess(Dimensions.of(700, 1899))).toEqual({
+      status: 'out_of_range',
+      violations: ['height_below_minimum'],
+      requiresManualQuote: false,
+    })
+    expect(range.assess(Dimensions.of(1201, 2400))).toEqual({
+      status: 'out_of_range',
+      violations: ['width_above_maximum'],
+      requiresManualQuote: true,
+    })
+    expect(range.assess(Dimensions.of(1200, 2401))).toEqual({
+      status: 'out_of_range',
+      violations: ['height_above_maximum'],
+      requiresManualQuote: true,
+    })
+  })
 })
