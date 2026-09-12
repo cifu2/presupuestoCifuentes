@@ -6,7 +6,7 @@
   "Home": {
     "eyebrow": "Fabricantes de puertas a medida",
     "title": "Puertas Cifuentes · Presupuestos a medida",
-    "intro": "El configurador público estará disponible aquí. Esta página es el esqueleto del MVP y su única función ahora mismo es probar la estructura, el despliegue y la puerta de calidad.",
+    "intro": "Configura tu puerta a medida en unos minutos: elige serie, medidas, acabado y accesorios, y consulta el precio en vivo.",
     "scopeTitle": "Alcance del MVP",
     "scope": {
       "configurator": "Configurador público con vista previa 2D y precio en vivo",
@@ -14,7 +14,8 @@
       "quote": "Presupuesto en PDF y por email, multi-idioma",
       "admin": "Panel de administración para catálogo y precios"
     },
-    "footer": "Arquitectura hexagonal y SOLID · Next.js + PostgreSQL · Vercel"
+    "footer": "Arquitectura hexagonal y SOLID · Next.js + PostgreSQL · Vercel",
+    "cta": "Ir al configurador"
   },
   "LanguageSwitcher": {
     "label": "Idioma de la interfaz",
@@ -127,7 +128,6 @@
   },
   "ManualQuoteReasons": {
     "size_above_series_max": "La medida {width}×{height} mm supera el máximo de la serie \"{series}\" ({maxWidth}×{maxHeight} mm)",
-    "size_below_series_min": "La medida {width}×{height} mm está por debajo del mínimo de la serie \"{series}\" ({minWidth}×{minHeight} mm)",
     "finish_not_allowed": "El acabado \"{finish}\" no está disponible para la serie \"{series}\"",
     "color_not_allowed": "El color \"{color}\" no pertenece al acabado elegido",
     "accessory_not_allowed": "El accesorio \"{accessory}\" no está disponible para la serie \"{series}\"",
@@ -135,5 +135,178 @@
     "tariff_without_prices": "La tarifa vigente de la serie \"{series}\" todavía no tiene precios cargados",
     "no_size_band_covers_measurement": "Ninguna banda de medida de la tarifa cubre {width}×{height} mm",
     "customer_requested": "El cliente pide expresamente que le llamen"
+  },
+  "Preview2D": {
+    "title": "Configurador de puertas",
+    "panelTitle": "Elige tu puerta",
+    "intro": "Elige tipo, medidas, acabado y color: la vista previa 2D se actualiza al momento.",
+    "previewTitle": "Vista previa",
+    "region": "Vista previa 2D de la puerta configurada",
+    "regionDetail": "Vista previa: {type}, {width} × {height} mm, {finish}, {color}",
+    "colorUndefined": "Color a definir",
+    "summary": {
+      "measurement": "{width} × {height} mm",
+      "range": "Medidas admitidas de la serie: {minWidth}–{maxWidth} mm de ancho y {minHeight}–{maxHeight} mm de alto.",
+      "outOfRange": "La medida supera el tamaño máximo de la serie: pasa a presupuesto manual.",
+      "belowMinimum": "La medida no llega al mínimo de la serie.",
+      "live": "El precio lo calcula el servidor con el catálogo y la tarifa vigentes."
+    },
+    "form": {
+      "type": "Tipo de puerta",
+      "measurements": "Medidas",
+      "width": "Ancho (mm)",
+      "height": "Alto (mm)",
+      "finish": "Acabado y color",
+      "finishKind": "Acabado",
+      "color": "Color",
+      "hingeSide": "Mano",
+      "surface": "Superficie y remates",
+      "planking": "Superficie",
+      "moulding": "Enmarcado perimetral",
+      "twoToneFrame": "Bastidor en segundo color",
+      "glazing": "Huecos de cristal"
+    },
+    "types": {
+      "abatible1Hoja": "Abatible 1 hoja",
+      "abatible2Hojas": "Abatible 2 hojas",
+      "entradaAcorazada": "Acorazada de entrada",
+      "pivotante1Hoja": "Pivotante de 1 hoja",
+      "pivotante2Hoja": "Pivotante de 2 hojas"
+    },
+    "finishes": {
+      "lacado": "Lacado",
+      "chapaNatural": "Chapa natural",
+      "decoradoMadera": "Decorado madera",
+      "aluminio": "Aluminio",
+      "anodizado": "Anodizado",
+      "acero": "Acero",
+      "corten": "Corten",
+      "sinAcabado": "Sin acabado"
+    },
+    "colors": {
+      "ninguno": "Sin color definido"
+    },
+    "hingeSides": {
+      "izquierda": "Izquierda",
+      "derecha": "Derecha"
+    },
+    "plankings": {
+      "ninguna": "Lisa",
+      "tablones36": "Tablones de 36 cm",
+      "tablones54": "Tablones de 54 cm",
+      "tablonesCurvos36": "Tablones curvos de 36 cm",
+      "tablonesCurvos54": "Tablones curvos de 54 cm",
+      "duelasVerticales": "Duelas verticales",
+      "duelasHorizontales": "Duelas horizontales"
+    }
+  },
+  "Configurator": {
+    "belowMinimum": "El {dimension} mínimo de la serie es {min} mm.",
+    "intro": "Elige serie, tipo, medidas, acabado, color y accesorios. El precio se calcula en el servidor y se actualiza en vivo.",
+    "catalog": {
+      "retry": "Reintentar",
+      "series": "Serie",
+      "empty": "Todavía no hay ninguna serie publicada. Vuelve a intentarlo en unos minutos.",
+      "error": "No pudimos cargar los acabados, colores y accesorios de la serie. Vuelve a intentarlo.",
+      "noFinishes": "Sin acabados publicados"
+    },
+    "measurements": {
+      "errors": {
+        "not_integer": "Escribe la medida en milímetros, con números enteros.",
+        "below_minimum": "La medida mínima es 1 mm.",
+        "above_maximum": "La medida máxima es 10.000 mm."
+      },
+      "dimensions": {
+        "width": "ancho",
+        "height": "alto"
+      },
+      "manualNotice": "Esta medida no recibe precio automático: pasará a presupuesto manual."
+    },
+    "accessories": {
+      "title": "Accesorios",
+      "empty": "Esta serie no tiene accesorios publicados."
+    },
+    "extras": {
+      "title": "Extras",
+      "installation": "Instalación",
+      "shipping": "Portes",
+      "urgency": "Entrega urgente"
+    },
+    "discount": {
+      "label": "Código de descuento",
+      "placeholder": "Opcional"
+    },
+    "price": {
+      "title": "Precio",
+      "idle": "Completa las medidas para ver el precio.",
+      "loading": "Calculando el precio…",
+      "manual": "Esta configuración no tiene precio automático. Deja tus datos y te llamamos.",
+      "basePrice": "Precio base",
+      "subtotal": "Subtotal",
+      "tax": "IVA ({rate} %)",
+      "total": "Total",
+      "tariff": "Tarifa vigente: versión {version}.",
+      "retry": "Reintentar",
+      "errors": {
+        "generic": "No pudimos calcular el precio. Vuelve a intentarlo.",
+        "network": "No hay conexión con el servidor. Comprueba tu conexión e inténtalo de nuevo.",
+        "invalid": "La respuesta del servidor no tenía el formato esperado.",
+        "notFound": "Esa serie ya no está publicada. Elige otra.",
+        "validation": "Revisa las medidas: hay un dato que no es válido."
+      }
+    },
+    "quote": {
+      "title": "Solicitar presupuesto",
+      "cta": "Solicitar presupuesto",
+      "sending": "Enviando…",
+      "submit": "Recibir presupuesto",
+      "issuedTitle": "Presupuesto registrado",
+      "manualCreatedTitle": "Solicitud registrada",
+      "manualCreatedBody": "Te llamamos en menos de 24 horas laborables para cerrar el precio.",
+      "manualReason": "Pasa a presupuesto manual: {reason}",
+      "manualSubmit": "Que me llamen",
+      "reference": "Referencia",
+      "total": "Total",
+      "validUntil": "Válido hasta el {date}.",
+      "contactPrompt": "Te llamamos en menos de 24 horas laborables.",
+      "unavailable": "Completa una configuración con precio para solicitar tu presupuesto.",
+      "errors": {
+        "generic": "No pudimos registrar tu solicitud. Vuelve a intentarlo.",
+        "network": "No hay conexión con el servidor. Comprueba tu conexión e inténtalo de nuevo.",
+        "invalid": "La respuesta del servidor no tenía el formato esperado.",
+        "notFound": "Esa serie ya no está publicada. Elige otra.",
+        "validation": "Revisa los datos del formulario."
+      }
+    },
+    "contact": {
+      "intro": "Déjanos tus datos y te enviamos el presupuesto.",
+      "name": "Nombre",
+      "email": "Correo electrónico",
+      "phone": "Teléfono",
+      "message": "Mensaje",
+      "privacy": "Usamos estos datos solo para preparar y enviarte tu presupuesto.",
+      "errors": {
+        "name": {
+          "required": "Escribe tu nombre.",
+          "too_short": "El nombre es demasiado corto.",
+          "too_long": "El nombre es demasiado largo."
+        },
+        "email": {
+          "required": "Escribe tu correo electrónico.",
+          "invalid_email": "Ese correo electrónico no parece válido."
+        },
+        "phone": {
+          "too_short": "El teléfono es demasiado corto.",
+          "too_long": "El teléfono es demasiado largo."
+        },
+        "message": {
+          "too_long": "El mensaje es demasiado largo."
+        }
+      }
+    },
+    "draft": {
+      "restored": "Hemos recuperado la configuración que dejaste a medias.",
+      "discard": "Empezar de nuevo"
+    }
   }
 }

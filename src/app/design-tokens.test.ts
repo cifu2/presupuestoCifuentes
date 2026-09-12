@@ -114,3 +114,41 @@ describe('tokens de diseño en globals.css', () => {
     )
   })
 })
+
+/**
+ * Hallazgos de conformidad de CIF-211: E1 (foco), E4 (movimiento), E5 (táctil) y A2 (hex sueltos).
+ * Se comprueban sobre la hoja y los componentes cargados, no sobre una captura.
+ */
+describe('conformidad visual y de accesibilidad (CIF-211)', () => {
+  it('define el foco visible con el token de acento (E1)', () => {
+    expect(globalsCss).toMatch(
+      /:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--color-accent-500\);[^}]*outline-offset:\s*2px;/,
+    )
+  })
+
+  it('desactiva el movimiento no esencial con prefers-reduced-motion (E4)', () => {
+    expect(globalsCss).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)/)
+    expect(globalsCss).toMatch(/transition-duration:\s*0\.01ms\s*!important/)
+  })
+
+  it('sube los objetivos táctiles del configurador a 44 px en móvil/tablet (E5)', () => {
+    expect(globalsCss).toContain('.configurator-touch')
+    expect(globalsCss).toMatch(/min-height:\s*44px/)
+  })
+
+  it('el fondo de página usa el token de superficie, no un hex suelto (A2)', () => {
+    expect(globalsCss).toContain('background-color: var(--color-surface-muted);')
+    expect(globalsCss).not.toMatch(/background-color:\s*#f7f7f5/)
+  })
+
+  it('los componentes del configurador no llevan colores sueltos en clases (A2)', () => {
+    for (const file of [
+      '../ui/configurator/configurator-app.tsx',
+      '../ui/preview-2d/configurator.tsx',
+    ]) {
+      const source = readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8')
+
+      expect(source, file).not.toMatch(/bg-\[#[0-9a-fA-F]{3,8}\]/)
+    }
+  })
+})

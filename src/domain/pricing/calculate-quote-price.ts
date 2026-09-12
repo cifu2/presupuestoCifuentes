@@ -5,6 +5,9 @@
  * devuelve un desglose de líneas con subtotal, IVA y total, o el paso a presupuesto manual con su
  * motivo. No toca base de datos, red ni framework: se testea con tabla de casos.
  *
+ * Una medida **por debajo del mínimo** de la serie no es presupuesto manual: es una medida inválida
+ * para esa serie y lanza `InvalidMeasurementError` (decisión D1 de `modelo-visual-2d` §6, ADR-0022).
+ *
  * Orden de cálculo (determinista y documentado en docs/api.md):
  *   1. Se resuelve el precio base (por m², fijo o por banda de medida).
  *   2. Se suman los modificadores de adición (acabado, color, accesorios, instalación, portes,
@@ -15,6 +18,7 @@
 
 import type { DoorSeries } from '@/domain/catalog/series'
 import type { TariffVersion } from '@/domain/catalog/tariff-version'
+import { InvalidMeasurementError } from '@/domain/shared/errors'
 import { Money } from '@/domain/shared/money'
 
 import { assessConfigurationCompatibility } from './compatibility'
@@ -218,14 +222,11 @@ function assessSize(series: DoorSeries, configuration: QuoteConfiguration): Pric
     })
   }
 
-  return manualQuote({
-    kind: 'size_below_series_min',
-    widthMm: configuration.dimensions.widthMm,
-    heightMm: configuration.dimensions.heightMm,
-    seriesCode: series.code,
-    minWidthMm: series.sizeRange.minWidthMm,
-    minHeightMm: series.sizeRange.minHeightMm,
-  })
+  // Por debajo del mínimo no se ofrece presupuesto manual (D1): la medida no es fabricable en esa
+  // serie. El borde lo traduce a un 400 `INVALID_MEASUREMENT`; la vista lo valida en local.
+  throw new InvalidMeasurementError(
+    `La medida ${configuration.dimensions.widthMm}×${configuration.dimensions.heightMm} mm está por debajo del mínimo de la serie "${series.code}" (${series.sizeRange.minWidthMm}×${series.sizeRange.minHeightMm} mm)`,
+  )
 }
 
 function manualQuote(detail: ManualQuoteDetail): PriceResult {

@@ -6,7 +6,7 @@
   "Home": {
     "eyebrow": "Made-to-measure door manufacturers",
     "title": "Puertas Cifuentes · Made-to-measure quotes",
-    "intro": "The public configurator will be available here. This page is the MVP skeleton and, for now, its only job is to test the structure, the deployment and the quality gate.",
+    "intro": "Configure your made-to-measure door in minutes: choose a series, measurements, finish and accessories, and see the price live.",
     "scopeTitle": "MVP scope",
     "scope": {
       "configurator": "Public configurator with 2D preview and live price",
@@ -14,7 +14,8 @@
       "quote": "Quote as PDF and email, multilingual",
       "admin": "Admin panel for the catalogue and prices"
     },
-    "footer": "Hexagonal architecture and SOLID · Next.js + PostgreSQL · Vercel"
+    "footer": "Hexagonal architecture and SOLID · Next.js + PostgreSQL · Vercel",
+    "cta": "Go to the configurator"
   },
   "LanguageSwitcher": {
     "label": "Interface language",
@@ -127,7 +128,6 @@
   },
   "ManualQuoteReasons": {
     "size_above_series_max": "The measurement {width}×{height} mm exceeds the maximum size of the \"{series}\" series ({maxWidth}×{maxHeight} mm)",
-    "size_below_series_min": "The measurement {width}×{height} mm is below the minimum size of the \"{series}\" series ({minWidth}×{minHeight} mm)",
     "finish_not_allowed": "The \"{finish}\" finish is not available for the \"{series}\" series",
     "color_not_allowed": "The \"{color}\" colour does not belong to the chosen finish",
     "accessory_not_allowed": "The \"{accessory}\" accessory is not available for the \"{series}\" series",
@@ -135,5 +135,178 @@
     "tariff_without_prices": "The tariff in force for the \"{series}\" series does not have prices loaded yet",
     "no_size_band_covers_measurement": "No size band of the tariff covers {width}×{height} mm",
     "customer_requested": "The customer has expressly asked to be contacted"
+  },
+  "Preview2D": {
+    "title": "Door configurator",
+    "panelTitle": "Choose your door",
+    "intro": "Pick type, size, finish and colour: the 2D preview updates instantly.",
+    "previewTitle": "Preview",
+    "region": "2D preview of the configured door",
+    "regionDetail": "Preview: {type}, {width} × {height} mm, {finish}, {color}",
+    "colorUndefined": "Colour to be defined",
+    "summary": {
+      "measurement": "{width} × {height} mm",
+      "range": "Measurements accepted by the series: {minWidth}–{maxWidth} mm wide and {minHeight}–{maxHeight} mm high.",
+      "outOfRange": "The size exceeds the series maximum: it goes to a manual quote.",
+      "belowMinimum": "The size is below the series minimum.",
+      "live": "The server prices your configuration from the published catalogue and the tariff in force."
+    },
+    "form": {
+      "type": "Door type",
+      "measurements": "Measurements",
+      "width": "Width (mm)",
+      "height": "Height (mm)",
+      "finish": "Finish and colour",
+      "finishKind": "Finish",
+      "color": "Colour",
+      "hingeSide": "Handing",
+      "surface": "Surface and trims",
+      "planking": "Surface",
+      "moulding": "Perimeter moulding",
+      "twoToneFrame": "Frame in a second colour",
+      "glazing": "Glass cut-outs"
+    },
+    "types": {
+      "abatible1Hoja": "Single-leaf hinged door",
+      "abatible2Hojas": "Double-leaf hinged door",
+      "entradaAcorazada": "Armoured entrance door",
+      "pivotante1Hoja": "Single-leaf pivot door",
+      "pivotante2Hoja": "Double-leaf pivot door"
+    },
+    "finishes": {
+      "lacado": "Lacquered",
+      "chapaNatural": "Natural veneer",
+      "decoradoMadera": "Wood decor",
+      "aluminio": "Aluminium",
+      "anodizado": "Anodised",
+      "acero": "Steel",
+      "corten": "Corten",
+      "sinAcabado": "Unfinished"
+    },
+    "colors": {
+      "ninguno": "No colour defined"
+    },
+    "hingeSides": {
+      "izquierda": "Left",
+      "derecha": "Right"
+    },
+    "plankings": {
+      "ninguna": "Plain",
+      "tablones36": "36 cm boards",
+      "tablones54": "54 cm boards",
+      "tablonesCurvos36": "36 cm curved boards",
+      "tablonesCurvos54": "54 cm curved boards",
+      "duelasVerticales": "Vertical slats",
+      "duelasHorizontales": "Horizontal slats"
+    }
+  },
+  "Configurator": {
+    "belowMinimum": "The minimum {dimension} for the series is {min} mm.",
+    "intro": "Choose a series, type, measurements, finish, colour and accessories. The server prices it and updates live.",
+    "catalog": {
+      "retry": "Try again",
+      "series": "Series",
+      "empty": "There are no published series yet. Please try again in a few minutes.",
+      "error": "We could not load the finishes, colours and accessories for this series. Please try again.",
+      "noFinishes": "No published finishes"
+    },
+    "measurements": {
+      "errors": {
+        "not_integer": "Enter the measurement in millimetres, as a whole number.",
+        "below_minimum": "The minimum measurement is 1 mm.",
+        "above_maximum": "The maximum measurement is 10,000 mm."
+      },
+      "dimensions": {
+        "width": "width",
+        "height": "height"
+      },
+      "manualNotice": "This size has no automatic price: it will go to a manual quote."
+    },
+    "accessories": {
+      "title": "Accessories",
+      "empty": "This series has no published accessories."
+    },
+    "extras": {
+      "title": "Extras",
+      "installation": "Installation",
+      "shipping": "Delivery",
+      "urgency": "Express delivery"
+    },
+    "discount": {
+      "label": "Discount code",
+      "placeholder": "Optional"
+    },
+    "price": {
+      "title": "Price",
+      "idle": "Fill in the measurements to see the price.",
+      "loading": "Calculating the price…",
+      "manual": "This configuration has no automatic price. Leave your details and we will call you.",
+      "basePrice": "Base price",
+      "subtotal": "Subtotal",
+      "tax": "VAT ({rate}%)",
+      "total": "Total",
+      "tariff": "Tariff in force: version {version}.",
+      "retry": "Try again",
+      "errors": {
+        "generic": "We could not calculate the price. Please try again.",
+        "network": "No connection to the server. Check your connection and try again.",
+        "invalid": "The server response was not in the expected format.",
+        "notFound": "That series is no longer published. Please choose another one.",
+        "validation": "Check the measurements: one value is not valid."
+      }
+    },
+    "quote": {
+      "title": "Request a quote",
+      "cta": "Request a quote",
+      "sending": "Sending…",
+      "submit": "Get my quote",
+      "issuedTitle": "Quote saved",
+      "manualCreatedTitle": "Request saved",
+      "manualCreatedBody": "We will call you within 24 working hours to confirm the price.",
+      "manualReason": "Goes to a manual quote: {reason}",
+      "manualSubmit": "Call me back",
+      "reference": "Reference",
+      "total": "Total",
+      "validUntil": "Valid until {date}.",
+      "contactPrompt": "We will call you within 24 working hours.",
+      "unavailable": "Complete a priced configuration to request your quote.",
+      "errors": {
+        "generic": "We could not save your request. Please try again.",
+        "network": "No connection to the server. Check your connection and try again.",
+        "invalid": "The server response was not in the expected format.",
+        "notFound": "That series is no longer published. Please choose another one.",
+        "validation": "Check the form details."
+      }
+    },
+    "contact": {
+      "intro": "Leave your details and we will send you the quote.",
+      "name": "Name",
+      "email": "Email",
+      "phone": "Phone",
+      "message": "Message",
+      "privacy": "We use these details only to prepare and send your quote.",
+      "errors": {
+        "name": {
+          "required": "Enter your name.",
+          "too_short": "The name is too short.",
+          "too_long": "The name is too long."
+        },
+        "email": {
+          "required": "Enter your email address.",
+          "invalid_email": "That email address does not look valid."
+        },
+        "phone": {
+          "too_short": "The phone number is too short.",
+          "too_long": "The phone number is too long."
+        },
+        "message": {
+          "too_long": "The message is too long."
+        }
+      }
+    },
+    "draft": {
+      "restored": "We restored the configuration you left unfinished.",
+      "discard": "Start over"
+    }
   }
 }

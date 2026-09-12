@@ -20,7 +20,6 @@ export const MANUAL_QUOTE_REASONS_NAMESPACE = 'ManualQuoteReasons'
 /** Hechos que la API sabe traducir; el `satisfies` obliga a cubrir todo `ManualQuoteDetailKind`. */
 export const TRANSLATED_MANUAL_QUOTE_DETAIL_KINDS = [
   'size_above_series_max',
-  'size_below_series_min',
   'finish_not_allowed',
   'color_not_allowed',
   'accessory_not_allowed',
@@ -59,14 +58,6 @@ export function manualQuoteDetailParams(
         series: detail.seriesCode,
         maxWidth: detail.maxWidthMm,
         maxHeight: detail.maxHeightMm,
-      }
-    case 'size_below_series_min':
-      return {
-        width: detail.widthMm,
-        height: detail.heightMm,
-        series: detail.seriesCode,
-        minWidth: detail.minWidthMm,
-        minHeight: detail.minHeightMm,
       }
     case 'finish_not_allowed':
       return { finish: detail.finishId, series: detail.seriesCode }

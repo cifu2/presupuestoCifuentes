@@ -78,6 +78,29 @@ despliegues. La única palanca que evita el consumo es **no crear** el despliegu
    entorno en 24 h) y contrasta el ahorro real de B antes de dar la mitigación por suficiente, y decide
    con esos números si amplía B a `docs/**` con la guarda del punto 4 (tarea hija de CIF-151).
 
+## Revisión de 7 días (2026-09-12): B se amplía a `docs/**`
+
+La revisión con datos del punto 7 se hizo en **CIF-153** y decidió **ampliar B al preview de
+`docs/**`**, con la guarda de contenido del punto 4 como prerrequisito ya satisfecho (**CIF-155**). Este
+apartado **actualiza** la decisión sin reescribir los puntos aceptados.
+
+- **Números de la revisión** (ventana = vida del proyecto, `2026-09-11T17:17:31Z` →
+  `2026-09-12T01:31:29Z`): **113** despliegues (83 preview + 30 producción). Con B solo: 113 − 8 =
+  **105 > 100**. Con B + `docs/**`: 113 − 16 = **97 < 100**. Ahorro neto realista de `docs/**`: **8
+  (7,1 %)**, no 10: 2 de los previews «docs» eran de una rama `docs/cif34-...` que sí tocó código y que
+  con la guarda habría tenido que llamarse `ci/**`.
+- **La guarda existe y muerde**: `scripts/docs-preview-guard.sh` (job `calidad` de
+  `.github/workflows/ci.yml`) falla si una rama `docs/**` toca algo fuera de `docs/**` y `**/*.md`.
+  `scripts/docs-preview-guard.test.sh` cubre los casos y **mata la mutación** de la comprobación.
+- **`vercel.json`** añade `"docs/**": false` y `src/config/vercel-config.test.ts` fija la lista blanca
+  nueva (`archive/**`, `dependabot/**`, `docs/**`).
+- **C sigue aplazada**: se escala al **CEO** si, tras A + B, vuelve a quedarse sin despliegue de
+  producción un merge a `main`, o si el consumo sigue por encima de 100 despliegues en dos ventanas
+  consecutivas de 24 h.
+- **Medición de contraste pendiente** (CIF-155, punto 6): ≥24 h después del merge y con al menos un
+  push a `docs/**`, medir la ventana rodante y comprobar **0 despliegues** de `dependabot/**`,
+  `archive/**` y `docs/**`.
+
 ## Consecuencias
 
 - Producción puede seguir quedándose unos minutos (u horas) por detrás de `main` cuando la cuota se

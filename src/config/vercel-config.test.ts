@@ -34,10 +34,12 @@ describe('vercel.json: control del consumo de despliegues (ADR-0019)', () => {
   })
 
   it('solo apaga las ramas sin código de la aplicación, que no necesitan preview', () => {
-    // La lista blanca es la de ADR-0019: los PR de Dependabot los validan `calidad` y `e2e`
-    // (docs/despliegue.md §7) y las ramas `archive/**` ya están archivadas. Cualquier otra rama,
-    // incluidas `docs/**`, conserva su preview porque QA valida el PR ahí (Definition of Done).
-    expect(disabledBranches).toEqual(['archive/**', 'dependabot/**'])
+    // La lista blanca es la de ADR-0019, ampliada en la revisión de 7 días (CIF-153/CIF-155): los PR
+    // de Dependabot los validan `calidad` y `e2e` (docs/despliegue.md §7) y las ramas `archive/**` ya
+    // están archivadas. `docs/**` se apaga porque `scripts/docs-preview-guard.sh` falla si la rama
+    // toca algo fuera de `docs/**` y `**/*.md`; sin esa guardia el ahorro no está autorizado y este
+    // test obliga a justificarlo. Cualquier otra rama conserva su preview porque QA valida ahí.
+    expect(disabledBranches).toEqual(['archive/**', 'dependabot/**', 'docs/**'])
   })
 
   it('no usa `ignoreCommand`: el Ignored Build Step no ahorra cuota', () => {

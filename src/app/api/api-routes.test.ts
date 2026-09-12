@@ -140,6 +140,14 @@ describe('POST /api/quotes/price', () => {
     )
   })
 
+  it('rechaza la medida por debajo del mínimo: no es presupuesto manual (D1)', async () => {
+    const response = await post('/api/quotes/price', { ...CONFIGURATION, widthMm: 500 })
+    const body = await response.json()
+
+    expect(response.status).toBe(400)
+    expect(body.error.code).toBe('INVALID_MEASUREMENT')
+  })
+
   it('exige la serie y las medidas', async () => {
     const response = await post('/api/quotes/price', { widthMm: 900, heightMm: 2100 })
     const body = await response.json()
@@ -224,6 +232,20 @@ describe('POST /api/manual-quote-requests', () => {
 
     expect(response.status).toBe(200)
     expect(body.status).toBe('price_available')
+  })
+
+  it('rechaza una solicitud manual por debajo del mínimo: no hay presupuesto manual (D1)', async () => {
+    const response = await post('/api/manual-quote-requests', {
+      seriesSlug: 'ci-100',
+      widthMm: 500,
+      heightMm: 2100,
+      locale: 'es',
+      contact: { name: 'Cliente de prueba', email: 'cliente@example.com' },
+    })
+    const body = await response.json()
+
+    expect(response.status).toBe(400)
+    expect(body.error.code).toBe('INVALID_MEASUREMENT')
   })
 
   it('exige un contacto válido', async () => {
