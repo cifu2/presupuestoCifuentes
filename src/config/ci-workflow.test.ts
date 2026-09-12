@@ -49,6 +49,17 @@ describe('job `calidad` con base de datos de test', () => {
   it('espera a que el servicio esté sano antes de usar la base de datos', () => {
     expect(calidad).toMatch(/--health-cmd\s+"?pg_isready/)
   })
+
+  it('repite el fichero de integración de la entrega para dejar evidencia de la carrera (CIF-406)', () => {
+    // La carrera de los dos `deliverQuote` se fuerza dentro del test; esta repetición deja evidencia
+    // de N pasadas consecutivas en verde sin depender de que el scheduling del runner la provoque.
+    expect(calidad).toMatch(/repositories\.test\.ts/)
+    expect(calidad).toMatch(/seq 1 5/)
+
+    expect(calidad.indexOf('repositories.test.ts')).toBeGreaterThan(
+      calidad.indexOf('pnpm test:coverage'),
+    )
+  })
 })
 
 describe('checks requeridos en `main`', () => {
