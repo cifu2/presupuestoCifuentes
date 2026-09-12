@@ -80,7 +80,12 @@
     "unpublish": "Unpublish",
     "deactivate": "Deactivate",
     "editPrice": "Edit price",
-    "history": "Change history"
+    "history": "Change history",
+    "a11y": {
+      "locale": "Language",
+      "sidebarSections": "Panel sections",
+      "tabs": "Series sections"
+    }
   },
   "DomainErrors": {
     "INVALID_VALUE": "Some data has a value that is not valid.",
