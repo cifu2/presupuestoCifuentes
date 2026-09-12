@@ -3,6 +3,7 @@ import { hasLocale } from 'next-intl'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 
 import { buildLocaleAlternates } from '@/i18n/alternates'
+import { Link } from '@/i18n/navigation'
 import { routing } from '@/i18n/routing'
 import { LocaleSwitcher } from '@/ui/locale-switcher'
 
@@ -40,6 +41,13 @@ export default async function HomePage({ params }: HomePageProps) {
         </div>
         <h1 className="text-4xl font-bold text-brand-900">{t('title')}</h1>
         <p className="text-lg text-brand-700">{t('intro')}</p>
+        <Link
+          href="/configurador"
+          data-testid="home-cta"
+          className="self-start rounded-md bg-brand-900 px-4 py-2 font-medium text-white"
+        >
+          {t('cta')}
+        </Link>
       </header>
 
       <section aria-labelledby="alcance-mvp" className="flex flex-col gap-3">

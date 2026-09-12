@@ -214,6 +214,61 @@ function makeHarness(options: HarnessOptions = {}) {
   }
 }
 
+type RetryFailureKind = 'pdf' | 'email'
+
+/**
+ * Prepara dos versiones del mismo presupuesto, cada una con una entrega fallida, y reintenta las dos
+ * sin `version` forzando en cada grupo el motivo indicado. Devuelve el resultado combinado y el arnés
+ * para inspeccionar los dobles de frontera (CIF-233).
+ */
+async function retryTwoVersionsWithFailures(
+  failures: readonly [RetryFailureKind, RetryFailureKind],
+) {
+  const harness = makeHarness({ internalRecipients: [] })
+  const customers = [
+    { name: 'Cliente v1', email: 'v1@example.com' },
+    { name: 'Cliente v2', email: 'v2@example.com' },
+  ]
+
+  // Primera pasada: el email de cada versión falla, así que ambas quedan pendientes de reintento.
+  for (const [index, customer] of customers.entries()) {
+    harness.failEmails.add(customer.email)
+    await deliverQuote(harness.deps, {
+      reference: 'PC-2026-000001',
+      customer,
+      version: index + 1,
+    })
+    harness.failEmails.clear()
+  }
+
+  const pdfFailures = new Set(
+    failures.flatMap((failure, index) => (failure === 'pdf' ? [index + 1] : [])),
+  )
+
+  for (const [index, failure] of failures.entries()) {
+    if (failure === 'email') {
+      harness.failEmails.add(customers[index]!.email)
+    }
+  }
+
+  const working: DeliverQuoteDeps = {
+    ...harness.deps,
+    quotePdfRenderer: {
+      render: async (document) => {
+        if (pdfFailures.has(document.version)) {
+          throw new Error(`plantilla v${document.version} rota`)
+        }
+
+        return new Uint8Array([0x25, document.version])
+      },
+    },
+  }
+
+  const retried = await retryQuoteDeliveries(working, { reference: 'PC-2026-000001' })
+
+  return { harness, retried }
+}
+
 describe('deliverQuote', () => {
   it('persiste la entrega pendiente antes de renderizar el PDF y de enviar el email', async () => {
     const harness = makeHarness()
@@ -443,6 +498,131 @@ describe('deliverQuote', () => {
     expect(harness.sendCalls).toEqual([CUSTOMER.email])
     expect(harness.store.size()).toBe(1)
   })
+
+  it('reintenta sin versión entregas de varias versiones con el documento de cada una (CIF-187)', async () => {
+    const harness = makeHarness({ internalRecipients: [] })
+    const v1 = { name: 'Cliente v1', email: 'v1@example.com' }
+    const v2 = { name: 'Cliente v2', email: 'v2@example.com' }
+
+    // Dos versiones del mismo presupuesto fallan en el proveedor de correo.
+    harness.failEmails.add(v1.email)
+    await deliverQuote(harness.deps, { reference: 'PC-2026-000001', customer: v1, version: 1 })
+    harness.failEmails.clear()
+    harness.failEmails.add(v2.email)
+    await deliverQuote(harness.deps, { reference: 'PC-2026-000001', customer: v2, version: 2 })
+    harness.failEmails.clear()
+
+    // El PDF lleva la versión en sus bytes para comprobar qué documento recibe cada destinatario.
+    let renders = 0
+    const working: DeliverQuoteDeps = {
+      ...harness.deps,
+      quotePdfRenderer: {
+        render: async (document) => {
+          renders += 1
+
+          return new Uint8Array([0x25, document.version])
+        },
+      },
+    }
+
+    const retried = await retryQuoteDeliveries(working, { reference: 'PC-2026-000001' })
+
+    expect(retried.status).toBe('delivered')
+    expect(retried.version).toBe(1)
+    // Un render por versión: el documento de v1 no se reutiliza para los destinatarios de v2.
+    expect(renders).toBe(2)
+    expect(retried.deliveries.map((delivery) => [delivery.version, delivery.status])).toEqual([
+      [1, 'sent'],
+      [2, 'sent'],
+    ])
+    // Cada destinatario recibe el PDF de su versión, no el de la más antigua.
+    expect(harness.sent.map((message) => [message.to, message.attachments[0]?.content[1]])).toEqual(
+      [
+        [v1.email, 1],
+        [v2.email, 2],
+      ],
+    )
+  })
+
+  it('desempata el reintento multi-versión por el motivo de la versión más antigua (CIF-233)', async () => {
+    const { retried } = await retryTwoVersionsWithFailures(['pdf', 'email'])
+
+    expect(retried.status).toBe('incomplete')
+    expect(retried.version).toBe(1)
+    // Con dos grupos `incomplete` el motivo es el de la versión más antigua (la 1): no hay jerarquía
+    // entre `pdf_render_failed` y `email_send_failed`. Contrato congelado aquí (CIF-233).
+    expect(retried.reason).toBe('pdf_render_failed')
+    expect(retried.deliveries.map((delivery) => [delivery.version, delivery.status])).toEqual([
+      [1, 'failed'],
+      [2, 'failed'],
+    ])
+  })
+
+  it('el desempate no depende del motivo: el email de la más antigua gana al pdf de la más nueva (CIF-233)', async () => {
+    const { retried } = await retryTwoVersionsWithFailures(['email', 'pdf'])
+
+    expect(retried.status).toBe('incomplete')
+    expect(retried.version).toBe(1)
+    // Si mandara el motivo más severo en vez de la versión más antigua, aquí saldría
+    // `pdf_render_failed`; el contrato dice que manda el grupo de la versión 1.
+    expect(retried.reason).toBe('email_send_failed')
+  })
+
+  it('el reintento con `version` explícita acota render y entregas a esa versión (CIF-233)', async () => {
+    const harness = makeHarness({ internalRecipients: [] })
+    const v1 = { name: 'Cliente v1', email: 'v1@example.com' }
+    const v2 = { name: 'Cliente v2', email: 'v2@example.com' }
+
+    harness.failEmails.add(v1.email)
+    await deliverQuote(harness.deps, { reference: 'PC-2026-000001', customer: v1, version: 1 })
+    harness.failEmails.clear()
+    harness.failEmails.add(v2.email)
+    await deliverQuote(harness.deps, { reference: 'PC-2026-000001', customer: v2, version: 2 })
+    harness.failEmails.clear()
+
+    const retried = await retryQuoteDeliveries(harness.deps, {
+      reference: 'PC-2026-000001',
+      version: 2,
+    })
+
+    // Equivalente al camino anterior a CIF-187: un solo grupo, un solo render y sin tocar la v1.
+    expect(retried.status).toBe('delivered')
+    expect(retried.version).toBe(2)
+    expect(harness.renders()).toBe(3)
+    expect(harness.documents.at(-1)?.customer).toEqual({ name: v2.name, email: v2.email })
+    expect(retried.deliveries.map((delivery) => [delivery.version, delivery.status])).toEqual([
+      [2, 'sent'],
+    ])
+
+    const stored = await harness.deps.quoteDeliveryRepository.listByQuoteId(harness.quote.id)
+
+    expect(stored.map((delivery) => [delivery.version, delivery.status])).toEqual([
+      [1, 'failed'],
+      [2, 'sent'],
+    ])
+  })
+
+  it('el reintento con `version` explícita sin pendientes no renderiza y conserva esa versión (CIF-233)', async () => {
+    const harness = makeHarness({ internalRecipients: [] })
+
+    harness.failEmails.add(CUSTOMER.email)
+    await deliverQuote(harness.deps, {
+      reference: 'PC-2026-000001',
+      customer: CUSTOMER,
+      version: 1,
+    })
+    harness.failEmails.clear()
+
+    const retried = await retryQuoteDeliveries(harness.deps, {
+      reference: 'PC-2026-000001',
+      version: 9,
+    })
+
+    expect(retried.status).toBe('nothing_to_retry')
+    expect(retried.version).toBe(9)
+    expect(retried.pdfBytes).toBe(0)
+    expect(harness.renders()).toBe(1)
+  })
 })
 
 /**
@@ -456,19 +636,21 @@ function seedAttempts(
   options: {
     readonly audience?: QuoteDeliveryAudience
     readonly recipient?: string
+    readonly version?: number
     readonly lastError?: string
     readonly claimedAt?: Date | null
   } = {},
 ): QuoteDelivery {
   const audience = options.audience ?? 'customer'
   const recipient = options.recipient ?? CUSTOMER.email
+  const version = options.version ?? 1
   const claimedAt = options.claimedAt ?? null
 
   return QuoteDelivery.create({
-    id: `delivery-${audience}-seed`,
+    id: `delivery-${audience}-v${version}-seed`,
     quoteId: harness.quote.id,
     quoteReference: harness.quote.reference,
-    version: 1,
+    version,
     audience,
     recipient,
     customerName: audience === 'customer' ? CUSTOMER.name : null,
@@ -680,5 +862,70 @@ describe('tope de intentos de entrega (CIF-186)', () => {
 
     expect(stored?.attempts).toBe(1)
     expect(stored?.claimedAt).toEqual(NOW)
+  })
+
+  it('el reintento multi-versión informa del grupo terminal y entrega el que aún tiene intentos (CIF-186/CIF-187)', async () => {
+    const harness = makeHarness({ internalRecipients: [] })
+    const second = 'cliente-v2@example.com'
+
+    // La v1 agotó sus intentos; la v2 conserva intentos disponibles.
+    await harness.store.save(seedAttempts(harness, MAX_QUOTE_DELIVERY_ATTEMPTS))
+    await harness.store.save(seedAttempts(harness, 1, { version: 2, recipient: second }))
+
+    const retried = await retryQuoteDeliveries(harness.deps, { reference: 'PC-2026-000001' })
+
+    // El grupo terminal manda sobre el entregado: hay que emitir una versión nueva del documento.
+    expect(retried.status).toBe('attempts_exhausted')
+    expect(retried.reason).toBe('attempts_exhausted')
+    expect(harness.sendCalls).toEqual([second])
+    expect(retried.deliveries.map((delivery) => [delivery.version, delivery.status])).toEqual([
+      [1, 'failed'],
+      [2, 'sent'],
+    ])
+  })
+
+  it('con un grupo aún reintentable manda `incomplete`, no el terminal de la otra versión (CIF-186/CIF-187)', async () => {
+    const harness = makeHarness({ internalRecipients: [] })
+    const second = 'cliente-v2@example.com'
+
+    // La v1 agotó sus intentos y la v2 vuelve a fallar: el reintento de la v2 todavía puede progresar
+    // (misma precedencia que dentro de un grupo, CIF-195), así que no se informa de estado terminal.
+    await harness.store.save(seedAttempts(harness, MAX_QUOTE_DELIVERY_ATTEMPTS))
+    await harness.store.save(seedAttempts(harness, 1, { version: 2, recipient: second }))
+    harness.failEmails.add(second)
+
+    const retried = await retryQuoteDeliveries(harness.deps, { reference: 'PC-2026-000001' })
+
+    expect(retried.status).toBe('incomplete')
+    expect(retried.reason).toBe('email_send_failed')
+    expect(retried.deliveries.map((delivery) => [delivery.version, delivery.status])).toEqual([
+      [1, 'failed'],
+      [2, 'failed'],
+    ])
+  })
+
+  it('no repite en cada grupo las entregas agotadas de las otras versiones (CIF-186/CIF-187)', async () => {
+    const harness = makeHarness({ internalRecipients: [] })
+
+    await harness.store.save(seedAttempts(harness, MAX_QUOTE_DELIVERY_ATTEMPTS))
+    await harness.store.save(
+      seedAttempts(harness, MAX_QUOTE_DELIVERY_ATTEMPTS, {
+        version: 2,
+        recipient: 'cliente-v2@example.com',
+      }),
+    )
+
+    const retried = await retryQuoteDeliveries(harness.deps, { reference: 'PC-2026-000001' })
+
+    expect(retried.status).toBe('attempts_exhausted')
+    expect(harness.renders()).toBe(0)
+    expect(harness.sendCalls).toEqual([])
+    // Cada entrega aparece una sola vez, la de su grupo: ninguna se liquida dos veces.
+    expect(
+      retried.deliveries.map((delivery) => [delivery.version, delivery.recipient, delivery.status]),
+    ).toEqual([
+      [1, CUSTOMER.email, 'failed'],
+      [2, 'cliente-v2@example.com', 'failed'],
+    ])
   })
 })

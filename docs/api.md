@@ -24,32 +24,33 @@ En errores de validación se añade `issues: [{ "path": "widthMm", "message": "�
 
 ### Códigos de error
 
-| `code`                              | HTTP | Cuándo                                                   |
-| ----------------------------------- | ---- | -------------------------------------------------------- |
-| `VALIDATION_ERROR`                  | 400  | El cuerpo o el `locale` no cumple el contrato (Zod)      |
-| `INVALID_JSON`                      | 400  | El cuerpo no es JSON                                     |
-| `INVALID_VALUE`                     | 400  | Regla del dominio incumplida (configuración incoherente) |
-| `INVALID_MEASUREMENT`               | 400  | Medida fuera de 1–10000 mm                               |
-| `INVALID_SIZE_RANGE`                | 400  | Rango de medidas incoherente                             |
-| `INVALID_CATALOG_VALUE`             | 400  | Código, slug o dato de catálogo con formato inválido     |
-| `INVALID_CATALOG_TEXT`              | 400  | Texto de catálogo sin el idioma por defecto              |
-| `UNSUPPORTED_LOCALE`                | 400  | Idioma guardado no soportado                             |
-| `INVALID_VALIDITY_PERIOD`           | 400  | Vigencia de tarifa incoherente                           |
-| `INVALID_TARIFF`                    | 400  | Tabla de precios incoherente (bandas solapadas, etc.)    |
-| `INVALID_MANUAL_QUOTE_REQUEST`      | 400  | Solicitud manual incompleta                              |
-| `INVALID_QUOTE`                     | 400  | Presupuesto con desglose incoherente                     |
-| `INVALID_QUOTE_REFERENCE`           | 400  | Referencia con formato distinto de `PC-AAAA-NNNNNN`      |
-| `NOT_FOUND`                         | 404  | Serie, presupuesto o tarifa inexistente                  |
-| `AMBIGUOUS_TARIFF`                  | 409  | Más de una tarifa vigente para la misma serie            |
-| `INVALID_CATALOG_TRANSITION`        | 409  | Transición de estado no permitida en el catálogo         |
-| `INVALID_SERIES_TRANSITION`         | 409  | Transición de estado no permitida en una serie           |
-| `INVALID_MANUAL_QUOTE_TRANSITION`   | 409  | Transición no permitida en una solicitud manual          |
-| `INVALID_QUOTE_TRANSITION`          | 409  | Transición de estado no permitida en un presupuesto      |
-| `INVALID_QUOTE_DELIVERY`            | 400  | Entrega sin destinatarios válidos o dato inválido        |
-| `INVALID_QUOTE_DELIVERY_TRANSITION` | 409  | La entrega ya se envió y no se puede reintentar          |
-| `INTERNAL_ERROR`                    | 500  | Error inesperado (nunca se devuelve el detalle)          |
-| `ADMIN_API_DISABLED`                | 503  | El API del panel no tiene `ADMIN_API_TOKEN` configurado  |
-| `UNAUTHORIZED`                      | 401  | Credenciales de administración ausentes o inválidas      |
+| `code`                              | HTTP | Cuándo                                                                        |
+| ----------------------------------- | ---- | ----------------------------------------------------------------------------- |
+| `VALIDATION_ERROR`                  | 400  | El cuerpo o el `locale` no cumple el contrato (Zod)                           |
+| `INVALID_JSON`                      | 400  | El cuerpo no es JSON                                                          |
+| `INVALID_VALUE`                     | 400  | Regla del dominio incumplida (configuración incoherente)                      |
+| `INVALID_MEASUREMENT`               | 400  | Medida fuera de 1–10000 mm o por debajo del mínimo de la serie (ADR-0022)     |
+| `INVALID_SIZE_RANGE`                | 400  | Rango de medidas incoherente                                                  |
+| `INVALID_CATALOG_VALUE`             | 400  | Código, slug o dato de catálogo con formato inválido                          |
+| `INVALID_CATALOG_TEXT`              | 400  | Texto de catálogo sin el idioma por defecto                                   |
+| `UNSUPPORTED_LOCALE`                | 400  | Idioma guardado no soportado                                                  |
+| `INVALID_VALIDITY_PERIOD`           | 400  | Vigencia de tarifa incoherente                                                |
+| `INVALID_TARIFF`                    | 400  | Tabla de precios incoherente (bandas solapadas, etc.)                         |
+| `INVALID_MANUAL_QUOTE_REQUEST`      | 400  | Solicitud manual incompleta                                                   |
+| `INVALID_QUOTE`                     | 400  | Presupuesto con desglose incoherente                                          |
+| `INVALID_QUOTE_REFERENCE`           | 400  | Referencia con formato distinto de `PC-AAAA-NNNNNN`                           |
+| `INVALID_QUOTE_DELIVERY`            | 400  | Entrega sin destinatarios válidos o dato inválido                             |
+| `NOT_FOUND`                         | 404  | Serie, presupuesto o tarifa inexistente                                       |
+| `AMBIGUOUS_TARIFF`                  | 409  | Más de una tarifa vigente para la misma serie                                 |
+| `INVALID_CATALOG_TRANSITION`        | 409  | Transición de estado no permitida en el catálogo                              |
+| `INVALID_SERIES_TRANSITION`         | 409  | Transición de estado no permitida en una serie                                |
+| `INVALID_MANUAL_QUOTE_TRANSITION`   | 409  | Transición no permitida en una solicitud manual                               |
+| `INVALID_QUOTE_TRANSITION`          | 409  | Transición de estado no permitida en un presupuesto                           |
+| `INVALID_QUOTE_DELIVERY_TRANSITION` | 409  | La entrega ya se envió y no se puede reintentar                               |
+| `INTERNAL_ERROR`                    | 500  | Error inesperado (nunca se devuelve el detalle)                               |
+| `ADMIN_API_DISABLED`                | 503  | El API del panel no tiene ni token (`ADMIN_API_TOKEN`) ni sesión configurados |
+| `ADMIN_ACCESS_DISABLED`             | 503  | La sesión del panel no está configurada (`ADMIN_SESSION_SECRET`/credencial)   |
+| `UNAUTHORIZED`                      | 401  | Credenciales de administración ausentes o inválidas                           |
 
 ## Modos de ejecución
 
@@ -192,20 +193,22 @@ Respuesta sin precio automático (`200`), con el paso a presupuesto manual:
 }
 ```
 
-| `reason`                  | Significado                                                                  |
-| ------------------------- | ---------------------------------------------------------------------------- |
-| `size_exceeds_series_max` | La medida supera el tamaño máximo de la serie                                |
-| `no_tariff_in_force`      | La serie no tiene tarifa publicada vigente o le faltan precios               |
-| `uncovered_configuration` | Acabado, color, accesorio, medida por debajo del mínimo o banda no cubiertos |
-| `customer_requested`      | El cliente pide expresamente que le llamen                                   |
+| `reason`                  | Significado                                                    |
+| ------------------------- | -------------------------------------------------------------- |
+| `size_exceeds_series_max` | La medida supera el tamaño máximo de la serie                  |
+| `no_tariff_in_force`      | La serie no tiene tarifa publicada vigente o le faltan precios |
+| `uncovered_configuration` | Acabado, color, accesorio o banda de medida no cubiertos       |
+| `customer_requested`      | El cliente pide expresamente que le llamen                     |
 
 El `detail` va **traducido al `locale` pedido**: el dominio devuelve el hecho (`ManualQuoteDetail`)
 y el borde compone el texto con el namespace `ManualQuoteReasons` de `messages/<locale>.json`
 (ADR-0005). El motivo estable para ramificar en el cliente es siempre `reason`, nunca el texto.
 
-> **Mínimo y máximo no comparten motivo.** Por encima del máximo el motivo es
-> `size_exceeds_series_max`; por debajo del mínimo es `uncovered_configuration`
-> (sección "Reglas de cálculo", punto 1).
+> **El mínimo no es presupuesto manual.** Por encima del máximo el motivo es
+> `size_exceeds_series_max`; por debajo del mínimo la petición responde `400 INVALID_MEASUREMENT`
+> (error de validación, sin precio y sin presupuesto manual: el configurador lo pinta inline bajo el
+> campo). Si la configuración mezcla los dos sentidos, manda el máximo: `manual_quote_required` con
+> `size_exceeds_series_max` (ADR-0022, sección "Reglas de cálculo", punto 1).
 
 > **Tarifas solapadas.** El catálogo no admite dos versiones publicadas vigentes a la vez. La
 > defensa en escritura es `assertNoOverlappingPublishedTariffs`, que el flujo de publicación
@@ -215,8 +218,10 @@ y el borde compone el texto con el namespace `ManualQuoteReasons` de `messages/<
 
 ### Reglas de cálculo
 
-1. **Medida**: por encima del máximo (o por debajo del mínimo) de la serie → presupuesto manual
-   (`size_exceeds_series_max` para el máximo, `uncovered_configuration` para el mínimo).
+1. **Medida**: por encima del máximo de la serie → presupuesto manual (`size_exceeds_series_max`).
+   Por **debajo del mínimo** → `400 INVALID_MEASUREMENT`: la medida no es fabricable en esa serie y
+   el configurador la corrige inline, sin precio y sin presupuesto manual (ADR-0022). Si hay ambos
+   sentidos, prevalece el máximo.
 2. **Compatibilidad**: acabado, color y accesorios deben estar permitidos por la serie; el color debe
    pertenecer al acabado elegido.
 3. **Precio base** según la estrategia de la tarifa vigente: por m² (`precio × superficie`), por
@@ -322,7 +327,7 @@ envía. Un fallo **no pierde** el presupuesto.
   destinatario agotado hay que pedir una **versión nueva** del documento.
 - `502` `{ "status": "incomplete", "reason": "pdf_render_failed" | "email_send_failed", … }` si algo
   falló; el detalle por destinatario va en `deliveries` (`status`: `pending` | `sent` | `failed`,
-  con `attempts` y `lastError`). El presupuesto sigue emitido y se reintenta.
+  con `version`, `attempts` y `lastError`). El presupuesto sigue emitido y se reintenta.
 - `400` `INVALID_QUOTE_DELIVERY` si no hay ningún destinatario (ni cliente ni buzón interno).
 - `404 NOT_FOUND` si la referencia no existe.
 
@@ -347,6 +352,17 @@ mismo destinatario exige emitir una versión nueva del documento, que estrena co
 
 Reintenta las entregas pendientes o fallidas del presupuesto. Las ya enviadas **no** se reenvían.
 Cuerpo opcional `{ "version": 1 }` para acotar el reintento a una versión del documento.
+
+Sin `version` se reintentan las versiones que tengan entregas sin enviar. Cada versión tiene su
+propio documento, así que el reintento agrupa por versión y renderiza **un PDF por versión**: cada
+destinatario recibe el de la suya y el documento de una versión nunca se adjunta a los
+destinatarios de otra (CIF-187). En ese caso el `version` de la respuesta es el de la versión más
+antigua reintentada y cada entrada de `deliveries` lleva la suya. Si varias versiones quedan
+`incomplete` con motivos distintos, `reason` es el de la versión más antigua reintentada
+(`version` de la respuesta): no hay jerarquía entre `pdf_render_failed` y `email_send_failed`.
+Si una versión queda terminal y otra todavía reintentable, manda la reintentable (`502 incomplete`)
+con **su** motivo: informar del terminal ocultaría que el reintento aún puede progresar, y el
+terminal de la otra versión sigue visible en su entrada de `deliveries` (CIF-186/CIF-187).
 
 - `200` `{ "status": "delivered", … }` si el reintento salió bien.
 - `200` `{ "status": "nothing_to_retry", … }` si no quedaba nada por enviar (no renderiza el PDF).
@@ -408,14 +424,68 @@ configurador.
   escribe nada**: la invariante `assertNoOverlappingPublishedTariffs` se comprueba en el caso de uso
   antes del `INSERT`/`UPDATE`. Republicar una tarifa ya publicada es idempotente (no escribe).
 
-**Acceso.** El API del panel exige `Authorization: Bearer <ADMIN_API_TOKEN>`. Sin la variable
-configurada responde `503` `ADMIN_API_DISABLED` (nunca queda abierto) y con un token distinto
-responde `401` `UNAUTHORIZED`. Es una guarda **provisional** mientras CIF-9/CIF-14 cierran el acceso
-del propietario; la sesión real la sustituirá sin tocar los casos de uso.
+**Acceso.** El API del panel acepta dos credenciales (CIF-241,
+[ADR-0024](adr/0024-autenticacion-panel-sesion-firmada.md)):
+
+- `Authorization: Bearer <ADMIN_API_TOKEN>`, el token de operación; o
+- la cookie de sesión del panel (`admin_session`), para que la interfaz del propietario no tenga que
+  manejar el token.
+
+Si **ninguna** de las dos está configurada en el servidor responde `503` `ADMIN_API_DISABLED` (nunca
+queda abierto); sin una credencial válida responde `401` `UNAUTHORIZED`, tanto si falta la cabecera
+como si la cookie está manipulada o caducada.
 
 ```bash
 curl -s -X POST http://localhost:3000/api/admin/tariff-versions/<id>/publish \
   -H "Authorization: Bearer $ADMIN_API_TOKEN" | jq
+
+# O con la sesión del panel, sin token:
+curl -s -X POST http://localhost:3000/api/admin/tariff-versions/<id>/publish \
+  -b "admin_session=$ADMIN_SESSION_COOKIE" | jq
+```
+
+---
+
+## Sesión del panel: `POST|DELETE /api/admin/session`
+
+Canjea la credencial del propietario (`ADMIN_PANEL_PASSWORD`) por una **cookie de sesión firmada** y
+la borra (CIF-241, [ADR-0024](adr/0024-autenticacion-panel-sesion-firmada.md)). La comparación de la
+credencial ocurre **solo en el servidor**, en tiempo constante; la cookie es
+`admin_session=v1.<payload>.<firma HMAC-SHA256>` con `HttpOnly`, `SameSite=Lax`, `Path=/`,
+`Max-Age=28800` (8 h) y `Secure` cuando la petición llega por HTTPS.
+
+### `POST /api/admin/session`
+
+- Cuerpo: `{ "password": "…" }` (1–200 caracteres; se valida con Zod en el borde).
+- `200` con `{ "data": { "expiresAt": "<ISO 8601>" } }` y `Set-Cookie: admin_session=…`.
+- `401` `UNAUTHORIZED` si la credencial no es válida (no se emite cookie).
+- `400` `VALIDATION_ERROR` / `INVALID_JSON` si el cuerpo no cumple el contrato.
+- `503` `ADMIN_ACCESS_DISABLED` si el despliegue no tiene `ADMIN_SESSION_SECRET` o credencial
+  configurados, o si son más cortos que 32 y 16 caracteres respectivamente (falla cerrado).
+
+### `DELETE /api/admin/session`
+
+- `200` con `{ "data": { "status": "signed_out" } }` y borra la cookie (`Max-Age=0`).
+
+La página que consume estos endpoints es `/[locale]/acceso` (fuera del panel, `noindex`, i18n es/en).
+La guarda de `/[locale]/admin/**` vive en `src/proxy.ts`: sin cookie válida redirige a
+`/[locale]/acceso?next=<destino>` y no renderiza nada del panel. La decisión se toma sobre la ruta
+**normalizada** —se decodifican los segmentos (también la doble codificación), se recortan los espacios
+ASCII de los extremos como hace el router de Next, se colapsan barras y se resuelven `.`/`..`—, así
+que `/es/%61dmin`, `/es/admin%00` o `/es/admin%20` también van al acceso (B1/B1′ de CIF-246). El
+`matcher` del Proxy cubre todo lo que no sea API o estáticos de Next/Vercel (con `next()` sin i18n
+para las rutas con punto), de modo que una ruta con punto (`/es/admin/series/x.y`) o con espacio y
+punto (`/es/admin%20/series/x.y`) pasa por la guarda (B2/B1′). El destino `next` se normaliza y solo
+admite volver al panel propio; si no vale, se vuelve a `/[locale]/admin`.
+
+```bash
+# Acceso (guarda la cookie en un tarro)
+curl -s -c cookies.txt -X POST http://localhost:3000/api/admin/session \
+  -H 'content-type: application/json' \
+  -d "{\"password\":\"$ADMIN_PANEL_PASSWORD\"}" | jq
+
+# Cierre de sesión
+curl -s -b cookies.txt -X DELETE http://localhost:3000/api/admin/session | jq
 ```
 
 ---

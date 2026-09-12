@@ -11,6 +11,7 @@ import {
   makeTariffVersion,
   TEST_NOW,
 } from '@/domain/catalog/testing/factories'
+import { InvalidMeasurementError } from '@/domain/shared/errors'
 import { Money } from '@/domain/shared/money'
 
 import { calculateQuotePrice, type CalculateQuotePriceInput } from './calculate-quote-price'
@@ -122,22 +123,23 @@ describe('calculateQuotePrice', () => {
     })
   })
 
-  it('pasa a presupuesto manual cuando la medida no llega al mínimo de la serie', () => {
+  it('rechaza la medida por debajo del mínimo de la serie: no es presupuesto manual (D1)', () => {
+    expect(() =>
+      calculateQuotePrice(
+        input({ configuration: makeConfiguration({ widthMm: 400, heightMm: 2100 }) }),
+      ),
+    ).toThrow(InvalidMeasurementError)
+  })
+
+  it('con el ancho por encima del máximo y el alto por debajo del mínimo manda el máximo', () => {
     const result = calculateQuotePrice(
-      input({ configuration: makeConfiguration({ widthMm: 400, heightMm: 2100 }) }),
+      input({ configuration: makeConfiguration({ widthMm: 1500, heightMm: 1000 }) }),
     )
 
     expect(result).toMatchObject({
       status: 'manual_quote_required',
-      reason: 'uncovered_configuration',
-      detail: {
-        kind: 'size_below_series_min',
-        widthMm: 400,
-        heightMm: 2100,
-        seriesCode: 'CI-100',
-        minWidthMm: 600,
-        minHeightMm: 1800,
-      },
+      reason: 'size_exceeds_series_max',
+      detail: { kind: 'size_above_series_max' },
     })
   })
 

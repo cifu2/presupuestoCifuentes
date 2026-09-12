@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -112,5 +113,53 @@ describe('tokens de diseño en globals.css', () => {
     expect(globalsCss).toMatch(
       /\/\*\s*backdrop de Modal\/Sheet[^*]*M1\/CIF-102[^*]*\*\/\s*--color-scrim:/,
     )
+  })
+})
+
+/**
+ * Hallazgos de conformidad de CIF-211: E1 (foco), E4 (movimiento), E5 (táctil) y A2 (hex sueltos).
+ * Se comprueban sobre la hoja y los componentes cargados, no sobre una captura.
+ */
+describe('conformidad visual y de accesibilidad (CIF-211)', () => {
+  it('define el foco visible con el token de acento (E1)', () => {
+    expect(globalsCss).toMatch(
+      /:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--color-accent-500\);[^}]*outline-offset:\s*2px;/,
+    )
+  })
+
+  it('desactiva el movimiento no esencial con prefers-reduced-motion (E4)', () => {
+    expect(globalsCss).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)/)
+    expect(globalsCss).toMatch(/transition-duration:\s*0\.01ms\s*!important/)
+  })
+
+  it('sube los objetivos táctiles del configurador a 44 px en móvil/tablet (E5)', () => {
+    expect(globalsCss).toContain('.configurator-touch')
+    expect(globalsCss).toMatch(/min-height:\s*44px/)
+  })
+
+  it('el fondo de página usa el token de superficie, no un hex suelto (A2)', () => {
+    expect(globalsCss).toContain('background-color: var(--color-surface-muted);')
+    expect(globalsCss).not.toMatch(/background-color:\s*#f7f7f5/)
+  })
+
+  it('ningún componente de src/ui lleva un color suelto (A2, hallazgo 7 de CIF-240)', () => {
+    const root = fileURLToPath(new URL('../ui', import.meta.url))
+    // Única excepción: la pintura normativa del modelo 2D (`modelo-visual-2d` rev 5 §4).
+    const allowlist = new Set(['preview-2d/model.ts'])
+    const offenders: string[] = []
+
+    for (const relative of readdirSync(root, { recursive: true, encoding: 'utf8' })) {
+      if (!/\.(ts|tsx)$/.test(relative) || relative.includes('.test.') || allowlist.has(relative)) {
+        continue
+      }
+
+      const source = readFileSync(join(root, relative), 'utf8')
+
+      for (const [hex] of source.matchAll(/#[0-9a-fA-F]{3,8}\b/g)) {
+        offenders.push(`${relative}: ${hex}`)
+      }
+    }
+
+    expect(offenders).toEqual([])
   })
 })
