@@ -24,6 +24,7 @@ que supersede al anterior y se marca el antiguo como `Superseded por ADR-XXXX`.
 | [0014](0014-manejo-y-rotacion-de-secretos.md)            | Manejo, barrido y rotación de secretos de operación                    | Aceptado |
 | [0015](0015-base-de-datos-de-produccion.md)              | Destino de la base de datos de producción y `DATABASE_URL` por entorno | Aceptado |
 | [0016](0016-alcance-tipos-puerta-mvp-2d.md)              | Alcance de tipos de puerta del MVP en el configurador 2D               | Aceptado |
+| [0018](0018-contrato-tokens-diseno-y-override-global.md) | Contrato de 42 tokens de diseño y override global de radios y sombras  | Aceptado |
 
 ## Cuándo hace falta un ADR
 
