@@ -71,7 +71,7 @@ jobs:
         run: ./scripts/vercel-bootstrap.test.sh
       - name: Test del paso de release (migraciones)
         run: ./scripts/release.test.sh
-      - name: Avisos del preflight de despliegue (ADMIN_API_TOKEN y sesión del panel, CIF-123/CIF-241)
+      - name: Avisos del preflight de despliegue (variables de Production y sesión del panel, CIF-123/CIF-129/CIF-241)
         run: ./scripts/despliegue-preflight.test.sh
       - name: Test de la guardia de preview de las ramas docs/** (ADR-0019, CIF-155)
         run: ./scripts/docs-preview-guard.test.sh

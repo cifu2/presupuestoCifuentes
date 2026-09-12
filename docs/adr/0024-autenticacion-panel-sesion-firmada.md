@@ -91,7 +91,9 @@
   almacén externo y es trabajo propio si el riesgo lo pide.
 - **Trabajo que genera:** DevOps debe inyectar `ADMIN_SESSION_SECRET` y `ADMIN_PANEL_PASSWORD` en
   _Production_ (y, si se quiere probar el acceso en preview, en _Preview_) y ampliar
-  `scripts/despliegue-preflight.sh` para avisar si faltan, igual que ya hace con `ADMIN_API_TOKEN`.
+  `scripts/despliegue-preflight.sh` para avisar si faltan (CIF-241). `ADMIN_API_TOKEN` **no** se
+  exige en _Production_: es la credencial opcional de automatización y el propietario entra con la
+  sesión (CIF-123).
   Prueba de regresión de esta decisión: los tests de `admin-session`, `admin-guard` y `admin-auth`, y
   el E2E `e2e/admin-auth.spec.ts` en `chromium` y `movil`.
 - **Endurecimiento pendiente (no bloqueante):** la cookie no usa el prefijo `__Host-` porque en local
