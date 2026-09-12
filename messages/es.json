@@ -351,7 +351,7 @@
     "catalog": {
       "retry": "Reintentar",
       "series": "Serie",
-      "empty": "Todavía no hay ninguna serie publicada. Vuelve a intentarlo en unos minutos.",
+      "empty": "Todavía no hay ninguna serie publicada.",
       "error": "No pudimos cargar los acabados, colores y accesorios de la serie. Vuelve a intentarlo.",
       "noFinishes": "Sin acabados publicados"
     },

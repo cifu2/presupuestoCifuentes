@@ -351,7 +351,7 @@
     "catalog": {
       "retry": "Try again",
       "series": "Series",
-      "empty": "There are no published series yet. Please try again in a few minutes.",
+      "empty": "There are no published series yet.",
       "error": "We could not load the finishes, colours and accessories for this series. Please try again.",
       "noFinishes": "No published finishes"
     },

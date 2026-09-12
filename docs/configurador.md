@@ -41,6 +41,9 @@ El catálogo y los precios son **datos**, no código ([ADR-0020](adr/0020-config
 
 ## Recuperación ante fallos
 
+- Sin catálogo publicado el configurador pinta un **estado estable** (`catalog-empty`), no un error:
+  es el estado esperado hasta que el propietario carga el catálogo (ADR-0015 §7) y puede durar días o
+  semanas, así que su copy no promete ningún reintento (ADR-0026 §3, CIF-430).
 - Un fallo del precio muestra el error traducido con un botón **Reintentar** que relanza la petición
   con la misma configuración (no basta con limpiar el error: volvería a quedar vacío).
 - Si la ficha de una serie no carga (red o `INVALID_RESPONSE`), la serie no se marca como pedida: al
