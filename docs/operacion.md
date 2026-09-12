@@ -37,10 +37,17 @@ Decisiones asociadas: [ADR-0007](adr/0007-despliegue-vercel-github.md) y
 
 ## 3. Monitorización
 
-- **Salud de la aplicación:** `GET /api/health` devuelve `status`, `environment` y
-  `database: "configured" | "unconfigured"`. `environment` sale de `VERCEL_ENV` (`production` o
-  `preview`; `NODE_ENV` fuera de Vercel), así que el monitor distingue producción de preview. Se usa
-  como comprobación manual tras cada release y como sonda del monitor externo.
+- **Salud de la aplicación:** `GET /api/health` devuelve `status`, `environment` y `database`.
+  `environment` sale de `VERCEL_ENV` (`production` o `preview`; `NODE_ENV` fuera de Vercel), así que
+  el monitor distingue producción de preview. `database` tiene tres estados (ADR-0015 §5):
+  - `unconfigured`: no hay `DATABASE_URL` (o `CATALOG_DEMO_MODE=true`). HTTP **200**.
+  - `ok`: la base responde a `SELECT 1`. HTTP **200**.
+  - `unreachable`: hay `DATABASE_URL` pero la consulta falla o no responde en **2 s**. HTTP **503**,
+    con `status: "degraded"`. El monitor de uptime se dispara aquí, que es justo lo que no ocurría
+    durante la avería del 2026-09-11 (ADR-0015).
+  - El cuerpo nunca incluye la cadena de conexión ni credenciales, y el `console.error` del
+    adaptador solo registra un mensaje fijo (el error del driver puede contener la URL).
+  - Se usa como comprobación manual tras cada release y como sonda del monitor externo.
 - **Monitorización básica sin coste añadido:**
   - _Deployment notifications_ de Vercel al correo del propietario/CTO en cada despliegue de
     producción (éxito y fallo).

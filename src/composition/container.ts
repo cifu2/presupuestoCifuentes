@@ -4,6 +4,7 @@ import type {
   FinishRepository,
 } from '@/application/ports/catalog-item-repositories'
 import type { Clock } from '@/application/ports/clock'
+import type { HealthProbe } from '@/application/ports/health-probe'
 import type { IdGenerator } from '@/application/ports/id-generator'
 import type { ManualQuoteRequestRepository } from '@/application/ports/manual-quote-request-repository'
 import type { QuoteNumberSequence } from '@/application/ports/quote-number-sequence'
@@ -15,6 +16,7 @@ import { env } from '@/config/env'
 import { SystemClock } from '@/infrastructure/clock/system-clock'
 import { createDemoCatalogStore } from '@/infrastructure/demo/demo-catalog'
 import { CryptoIdGenerator } from '@/infrastructure/id/crypto-id-generator'
+import { PrismaHealthProbe } from '@/infrastructure/persistence/prisma/health-probe'
 import {
   InMemoryAccessoryRepository,
   InMemoryColorRepository,
@@ -55,6 +57,11 @@ export type CatalogMode = 'prisma' | 'demo'
 export interface Container {
   readonly mode: CatalogMode
   readonly clock: Clock
+  /**
+   * Sonda de salud de la base. `null` en modo demo: la sonda de `/api/health` informa
+   * `unconfigured` y nunca devuelve 503 (ADR-0015 §5).
+   */
+  readonly healthProbe: HealthProbe | null
   readonly idGenerator: IdGenerator
   readonly seriesRepository: SeriesRepository
   readonly finishRepository: FinishRepository
@@ -75,6 +82,7 @@ function createDemoContainer(): Container {
   return {
     mode: 'demo',
     clock: new SystemClock(),
+    healthProbe: null,
     idGenerator: new CryptoIdGenerator(),
     seriesRepository: new InMemorySeriesRepository(catalog),
     finishRepository: new InMemoryFinishRepository(catalog),
@@ -95,6 +103,7 @@ function createPrismaContainer(connectionString: string): Container {
   return {
     mode: 'prisma',
     clock: new SystemClock(),
+    healthProbe: new PrismaHealthProbe(prisma),
     idGenerator: new CryptoIdGenerator(),
     seriesRepository: new PrismaSeriesRepository(prisma),
     finishRepository: new PrismaFinishRepository(prisma),
