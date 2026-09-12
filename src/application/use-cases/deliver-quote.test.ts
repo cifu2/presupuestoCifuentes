@@ -433,4 +433,49 @@ describe('deliverQuote', () => {
     expect(harness.sendCalls).toEqual([CUSTOMER.email])
     expect(harness.store.size()).toBe(1)
   })
+
+  it('reintenta sin versión entregas de varias versiones con el documento de cada una (CIF-187)', async () => {
+    const harness = makeHarness({ internalRecipients: [] })
+    const v1 = { name: 'Cliente v1', email: 'v1@example.com' }
+    const v2 = { name: 'Cliente v2', email: 'v2@example.com' }
+
+    // Dos versiones del mismo presupuesto fallan en el proveedor de correo.
+    harness.failEmails.add(v1.email)
+    await deliverQuote(harness.deps, { reference: 'PC-2026-000001', customer: v1, version: 1 })
+    harness.failEmails.clear()
+    harness.failEmails.add(v2.email)
+    await deliverQuote(harness.deps, { reference: 'PC-2026-000001', customer: v2, version: 2 })
+    harness.failEmails.clear()
+
+    // El PDF lleva la versión en sus bytes para comprobar qué documento recibe cada destinatario.
+    let renders = 0
+    const working: DeliverQuoteDeps = {
+      ...harness.deps,
+      quotePdfRenderer: {
+        render: async (document) => {
+          renders += 1
+
+          return new Uint8Array([0x25, document.version])
+        },
+      },
+    }
+
+    const retried = await retryQuoteDeliveries(working, { reference: 'PC-2026-000001' })
+
+    expect(retried.status).toBe('delivered')
+    expect(retried.version).toBe(1)
+    // Un render por versión: el documento de v1 no se reutiliza para los destinatarios de v2.
+    expect(renders).toBe(2)
+    expect(retried.deliveries.map((delivery) => [delivery.version, delivery.status])).toEqual([
+      [1, 'sent'],
+      [2, 'sent'],
+    ])
+    // Cada destinatario recibe el PDF de su versión, no el de la más antigua.
+    expect(harness.sent.map((message) => [message.to, message.attachments[0]?.content[1]])).toEqual(
+      [
+        [v1.email, 1],
+        [v2.email, 2],
+      ],
+    )
+  })
 })
