@@ -101,6 +101,26 @@ servidores propios en ningún entorno ([ADR-0007](adr/0007-despliegue-vercel-git
    de arriba (paso de runbook) en vez de un script con su test: es la guarda más barata que deja la
    restauración comprobada sin abrir una rama con código ni gastar un preview.
 
+### 2.2 Alcance de la validación en _Preview_ (CIF-332)
+
+El preview de un PR es un entorno desplegado sobre la base de datos desechable de preview y, desde
+CIF-332, con `ADMIN_API_TOKEN` definido con el **valor de pruebas del repositorio**
+([variables-entorno.md](variables-entorno.md) §1.1). Eso fija qué se valida ahí y qué no:
+
+- **Sí se valida en _Preview_:** el camino público del presupuesto —emisión y descarga del PDF,
+  `GET /api/quotes/<referencia>/pdf`— y la entrega y el reintento por el API del panel
+  (`POST /api/quotes/<referencia>/delivery` y `POST /api/quotes/<referencia>/delivery/retry`) con
+  `Authorization: Bearer <token de pruebas>`. Sin credencial esos endpoints responden `401` —no
+  `503`—, que es la señal de que la guarda decide en lugar de rendirse por falta de configuración.
+- **No se valida en _Preview_:** el envío real por Resend. `RESEND_*` no está definido en _Preview_
+  (condición de la decisión de CIF-332), así que la raíz de composición usa el **adaptador de
+  consola** ([ADR-0004](adr/0004-presupuesto-pdf-y-email.md) §4): el flujo se ejercita entero y queda
+  registrado, pero no sale correo. Si algún día se inyecta `RESEND_*` en _Preview_, el token de
+  pruebas deja de ser inocuo y se rota a un valor sensible.
+
+El token de _Preview_ no sirve en _Production_ (allí no está definido) y la base de preview no tiene
+datos reales de clientes (apartado 1).
+
 ### Flujo de un cambio
 
 1. Rama de feature desde `main` (`feat/...`, `fix/...`, `docs/...`). Una rama `docs/**` **no genera

@@ -13,7 +13,7 @@ apartado _Seguridad_).
 | `CATALOG_DEMO_MODE`    | `false`                             | `false`                          | `false`                     | Vercel (opcional) y `.env.local`                                             |
 | `ADMIN_PANEL_ENABLED`  | `false` (panel cerrado)             | no definida                      | no definida                 | Vercel (Production, opcional) y `.env.local`                                 |
 | `QUOTE_VALIDITY_DAYS`  | `30`                                | `30`                             | `30`                        | Vercel (opcional) y `.env.local`                                             |
-| `ADMIN_API_TOKEN`      | no definida (opcional)              | no definida                      | valor de desarrollo         | Vercel (Production, opcional) y `.env.local`                                 |
+| `ADMIN_API_TOKEN`      | no definida (opcional)              | valor de pruebas documentado     | valor de desarrollo         | Vercel (Preview; en Production, opcional) y `.env.local`                     |
 | `ADMIN_SESSION_SECRET` | valor propio del despliegue (≥ 32)  | no definida                      | valor de desarrollo         | Vercel (Production) y `.env.local`                                           |
 | `ADMIN_PANEL_PASSWORD` | valor propio del despliegue (≥ 16)  | no definida                      | valor de desarrollo         | Vercel (Production) y `.env.local`                                           |
 | `NODE_ENV`             | lo fija Vercel (`production`)       | lo fija Vercel (`production`)    | lo fija Next.js             | No se configura a mano                                                       |
@@ -64,13 +64,25 @@ consume el bootstrap de Vercel.
 - `NEXT_PUBLIC_SITE_URL` es pública por diseño (viaja al navegador). `DATABASE_URL` es un secreto: se
   marca como _Sensitive_ en Vercel y no se lee nunca desde el cliente.
 - `ADMIN_API_TOKEN` es la credencial **opcional** de automatización del API del panel: se envía como
-  `Authorization: Bearer …` y se marca como _Sensitive_ en Vercel. **No es exigible**: el propietario
-  entra con la sesión de abajo y el API de administración acepta cualquiera de las dos credenciales
+  `Authorization: Bearer …`. **No es exigible**: el propietario entra con la sesión de abajo y el API
+  de administración acepta cualquiera de las dos credenciales
   ([ADR-0024](adr/0024-autenticacion-panel-sesion-firmada.md) §7). Solo si **ninguna** de las dos está
   configurada los endpoints de administración responden `503` `ADMIN_API_DISABLED` y no quedan
-  accesibles (guarda de CIF-9/CIF-14, ver [api.md](api.md)). `scripts/despliegue-preflight.sh` **no**
-  lo exige: comprueba `DATABASE_URL` y la sesión del panel, por nombre exacto de clave y nunca por
-  subcadena, así que un `ADMIN_API_TOKEN_LEGACY` no cuela (CIF-123 y CIF-129).
+  accesibles (guarda de CIF-9/CIF-14, ver [api.md](api.md)). En _Production_ se marca como
+  _Sensitive_ si algún día se inyecta; hoy no está definida.
+  `scripts/despliegue-preflight.sh` **no** lo exige: comprueba `DATABASE_URL` y la sesión del panel,
+  por nombre exacto de clave y nunca por subcadena, así que un `ADMIN_API_TOKEN_LEGACY` no cuela
+  (CIF-123 y CIF-129).
+- **En _Preview_ sí está definida, con el valor de pruebas del repositorio** (CIF-332): es el mismo
+  `E2E_ADMIN_TOKEN` de `e2e/support/servers.ts`, **no** marcado como _Sensitive_ porque no es un
+  secreto real. Solo desbloquea _Preview_ —su base de datos es la desechable de preview y el valor no
+  sirve en _Production_, donde no está definido— para que QA pueda ejercer la entrega y el reintento
+  del presupuesto en el entorno desplegado y no solo en CI. **Acoplamiento con `RESEND_*`:** mientras
+  _Preview_ no tenga `RESEND_*`, el único efecto es desbloquear el API y el correo sale por el
+  adaptador de consola ([ADR-0004](adr/0004-presupuesto-pdf-y-email.md) §4); si algún día se inyecta un
+  `RESEND_*` en _Preview_, cualquiera con ese token público podría enviar correo real, así que se
+  **rota a un valor sensible** el mismo día
+  ([ADR-0014](adr/0014-manejo-y-rotacion-de-secretos.md)).
 - `ADMIN_SESSION_SECRET` y `ADMIN_PANEL_PASSWORD` son la **sesión de la interfaz del panel**
   ([ADR-0024](adr/0024-autenticacion-panel-sesion-firmada.md)): con ellas, `/[locale]/acceso` canjea
   la credencial del propietario por una cookie `admin_session` firmada (HttpOnly, `SameSite=Lax`,
@@ -93,14 +105,16 @@ Inventario de _Production_ y _Preview_ del proyecto `presupuesto-cifuentes` leí
 | Entorno       | Claves definidas                                                                                                           |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | _Production_  | `DATABASE_URL` (Sensitive), `NEXT_PUBLIC_SITE_URL`, `ADMIN_SESSION_SECRET` (Sensitive), `ADMIN_PANEL_PASSWORD` (Sensitive) |
-| _Preview_     | `DATABASE_URL` (Sensitive)                                                                                                 |
+| _Preview_     | `DATABASE_URL` (Sensitive), `ADMIN_API_TOKEN` (Plain, valor de pruebas)                                                    |
 | _Development_ | ninguna (las credenciales locales viven en `.env.local`)                                                                   |
 
 No queda ninguna variable exigible pendiente de inyectar en _Production_. `ADMIN_SESSION_SECRET` y
 `ADMIN_PANEL_PASSWORD` se inyectaron como _Sensitive_ el 2026-09-12 (CIF-245) y ya están activas; no
 se han inyectado en _Preview_ porque no hay consumidor de la sesión ahí y la base de preview es
-desechable. `ADMIN_API_TOKEN` **no se despliega**: es la credencial opcional de automatización y el
-propietario entra con la sesión (CIF-123).
+desechable. `ADMIN_API_TOKEN` **no se inyecta en _Production_**: es la credencial opcional de
+automatización y el propietario entra con la sesión (CIF-123). En _Preview_ sí está, con el valor de
+pruebas documentado y sin marcar como _Sensitive_ (CIF-332), para que QA valide la entrega y el
+reintento sobre el preview del PR.
 
 `ADMIN_PANEL_ENABLED` no está definida en ningún entorno y es lo correcto: en _Production_ el shell
 del panel queda **cerrado por defecto** (con sesión válida, `/[locale]/admin/**` responde `404`) y
@@ -117,14 +131,22 @@ a `/es/acceso` y `POST /api/admin/session` con credencial incorrecta responde `4
 El valor de `ADMIN_PANEL_PASSWORD` se propuso al consejo en el gestor de secretos (ADR-0014) para que
 el propietario pueda **leerlo**; la propuesta sigue pendiente de aprobación. Nunca se escribe aquí.
 
-`ADMIN_API_TOKEN` **no está definida en ningún entorno y no hace falta que lo esté**: el API del
-panel no responde `503` porque la sesión del propietario sí está configurada. Verificación del
-2026-09-12 en producción: `POST /api/admin/tariff-versions/<id>/publish` sin credencial responde
-`401` (no `503`), que es la señal de que la guarda decide en lugar de rendirse por falta de
-configuración; el cierre del hallazgo de CIF-123 es este. Si algún día la automatización necesita el
-token, se define **solo en _Production_** y su valor se propone al consejo por el gestor de secretos
-(ADR-0014); nunca se escribe aquí. Los dos valores propuestos en CIF-123 (`panel/admin-api-token` y
-su binding) se retiraron al quedar sin consumidor.
+`ADMIN_API_TOKEN` **no está definida en _Production_ y no hace falta que lo esté**: el API del panel
+no responde `503` porque la sesión del propietario sí está configurada. Verificación del 2026-09-12 en
+producción: `POST /api/admin/tariff-versions/<id>/publish` sin credencial responde `401` (no `503`),
+que es la señal de que la guarda decide en lugar de rendirse por falta de configuración; el cierre del
+hallazgo de CIF-123 es este. Si algún día la automatización necesita el token en producción, se define
+**solo en _Production_** y su valor se propone al consejo por el gestor de secretos (ADR-0014); nunca
+se escribe aquí. Los dos valores propuestos en CIF-123 (`panel/admin-api-token` y su binding) se
+retiraron al quedar sin consumidor.
+
+En _Preview_ la situación es la contraria y deliberada (CIF-332): el token está definido con el valor
+de pruebas del repositorio para que QA pueda ejercer la entrega y el reintento sobre el preview.
+Verificación del 2026-09-12 tras redesplegar el preview de `baf75e2d`
+(`dpl_9LETgYeB6MqXAvU2EMy9uPmz4TXn`): sin credencial, `POST /api/quotes/<referencia>/delivery`
+responde `401` (antes `503` `ADMIN_API_DISABLED`); con `Authorization: Bearer <token de pruebas>` la
+petición entra en el caso de uso y responde `404` para una referencia inexistente. El token sigue sin
+estar definido en _Production_.
 
 ## 2. Reglas
 
