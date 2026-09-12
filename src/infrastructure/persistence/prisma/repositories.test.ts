@@ -738,8 +738,14 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
         })
       }
 
-      /** Dobles de frontera: ni se renderiza un PDF real ni se envía correo de verdad. */
-      function makeDoubles(): {
+      /**
+       * Dobles de frontera: ni se renderiza un PDF real ni se envía correo de verdad.
+       *
+       * `onSend` se ejecuta **dentro** del envío, antes de registrarlo: es la costura que deja una
+       * petición detenida justo cuando ya reclamó sus entregas y todavía no las ha marcado como
+       * enviadas (CIF-406).
+       */
+      function makeDoubles(onSend?: (message: EmailMessage) => Promise<void>): {
         readonly sent: EmailMessage[]
         readonly documents: QuoteDocument[]
         readonly failTo: Set<string>
@@ -759,6 +765,8 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
               if (failTo.has(message.to)) {
                 throw new Error('proveedor caído')
               }
+
+              await onSend?.(message)
 
               sent.push(message)
 
@@ -872,13 +880,42 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
 
       it('dos entregas simultáneas del mismo presupuesto envían un solo correo (F1)', async () => {
         const quote = await issueTestQuote()
-        const doubles = makeDoubles()
+
+        // Carrera forzada y determinista. La primera petición reclama las dos entregas y se queda
+        // dentro del envío del primer correo; ahí arranca la segunda, que encuentra las reservas
+        // vivas, no puede reclamar ninguna y no envía nada. Dejar el entrelazado al scheduling del
+        // runner repartía los reclamos entre las dos peticiones (2-0 o 1-1): con 1-1 cada una ve la
+        // fila que ganó la otra y ninguna informa del estado final, así que afirmar «una respuesta
+        // `delivered`» fallaba en verde (CIF-406).
+        let firstSendStarted!: () => void
+        const startedFirstSend = new Promise<void>((resolve) => {
+          firstSendStarted = resolve
+        })
+        let allowFirstSend!: () => void
+        const firstSendGate = new Promise<void>((resolve) => {
+          allowFirstSend = resolve
+        })
+
+        const doubles = makeDoubles(async () => {
+          firstSendStarted()
+          await firstSendGate
+        })
         const deps = makeDeps(doubles)
 
-        const results = await Promise.all([
-          deliverQuote(deps, { reference: quote.reference, customer: CUSTOMER }),
-          deliverQuote(deps, { reference: quote.reference, customer: CUSTOMER }),
-        ])
+        const first = deliverQuote(deps, { reference: quote.reference, customer: CUSTOMER })
+
+        // La primera ya reclamó las dos filas: la segunda llega con las reservas vivas.
+        await startedFirstSend
+
+        const second = await deliverQuote(deps, { reference: quote.reference, customer: CUSTOMER })
+
+        allowFirstSend()
+
+        const firstResult = await first
+
+        expect(second.status).toBe('in_progress')
+        expect(second.deliveries.every((delivery) => delivery.status === 'pending')).toBe(true)
+        expect(firstResult.status).toBe('delivered')
 
         // El repro de QA: una fila por destinatario y un solo envío a cada uno.
         expect(doubles.sent.map((message) => message.to).sort()).toEqual(
@@ -889,7 +926,48 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
 
         expect(rows).toHaveLength(2)
         expect(rows.every((row) => row.status === 'SENT')).toBe(true)
-        expect(results.filter((result) => result.status === 'delivered')).toHaveLength(1)
+        expect(rows.every((row) => row.attempts === 1)).toBe(true)
+
+        // Y una petición posterior converge sin volver a enviar: el estado ya es terminal.
+        const later = await deliverQuote(deps, { reference: quote.reference, customer: CUSTOMER })
+
+        expect(later.status).toBe('already_delivered')
+        expect(doubles.sent).toHaveLength(2)
+      })
+
+      it('cualquier reparto de los reclamos entre dos entregas simultáneas deja un correo por destinatario (F1)', async () => {
+        const quote = await issueTestQuote()
+        const doubles = makeDoubles()
+        const deps = makeDeps(doubles)
+
+        // Sin forzar el entrelazado, el reparto de reclamos (2-0 o 1-1) depende del scheduling: lo
+        // que F1 garantiza pase lo que pase es que cada destinatario se reclama y se envía una sola
+        // vez. Se afirma sobre esa reserva idempotente y no sobre cuántas peticiones concretas ven
+        // `delivered` (CIF-406).
+        const results = await Promise.all([
+          deliverQuote(deps, { reference: quote.reference, customer: CUSTOMER }),
+          deliverQuote(deps, { reference: quote.reference, customer: CUSTOMER }),
+        ])
+
+        expect(doubles.sent.map((message) => message.to).sort()).toEqual(
+          [CUSTOMER.email, INTERNAL].sort(),
+        )
+
+        const rows = await prisma.quoteDelivery.findMany({ where: { quoteId: quote.id } })
+
+        expect(rows).toHaveLength(2)
+        expect(rows.every((row) => row.status === 'SENT')).toBe(true)
+        expect(rows.every((row) => row.attempts === 1)).toBe(true)
+
+        // Ninguna respuesta puede dar la entrega por fallida —invitaría a reintentar y a duplicar el
+        // correo— ni cerrarla por intentos agotados: solo cabe `delivered`, `already_delivered` o,
+        // mientras la otra petición sigue enviando, `in_progress`.
+        expect(
+          results.every((result) =>
+            ['delivered', 'already_delivered', 'in_progress'].includes(result.status),
+          ),
+        ).toBe(true)
+        expect(doubles.sent).toHaveLength(2)
       })
 
       it('el reintento conserva los datos del cliente en el documento (F3)', async () => {
