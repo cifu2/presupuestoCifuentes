@@ -13,7 +13,10 @@ presupuesto manual. API de catálogo y motor de presupuestos (CIF-4): endpoints 
 en vivo, paso a presupuesto manual por tamaño máximo o falta de tarifa y emisión de presupuestos con
 precio congelado y multi-idioma. Contrato: [docs/api.md](docs/api.md). Capa multi-idioma (CIF-8):
 URLs por idioma (`/es/...`, `/en/...`), diccionarios `messages/`, selector de idioma, textos de
-catálogo traducibles desde el panel y mensajes de error traducibles.
+catálogo traducibles desde el panel y mensajes de error traducibles. Configurador público (CIF-7) en
+`/[locale]/configurador`: serie, medidas con validación y máximo, acabado, color, accesorios, vista
+previa 2D, precio en vivo, presupuesto o solicitud manual y borrador recuperable; el catálogo y los
+precios se leen de la API y el precio lo calcula siempre el servidor ([docs/configurador.md](docs/configurador.md)).
 
 ## Stack
 
@@ -75,6 +78,7 @@ Detalle en [docs/architecture.md](docs/architecture.md). Los límites entre capa
 
 - [Arquitectura](docs/architecture.md) · [ADR](docs/adr/README.md)
 - [API de catálogo y presupuestos](docs/api.md) — contrato del configurador y del panel
+- [Configurador público](docs/configurador.md) — flujo, precio en vivo, borradores y 2D
 - [Multi-idioma](docs/i18n.md) — capas, URLs por idioma y contratos de presupuesto y panel
 - [Definition of Done](docs/definition-of-done.md) — nadie da algo por terminado sin cumplirla
 - [Convenciones de código](docs/coding-conventions.md)
