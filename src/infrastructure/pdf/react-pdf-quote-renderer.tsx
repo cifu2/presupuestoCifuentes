@@ -3,16 +3,23 @@
  *
  * JavaScript puro en el servidor: sin Chromium, sin binarios y sin servicios externos, apto para el
  * entorno serverless de Vercel. La plantilla consume el tipo del dominio `QuoteDocument`; los
- * rótulos salen de `src/i18n/quote-document-texts` en el idioma del presupuesto (ADR-0005).
+ * rótulos salen de `src/i18n/quote-document-texts` en el idioma del presupuesto (ADR-0005) y la
+ * paleta de `quote-document-palette` (un solo módulo, derivado 1:1 de §2).
  *
  * Si al documento le falta algún valor del propietario (CIF-14), el PDF lo muestra con el marcador
  * explícito y un aviso en la cabecera: nadie puede confundirlo con el documento definitivo.
+ *
+ * Paginación (`plantilla-presupuesto` §6.3): las páginas de continuación llevan cabecera corrida
+ * `{título} · {referencia}` y cliente; la cabecera de la tabla se repite en todas; ninguna fila se
+ * parte y los bloques de totales, condiciones y aviso de precio congelado son indivisibles. El pie
+ * usa la numeración real que da `render` (`Página X de Y`).
  */
 
 import { Document, Page, StyleSheet, Text, View, renderToBuffer } from '@react-pdf/renderer'
 
 import type { QuoteDocument, QuoteDocumentLine } from '@/domain/quote/quote-document'
 import {
+  DOCUMENT_LANGUAGES,
   formatDate,
   formatMoney,
   pendingFieldLabels,
@@ -21,36 +28,68 @@ import {
 
 import type { QuotePdfRenderer } from '@/application/ports/quote-pdf-renderer'
 
-const COLORS = {
-  ink: '#1f2937',
-  muted: '#6b7280',
-  line: '#d1d5db',
-  brand: '#7c2d12',
-  warning: '#92400e',
-  warningBackground: '#fef3c7',
-} as const
+import { QUOTE_DOCUMENT_PALETTE } from './quote-document-palette'
+
+/** Alto mínimo de fila de §3.3 (6 mm) en puntos PostScript. */
+const MIN_ROW_HEIGHT_PT = 17
+
+/**
+ * §6.3: al menos dos filas por página. `minPresenceAhead` hace que la fila baje a la página
+ * siguiente cuando no queda hueco para ella y su compañera; si solo cabría una, la tabla pasa
+ * entera.
+ */
+const MIN_PRESENCE_AHEAD_PT = MIN_ROW_HEIGHT_PT * 2
+
+/**
+ * Propiedades que `@react-pdf/renderer@4.9` entrega a un nodo con `render` al paginar. La librería
+ * solo declara `totalPages` en `Text`, pero lo pasa también a `View` (de ahí sale la numeración
+ * real del pie); se deja **opcional** para no mentir sobre el tipo declarado y el test de paginación
+ * exige que el número sea el real («Página 2 de 2»), no el de la página en curso.
+ */
+interface PagedNodeProps {
+  readonly pageNumber: number
+  readonly subPageNumber: number
+  readonly totalPages?: number
+}
 
 const styles = StyleSheet.create({
   page: {
     paddingTop: 40,
     paddingBottom: 56,
     paddingHorizontal: 44,
-    fontSize: 9.5,
     fontFamily: 'Helvetica',
-    color: COLORS.ink,
+    fontSize: 9.5,
+    lineHeight: 1.35,
+    color: QUOTE_DOCUMENT_PALETTE.ink,
+    backgroundColor: QUOTE_DOCUMENT_PALETTE.surface,
   },
   header: { flexDirection: 'row', justifyContent: 'space-between' },
-  title: { fontSize: 18, fontFamily: 'Helvetica-Bold', color: COLORS.brand },
-  issuerName: { fontFamily: 'Helvetica-Bold', fontSize: 10 },
-  muted: { color: COLORS.muted },
+  title: {
+    fontSize: 18,
+    lineHeight: 1.15,
+    fontFamily: 'Helvetica-Bold',
+    color: QUOTE_DOCUMENT_PALETTE.brand,
+  },
+  issuerName: {
+    fontSize: 10,
+    lineHeight: 1.25,
+    fontFamily: 'Helvetica-Bold',
+    color: QUOTE_DOCUMENT_PALETTE.ink,
+  },
+  secondary: {
+    fontSize: 8.5,
+    lineHeight: 1.35,
+    color: QUOTE_DOCUMENT_PALETTE.inkMuted,
+  },
   warning: {
     marginTop: 14,
     padding: 8,
     borderWidth: 1,
-    borderColor: COLORS.warning,
-    backgroundColor: COLORS.warningBackground,
-    color: COLORS.warning,
+    borderColor: QUOTE_DOCUMENT_PALETTE.warningInk,
+    backgroundColor: QUOTE_DOCUMENT_PALETTE.warningBackground,
+    color: QUOTE_DOCUMENT_PALETTE.warningInk,
     fontSize: 8.5,
+    lineHeight: 1.35,
   },
   meta: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 18 },
   metaBlock: { width: '48%' },
@@ -59,26 +98,35 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     fontFamily: 'Helvetica-Bold',
     fontSize: 10.5,
-    color: COLORS.brand,
+    lineHeight: 1.2,
+    color: QUOTE_DOCUMENT_PALETTE.brand,
   },
   row: { flexDirection: 'row' },
-  key: { width: '38%', color: COLORS.muted },
+  key: {
+    width: '38%',
+    fontSize: 8.5,
+    lineHeight: 1.35,
+    color: QUOTE_DOCUMENT_PALETTE.inkMuted,
+  },
   value: { width: '62%' },
   tableHeader: {
     flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.line,
+    borderBottomWidth: 0.75,
+    borderBottomColor: QUOTE_DOCUMENT_PALETTE.rule,
     paddingBottom: 4,
     fontFamily: 'Helvetica-Bold',
+    lineHeight: 1.2,
   },
   tableRow: {
     flexDirection: 'row',
     borderBottomWidth: 0.5,
-    borderBottomColor: COLORS.line,
+    borderBottomColor: QUOTE_DOCUMENT_PALETTE.rule,
     paddingVertical: 4,
+    minHeight: MIN_ROW_HEIGHT_PT,
   },
-  concept: { width: '52%' },
-  numeric: { width: '16%', textAlign: 'right' },
+  concept: { width: '51%' },
+  quantity: { width: '10%', textAlign: 'right' },
+  numeric: { width: '19.5%', textAlign: 'right' },
   totals: { marginTop: 10, alignSelf: 'flex-end', width: '48%' },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 },
   grandTotal: {
@@ -86,12 +134,32 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 4,
     paddingTop: 4,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.ink,
+    borderTopWidth: 0.75,
+    borderTopColor: QUOTE_DOCUMENT_PALETTE.brand,
     fontFamily: 'Helvetica-Bold',
     fontSize: 11,
+    lineHeight: 1.2,
   },
-  condition: { marginBottom: 3, color: COLORS.muted },
+  condition: {
+    marginBottom: 3,
+    fontSize: 8.5,
+    lineHeight: 1.35,
+    color: QUOTE_DOCUMENT_PALETTE.inkMuted,
+  },
+  runningHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    paddingBottom: 6,
+    borderBottomWidth: 0.5,
+    borderBottomColor: QUOTE_DOCUMENT_PALETTE.rule,
+  },
+  runningHeaderTitle: {
+    fontFamily: 'Helvetica-Bold',
+    fontSize: 10.5,
+    lineHeight: 1.2,
+    color: QUOTE_DOCUMENT_PALETTE.brand,
+  },
   footer: {
     position: 'absolute',
     bottom: 28,
@@ -100,10 +168,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     borderTopWidth: 0.5,
-    borderTopColor: COLORS.line,
+    borderTopColor: QUOTE_DOCUMENT_PALETTE.rule,
     paddingTop: 6,
-    fontSize: 8,
-    color: COLORS.muted,
+    fontSize: 7.5,
+    lineHeight: 1.2,
+    color: QUOTE_DOCUMENT_PALETTE.inkMuted,
   },
 })
 
@@ -113,26 +182,56 @@ export class ReactPdfQuoteRenderer implements QuotePdfRenderer {
   }
 }
 
+/**
+ * §3.3: el espacio antes del símbolo de moneda es **duro**, para que «400,00 €» no parta de línea.
+ * Se exporta para poder comprobar la regla sin depender de cómo normalice el extractor de texto.
+ */
+export function hardCurrencySpace(amount: string): string {
+  return amount.replaceAll(' ', '\u00A0')
+}
+
 export function QuoteDocumentPdf({ document }: { readonly document: QuoteDocument }) {
   const texts = quoteDocumentTexts(document.locale)
   const money = (cents: bigint): string =>
-    formatMoney(cents, document.totals.currency, document.locale)
+    hardCurrencySpace(formatMoney(cents, document.totals.currency, document.locale))
 
   return (
-    <Document title={document.reference} author={document.issuer.name}>
-      <Page size="A4" style={styles.page}>
+    <Document
+      title={`${texts.documentTitle} ${document.reference}`}
+      author={document.issuer.name}
+      subject={texts.documentTitle}
+      language={DOCUMENT_LANGUAGES[document.locale]}
+    >
+      <Page size="A4" style={styles.page} wrap>
+        {/* §6.3: páginas de continuación con cabecera corrida; la página 1 lleva el bloque completo. */}
+        <View
+          fixed
+          render={({ pageNumber }) =>
+            pageNumber > 1 ? (
+              <View style={styles.runningHeader}>
+                <Text style={styles.runningHeaderTitle}>
+                  {`${texts.documentTitle} · ${document.reference}`}
+                </Text>
+                {document.customer === null ? null : (
+                  <Text style={styles.secondary}>{document.customer.name}</Text>
+                )}
+              </View>
+            ) : null
+          }
+        />
+
         <View style={styles.header}>
           <View>
             <Text style={styles.title}>{texts.documentTitle}</Text>
-            <Text style={styles.muted}>{document.reference}</Text>
+            <Text style={styles.secondary}>{document.reference}</Text>
           </View>
           <View>
             <Text style={styles.issuerName}>{document.issuer.name}</Text>
-            <Text style={styles.muted}>{document.issuer.taxId}</Text>
-            <Text style={styles.muted}>{document.issuer.address}</Text>
-            <Text style={styles.muted}>{document.issuer.email}</Text>
-            <Text style={styles.muted}>{document.issuer.phone}</Text>
-            <Text style={styles.muted}>{document.issuer.website}</Text>
+            <Text style={styles.secondary}>{document.issuer.taxId}</Text>
+            <Text style={styles.secondary}>{document.issuer.address}</Text>
+            <Text style={styles.secondary}>{document.issuer.email}</Text>
+            <Text style={styles.secondary}>{document.issuer.phone}</Text>
+            <Text style={styles.secondary}>{document.issuer.website}</Text>
           </View>
         </View>
 
@@ -148,11 +247,11 @@ export function QuoteDocumentPdf({ document }: { readonly document: QuoteDocumen
           <View style={styles.metaBlock}>
             <Text style={styles.sectionTitle}>{texts.reference}</Text>
             <Text>{document.reference}</Text>
-            <Text style={styles.muted}>
+            <Text style={styles.secondary}>
               {texts.issuedOn}: {formatDate(document.issuedOn, document.locale)}
             </Text>
             {document.validUntil === null ? null : (
-              <Text style={styles.muted}>
+              <Text style={styles.secondary}>
                 {texts.validUntil}: {formatDate(document.validUntil, document.locale)}
               </Text>
             )}
@@ -161,7 +260,7 @@ export function QuoteDocumentPdf({ document }: { readonly document: QuoteDocumen
             <View style={styles.metaBlock}>
               <Text style={styles.sectionTitle}>{texts.customer}</Text>
               <Text>{document.customer.name}</Text>
-              <Text style={styles.muted}>{document.customer.email}</Text>
+              <Text style={styles.secondary}>{document.customer.email}</Text>
             </View>
           )}
         </View>
@@ -206,47 +305,72 @@ export function QuoteDocumentPdf({ document }: { readonly document: QuoteDocumen
           </View>
         )}
 
-        <Text style={styles.sectionTitle}>{texts.documentTitle}</Text>
-        <View style={styles.tableHeader}>
+        {/* §3.2: la sección de la tabla tiene rótulo propio, no repite el título del documento. */}
+        <Text style={styles.sectionTitle}>{texts.breakdown}</Text>
+        {/* §6.3: la cabecera de la tabla se repite en todas las páginas. */}
+        <View style={styles.tableHeader} fixed>
           <Text style={styles.concept}>{texts.concept}</Text>
+          <Text style={styles.quantity}>{texts.quantity}</Text>
           <Text style={styles.numeric}>{texts.unitPrice}</Text>
           <Text style={styles.numeric}>{texts.amount}</Text>
         </View>
         {document.lines.map((line: QuoteDocumentLine) => (
-          <View key={line.code} style={styles.tableRow}>
+          <View
+            key={line.code}
+            style={styles.tableRow}
+            wrap={false}
+            minPresenceAhead={MIN_PRESENCE_AHEAD_PT}
+          >
             <Text style={styles.concept}>{line.label}</Text>
+            <Text style={styles.quantity}>{String(line.units)}</Text>
             <Text style={styles.numeric}>{money(line.unitAmountCents)}</Text>
             <Text style={styles.numeric}>{money(line.amountCents)}</Text>
           </View>
         ))}
 
-        <View style={styles.totals}>
-          <View style={styles.totalRow}>
-            <Text>{texts.subtotal}</Text>
-            <Text>{money(document.totals.subtotalCents)}</Text>
+        {/* §6.3: totales, condiciones y aviso de precio congelado son indivisibles. */}
+        <View wrap={false}>
+          <View style={styles.totals}>
+            <View style={styles.totalRow}>
+              <Text>{texts.subtotal}</Text>
+              <Text>{money(document.totals.subtotalCents)}</Text>
+            </View>
+            <View style={styles.totalRow}>
+              <Text>{texts.taxLine(document.totals.taxRatePercent)}</Text>
+              <Text>{money(document.totals.taxCents)}</Text>
+            </View>
+            <View style={styles.grandTotal}>
+              <Text>{texts.total}</Text>
+              <Text>{money(document.totals.totalCents)}</Text>
+            </View>
           </View>
-          <View style={styles.totalRow}>
-            <Text>{texts.taxLine(document.totals.taxRatePercent)}</Text>
-            <Text>{money(document.totals.taxCents)}</Text>
-          </View>
-          <View style={styles.grandTotal}>
-            <Text>{texts.total}</Text>
-            <Text>{money(document.totals.totalCents)}</Text>
-          </View>
+
+          <Text style={styles.sectionTitle}>{texts.conditions}</Text>
+          {document.conditions.map((condition) => (
+            <Text key={condition} style={styles.condition}>
+              {condition}
+            </Text>
+          ))}
+          <Text style={styles.condition}>{texts.frozenPriceNotice}</Text>
         </View>
 
-        <Text style={styles.sectionTitle}>{texts.conditions}</Text>
-        {document.conditions.map((condition) => (
-          <Text key={condition} style={styles.condition}>
-            {condition}
-          </Text>
-        ))}
-        <Text style={[styles.muted, styles.condition]}>{texts.frozenPriceNotice}</Text>
-
-        <View style={styles.footer} fixed>
-          <Text>{texts.pdfFooter}</Text>
-          <Text>{document.issuer.website}</Text>
-        </View>
+        {/*
+         * §3.6: pie en todas las páginas, con numeración real y sin repetir la web del emisor.
+         *
+         * El `render` va en el `View` y no en el `Text` a propósito: con `lineHeight` heredado de la
+         * página, un `Text` dinámico se mide mal y desaparece del PDF (comprobado con
+         * `@react-pdf/renderer@4.9.0`). Misma razón en la cabecera corrida.
+         */}
+        <View
+          fixed
+          render={({ pageNumber, totalPages }: PagedNodeProps) => (
+            <View style={styles.footer}>
+              <Text>{texts.pdfFooter}</Text>
+              {/* Sin `totalPages` el pie no puede mentir: cae al número de página en curso. */}
+              <Text>{texts.pageNumber(pageNumber, totalPages ?? pageNumber)}</Text>
+            </View>
+          )}
+        />
       </Page>
     </Document>
   )

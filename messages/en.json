@@ -44,12 +44,11 @@
     "accessories": "Accessories",
     "noAccessories": "No accessories",
     "unitPrice": "Unit price",
+    "quantity": "Quantity",
     "subtotal": "Subtotal",
     "taxRate": "VAT ({rate})",
     "total": "Total",
     "frozenPriceNotice": "Price frozen at the time the quote was issued.",
-    "manualQuoteNotice": "This configuration exceeds the maximum size of the series and goes to a manual quote.",
-    "contactPrompt": "We will call you within 24 working hours.",
     "email": {
       "subject": "Your Puertas Cifuentes quote ({reference})",
       "greeting": "Hello {customerName},",
@@ -82,6 +81,7 @@
       "conditions.en": "the English conditions"
     },
     "concept": "Item",
+    "breakdown": "Breakdown",
     "amount": "Amount",
     "extrasTitle": "Extras"
   },
