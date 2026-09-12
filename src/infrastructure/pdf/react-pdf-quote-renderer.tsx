@@ -174,6 +174,13 @@ const styles = StyleSheet.create({
     lineHeight: 1.2,
     color: QUOTE_DOCUMENT_PALETTE.inkMuted,
   },
+  /**
+   * Ancla del pie: `fixed` repite el nodo en cada página, pero el `bottom: 28` del pie se mide
+   * contra **su bloque contenedor**. Sin este ancla, el contenedor es el envoltorio del flujo
+   * (altura 0 al final del contenido) y el pie se imprime encima de lo que haya (M1 de CIF-396).
+   * Con el envoltorio anclado al borde inferior de la página, el pie vuelve a la banda inferior.
+   */
+  footerAnchor: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 0 },
 })
 
 export class ReactPdfQuoteRenderer implements QuotePdfRenderer {
@@ -360,9 +367,13 @@ export function QuoteDocumentPdf({ document }: { readonly document: QuoteDocumen
          * El `render` va en el `View` y no en el `Text` a propósito: con `lineHeight` heredado de la
          * página, un `Text` dinámico se mide mal y desaparece del PDF (comprobado con
          * `@react-pdf/renderer@4.9.0`). Misma razón en la cabecera corrida.
+         *
+         * El estilo va en el ancla y **no** en el nodo con `render`: un nodo dinámico cuyo estilo
+         * lleve `lineHeight` también desaparece.
          */}
         <View
           fixed
+          style={styles.footerAnchor}
           render={({ pageNumber, totalPages }: PagedNodeProps) => (
             <View style={styles.footer}>
               <Text>{texts.pdfFooter}</Text>

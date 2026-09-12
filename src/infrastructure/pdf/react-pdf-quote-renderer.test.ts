@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { extractText, getMeta } from 'unpdf'
+import { extractText, extractTextItems, getMeta } from 'unpdf'
 
 import { LocalizedText } from '@/domain/catalog/catalog-text'
 import { makeBreakdown, makeConfiguration } from '@/domain/pricing/testing/factories'
@@ -103,6 +103,14 @@ async function pagesOf(document: QuoteDocument): Promise<readonly string[]> {
   const { text } = await extractText(new Uint8Array(pdf), { mergePages: false })
 
   return text
+}
+
+/** Texto con coordenadas (origen abajo a la izquierda): para comprobar dónde cae cada bloque. */
+async function pageItemsOf(document: QuoteDocument) {
+  const pdf = await new ReactPdfQuoteRenderer().render(document)
+  const { items } = await extractTextItems(new Uint8Array(pdf))
+
+  return items
 }
 
 describe('ReactPdfQuoteRenderer', () => {
@@ -313,5 +321,77 @@ describe('plantilla del documento (`plantilla-presupuesto`)', () => {
 
     expect(englishMeta.info.Title).toBe('Quote PC-2026-000123')
     expect(englishMeta.info.Language).toBe('en-GB')
+  })
+})
+
+/**
+ * Regresión M1 de CIF-396: el pie se imprimía al final del flujo (y ≈ 500 pt) porque el bloque
+ * `fixed` + `render` no tenía bloque contenedor anclado a la página. La extracción de texto no lo
+ * veía; la posición sí.
+ */
+describe('banda inferior del pie (§3.1 y §3.6)', () => {
+  /**
+   * Coordenadas con origen abajo a la izquierda: el pie vive en los primeros 56,7 pt de la página
+   * (la banda inferior de 20 mm de §3.1, que empieza a 785,2 pt del borde superior).
+   */
+  const BOTTOM_BAND_PT = 57
+
+  it.each([
+    ['1 página', () => buildQuoteDocument(makeInput())],
+    ['2 páginas', () => longDocument()],
+  ])('deja el pie en la banda inferior en todas las páginas (%s)', async (_label, build) => {
+    const pages = await pageItemsOf(build())
+
+    expect(pages.length).toBeGreaterThanOrEqual(1)
+
+    for (const [index, page] of pages.entries()) {
+      const brand = page.find((item) =>
+        item.str.includes('Puertas Cifuentes · Presupuestos a medida'),
+      )
+      const number = page.find((item) => /Página \d+ de \d+/.test(item.str))
+
+      expect(brand, `página ${index + 1}: falta el texto de marca del pie`).toBeDefined()
+      expect(number, `página ${index + 1}: falta la numeración del pie`).toBeDefined()
+
+      if (!brand || !number) return
+
+      expect(brand.y, `página ${index + 1}: el pie no llega a la banda inferior`).toBeLessThan(
+        BOTTOM_BAND_PT,
+      )
+      expect(brand.y, `página ${index + 1}: el pie se sale de la página`).toBeGreaterThan(0)
+      expect(
+        number.y,
+        `página ${index + 1}: la numeración no está en la banda inferior`,
+      ).toBeLessThan(BOTTOM_BAND_PT)
+      // Marca y numeración comparten línea.
+      expect(Math.abs(brand.y - number.y), `página ${index + 1}`).toBeLessThan(3)
+
+      // Todo lo demás queda por encima: el pie no tapa contenido.
+      const content = page.filter(
+        (item) => item.str.trim().length > 0 && item !== brand && item !== number,
+      )
+      const lowestContentY = Math.min(...content.map((item) => item.y))
+
+      expect(lowestContentY, `página ${index + 1}: contenido por debajo del pie`).toBeGreaterThan(
+        brand.y,
+      )
+    }
+  })
+
+  it('mantiene la cabecera corrida arriba en las páginas de continuación', async () => {
+    const pages = await pageItemsOf(longDocument())
+    const runningHeader = pages[1]?.find((item) =>
+      item.str.includes('Presupuesto · PC-2026-000123'),
+    )
+    const tableHeader = pages[1]?.find((item) => item.str.includes('Concepto'))
+
+    expect(runningHeader).toBeDefined()
+    expect(tableHeader).toBeDefined()
+
+    if (!runningHeader || !tableHeader) return
+
+    // Arriba del todo (841,89 − 40 de margen) pero por debajo del borde superior.
+    expect(runningHeader.y).toBeGreaterThan(770)
+    expect(runningHeader.y).toBeGreaterThan(tableHeader.y)
   })
 })
