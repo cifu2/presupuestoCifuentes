@@ -13,6 +13,10 @@
  * `retryQuoteDeliveries` la reintenta **sin duplicar correos**, porque cada entrega tiene su clave de
  * idempotencia (`quoteId + versión + destinatario`), una entrega ya enviada nunca se reenvía y dos
  * peticiones simultáneas no pueden reclamar el mismo envío a la vez (CIF-175 F1/F2).
+ *
+ * Cada versión del documento tiene su propio PDF, así que un reintento sin versión agrupa las
+ * entregas por versión y renderiza **un documento por grupo**: el PDF de una versión nunca viaja a
+ * los destinatarios de otra (CIF-187).
  */
 
 import { InvalidQuoteDeliveryError, ResourceNotFoundError } from '@/domain/shared/errors'
@@ -59,6 +63,8 @@ export type DeliverQuoteReason = 'none' | 'pdf_render_failed' | 'email_send_fail
 
 export interface QuoteDeliveryOutput {
   readonly id: string
+  /** Versión del documento a la que pertenece la entrega. */
+  readonly version: number
   readonly audience: QuoteDeliveryAudience
   readonly recipient: string
   readonly status: QuoteDeliveryStatus
@@ -73,6 +79,7 @@ export interface DeliverQuoteResult {
   readonly status: DeliverQuoteStatus
   readonly reason: DeliverQuoteReason
   readonly quoteReference: string
+  /** Versión del documento; la más antigua reintentada si el reintento abarca varias. */
   readonly version: number
   /** Bytes del PDF renderizado; `0` si no llegó a generarse. */
   readonly pdfBytes: number
@@ -138,18 +145,50 @@ export async function retryQuoteDeliveries(
     }
   }
 
-  const version = input.version ?? candidates[0]?.version ?? DEFAULT_QUOTE_DOCUMENT_VERSION
-  // El cliente viaja en su propia entrega: si ya salió y solo falló el aviso interno, el documento
-  // del reintento debe conservar sus datos (F3 de CIF-175). Se miran **todas** las entregas de esta
-  // versión, no solo las que se reintentan.
+  // Acotado a una versión: un solo documento y un solo render.
+  if (input.version !== undefined) {
+    return retryQuoteDeliveryVersion(deps, quote, stored, candidates, input.version)
+  }
+
+  // Sin versión se reclaman las entregas de **todas** las versiones, pero cada una tiene su propio
+  // documento: se agrupa por versión y se renderiza una vez por grupo, de modo que cada destinatario
+  // reciba el documento de la suya (CIF-187).
+  const versions = [...new Set(candidates.map((delivery) => delivery.version))].sort(
+    (left, right) => left - right,
+  )
+  const results: DeliverQuoteResult[] = []
+
+  for (const version of versions) {
+    results.push(await retryQuoteDeliveryVersion(deps, quote, stored, candidates, version))
+  }
+
+  return mergeRetryResults(results)
+}
+
+/**
+ * Reintenta las entregas no enviadas de **una** versión del documento.
+ *
+ * El cliente viaja en su propia entrega: si ya salió y solo falló el aviso interno, el documento del
+ * reintento debe conservar sus datos (F3 de CIF-175). Se miran **todas** las entregas de esa versión,
+ * no solo las que se reintentan.
+ */
+async function retryQuoteDeliveryVersion(
+  deps: DeliverQuoteDeps,
+  quote: Quote,
+  stored: readonly QuoteDelivery[],
+  candidates: readonly QuoteDelivery[],
+  version: number,
+): Promise<DeliverQuoteResult> {
   const customer = customerOf(stored.filter((delivery) => delivery.version === version))
   const at = deps.clock.now()
-  const observed = stored.filter(
-    (delivery) => input.version === undefined || delivery.version === version,
-  )
+  const observed = stored.filter((delivery) => delivery.version === version)
   const claimed: QuoteDelivery[] = []
 
   for (const candidate of candidates) {
+    if (candidate.version !== version) {
+      continue
+    }
+
     const outcome = await claimDelivery(deps, candidate.startAttempt(at))
 
     if (outcome.claimed !== null) {
@@ -158,6 +197,51 @@ export async function retryQuoteDeliveries(
   }
 
   return runDeliveries(deps, quote, version, customer, { claimed, observed })
+}
+
+/**
+ * Orden de severidad para combinar el resultado de varias versiones: manda el grupo más severo. Los
+ * valores no se solapan con los de `runDeliveries`; solo fijan qué estado prevalece en la mezcla.
+ */
+const RETRY_RESULT_SEVERITY: Record<DeliverQuoteStatus, number> = {
+  nothing_to_retry: -1,
+  already_delivered: 0,
+  delivered: 1,
+  in_progress: 2,
+  incomplete: 3,
+}
+
+/**
+ * Combina el resultado de reintentar varias versiones: las entregas de cada grupo se acumulan y el
+ * estado es el del grupo más severo. `version` informa de la versión más antigua reintentada —cada
+ * entrega lleva la suya— y `pdfBytes` es la suma de los PDF generados.
+ */
+function mergeRetryResults(results: readonly DeliverQuoteResult[]): DeliverQuoteResult {
+  const [seed] = results
+
+  if (seed === undefined) {
+    // Inalcanzable: solo se combinan los grupos creados a partir de entregas candidatas.
+    throw new InvalidQuoteDeliveryError('No hay versiones de documento que reintentar')
+  }
+
+  return results.slice(1).reduce(combineRetryResults, seed)
+}
+
+function combineRetryResults(
+  left: DeliverQuoteResult,
+  right: DeliverQuoteResult,
+): DeliverQuoteResult {
+  const mostSevere =
+    RETRY_RESULT_SEVERITY[right.status] > RETRY_RESULT_SEVERITY[left.status] ? right : left
+
+  return {
+    status: mostSevere.status,
+    reason: left.reason === 'none' ? right.reason : left.reason,
+    quoteReference: left.quoteReference,
+    version: left.version,
+    pdfBytes: left.pdfBytes + right.pdfBytes,
+    deliveries: [...left.deliveries, ...right.deliveries],
+  }
 }
 
 async function requireQuote(repository: QuoteRepository, reference: string): Promise<Quote> {
@@ -432,6 +516,7 @@ async function save(deps: DeliverQuoteDeps, delivery: QuoteDelivery): Promise<Qu
 function toOutput(delivery: QuoteDelivery): QuoteDeliveryOutput {
   return {
     id: delivery.id,
+    version: delivery.version,
     audience: delivery.audience,
     recipient: delivery.recipient,
     status: delivery.status,

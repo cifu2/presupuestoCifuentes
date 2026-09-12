@@ -313,7 +313,7 @@ envía. Un fallo **no pierde** el presupuesto.
   envía nada y devuelve el estado real de cada entrega.
 - `502` `{ "status": "incomplete", "reason": "pdf_render_failed" | "email_send_failed", … }` si algo
   falló; el detalle por destinatario va en `deliveries` (`status`: `pending` | `sent` | `failed`,
-  con `attempts` y `lastError`). El presupuesto sigue emitido y se reintenta.
+  con `version`, `attempts` y `lastError`). El presupuesto sigue emitido y se reintenta.
 - `400` `INVALID_QUOTE_DELIVERY` si no hay ningún destinatario (ni cliente ni buzón interno).
 - `404 NOT_FOUND` si la referencia no existe.
 
@@ -332,6 +332,12 @@ una acción con coste y superficie de abuso, así que queda detrás de la guarda
 
 Reintenta las entregas pendientes o fallidas del presupuesto. Las ya enviadas **no** se reenvían.
 Cuerpo opcional `{ "version": 1 }` para acotar el reintento a una versión del documento.
+
+Sin `version` se reintentan las versiones que tengan entregas sin enviar. Cada versión tiene su
+propio documento, así que el reintento agrupa por versión y renderiza **un PDF por versión**: cada
+destinatario recibe el de la suya y el documento de una versión nunca se adjunta a los
+destinatarios de otra (CIF-187). En ese caso el `version` de la respuesta es el de la versión más
+antigua reintentada y cada entrada de `deliveries` lleva la suya.
 
 - `200` `{ "status": "delivered", … }` si el reintento salió bien.
 - `200` `{ "status": "nothing_to_retry", … }` si no quedaba nada por enviar (no renderiza el PDF).
