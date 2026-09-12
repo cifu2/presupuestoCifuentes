@@ -105,6 +105,23 @@ else
   falla "la guardia bloqueo un .md fuera de docs/**"
 fi
 
+# Caso 4b: docs/** con un nombre no ASCII. Git cita las rutas no ASCII por defecto
+# (`core.quotePath`), y esa cita hacia que la guardia diera un falso positivo (D1, CIF-176).
+preparar_rama docs/cif155-acentos
+commit_cambio docs/diseno-guardia-acentos.md "acentos"
+if ejecutar_guardia docs/cif155-acentos; then
+  pasa "una rama docs/** con un fichero no ASCII pasa (codigo 0)"
+else
+  falla "la guardia dio un falso positivo con un nombre no ASCII (D1)"
+fi
+preparar_rama docs/cif155-acentos-unicode
+commit_cambio "docs/diseño.md" "acentos unicode"
+if ejecutar_guardia docs/cif155-acentos-unicode; then
+  pasa "una rama docs/** con un fichero UTF-8 real pasa (codigo 0)"
+else
+  falla "la guardia dio un falso positivo con un nombre UTF-8 real (D1)"
+fi
+
 # Caso 5: docs/** sin cambios.
 preparar_rama docs/cif155-sin-cambios
 if ejecutar_guardia docs/cif155-sin-cambios; then

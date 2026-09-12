@@ -51,10 +51,13 @@ if ! merge_base="$(git merge-base "$base" HEAD)"; then
   exit 2
 fi
 
+# `-z` entrega las rutas tal cual (separadas por NUL, sin citar): con el citado por defecto de git
+# (`core.quotePath`), un fichero como `docs/diseño.md` llegaría como `"docs/dise\303\261o.md"` y la
+# guardia lo marcaría como violación. `-z` evita además cualquier problema con espacios o saltos.
 changed=()
-while IFS= read -r file; do
-  [[ -n "$file" ]] && changed+=("$file")
-done < <(git diff --name-only --no-renames "$merge_base" HEAD)
+while IFS= read -r -d '' file; do
+  changed+=("$file")
+done < <(git diff --name-only -z --no-renames "$merge_base" HEAD)
 
 violations=()
 if ((${#changed[@]} > 0)); then

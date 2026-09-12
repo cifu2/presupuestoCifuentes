@@ -48,7 +48,7 @@ Decisiones asociadas: [ADR-0007](adr/0007-despliegue-vercel-github.md) y
   - Monitor externo de uptime sobre `/api/health` cada 5 minutos (por ejemplo el propio chequeo de
     Vercel o un servicio gratuito de uptime), con aviso por email.
 - **Coste:** plan gratuito de Vercel y de Neon es suficiente para el MVP; si se supera, se revisa con
-  el CTO antes de subir de plan. No se contrata nada de pago sin aprobación.
+  el **CEO** antes de subir de plan (ADR-0019 §6). No se contrata nada de pago sin aprobación.
 - **Lo que no se monitoriza (todavía):** métricas de negocio y trazas distribuidas. Se añadirán
   cuando existan flujos reales (configurador y presupuestos) y tráfico que lo justifique.
 
