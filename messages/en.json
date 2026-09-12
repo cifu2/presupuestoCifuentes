@@ -62,6 +62,20 @@
       "pageNumber": "Page {page} of {total}"
     }
   },
+  "AdminAccess": {
+    "metadataTitle": "Admin access",
+    "metadataDescription": "Restricted access to the Puertas Cifuentes admin panel.",
+    "eyebrow": "Administration",
+    "title": "Admin access",
+    "intro": "Enter the owner credential to manage the catalogue and prices.",
+    "passwordLabel": "Credential",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "invalid": "That credential is not valid. Try again.",
+    "unavailable": "The credential could not be checked. Try again.",
+    "disabled": "Admin access is not configured in this deployment.",
+    "backHome": "Back to the home page"
+  },
   "CatalogAdmin": {
     "title": "Catalogue",
     "loading": "Loading the catalogue…",

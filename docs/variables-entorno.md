@@ -12,7 +12,9 @@ apartado _Seguridad_).
 | `NEXT_PUBLIC_SITE_URL` | `https://<dominio-produccion>`      | URL del deployment de preview    | `http://localhost:3000`     | Vercel (Production / Preview) y `.env.local`                                 |
 | `CATALOG_DEMO_MODE`    | `false`                             | `false`                          | `false`                     | Vercel (opcional) y `.env.local`                                             |
 | `QUOTE_VALIDITY_DAYS`  | `30`                                | `30`                             | `30`                        | Vercel (opcional) y `.env.local`                                             |
-| `ADMIN_API_TOKEN`      | valor propio del despliegue         | no definida                      | valor de desarrollo         | Vercel (Production) y `.env.local`                                           |
+| `ADMIN_API_TOKEN`      | no definida (opcional)              | no definida                      | valor de desarrollo         | Vercel (Production, opcional) y `.env.local`                                 |
+| `ADMIN_SESSION_SECRET` | valor propio del despliegue (≥ 32)  | no definida                      | valor de desarrollo         | Vercel (Production) y `.env.local`                                           |
+| `ADMIN_PANEL_PASSWORD` | valor propio del despliegue (≥ 16)  | no definida                      | valor de desarrollo         | Vercel (Production) y `.env.local`                                           |
 | `NODE_ENV`             | lo fija Vercel (`production`)       | lo fija Vercel (`production`)    | lo fija Next.js             | No se configura a mano                                                       |
 | `VERCEL_ENV`           | lo fija Vercel (`production`)       | lo fija Vercel (`preview`)       | no definida                 | No se configura a mano                                                       |
 
@@ -39,12 +41,26 @@ consume el bootstrap de Vercel.
   `true` (CIF-74).
 - `NEXT_PUBLIC_SITE_URL` es pública por diseño (viaja al navegador). `DATABASE_URL` es un secreto: se
   marca como _Sensitive_ en Vercel y no se lee nunca desde el cliente.
-- `ADMIN_API_TOKEN` es un secreto del API del panel: se envía como `Authorization: Bearer …` y se
-  marca como _Sensitive_ en Vercel. Mientras no esté configurado, los endpoints de administración
-  responden `503` y no quedan accesibles (guarda provisional de CIF-9/CIF-14, ver
-  [api.md](api.md)). `scripts/despliegue-preflight.sh` marca `PENDIENTE` si falta en _Production_, y
-  `scripts/despliegue-preflight.test.sh` prueba ese aviso: la falta se detecta en la comprobación
-  periódica, no abriendo el panel (CIF-123).
+- `ADMIN_API_TOKEN` es la credencial **opcional** de automatización del API del panel: se envía como
+  `Authorization: Bearer …` y se marca como _Sensitive_ en Vercel. **No es exigible**: el propietario
+  entra con la sesión de abajo y el API de administración acepta cualquiera de las dos credenciales
+  ([ADR-0024](adr/0024-autenticacion-panel-sesion-firmada.md) §7). Solo si **ninguna** de las dos está
+  configurada los endpoints de administración responden `503` `ADMIN_API_DISABLED` y no quedan
+  accesibles (guarda de CIF-9/CIF-14, ver [api.md](api.md)). `scripts/despliegue-preflight.sh` **no**
+  lo exige: comprueba `DATABASE_URL` y la sesión del panel, por nombre exacto de clave y nunca por
+  subcadena, así que un `ADMIN_API_TOKEN_LEGACY` no cuela (CIF-123 y CIF-129).
+- `ADMIN_SESSION_SECRET` y `ADMIN_PANEL_PASSWORD` son la **sesión de la interfaz del panel**
+  ([ADR-0024](adr/0024-autenticacion-panel-sesion-firmada.md)): con ellas, `/[locale]/acceso` canjea
+  la credencial del propietario por una cookie `admin_session` firmada (HttpOnly, `SameSite=Lax`,
+  `Secure` sobre HTTPS, 8 h) y `/[locale]/admin/**` deja de redirigir al acceso. Se marcan como
+  _Sensitive_ en Vercel. **Falla cerrado**: si falta cualquiera de las dos, o el secreto mide menos de
+  32 caracteres o la credencial menos de 16, no se emite sesión (`503 ADMIN_ACCESS_DISABLED`), el
+  panel queda denegado y el sitio público sigue funcionando. El MVP tiene un **único propietario**:
+  no hay usuarios ni roles.
+- **Rotación:** cambiar `ADMIN_PANEL_PASSWORD` o `ADMIN_SESSION_SECRET` invalida en el acto todas las
+  sesiones abiertas (la clave de firma se deriva de ambas). El cierre de sesión del navegador borra la
+  cookie; una copia de esa cookie seguiría siendo válida hasta su caducidad, así que ante una sospecha
+  se rota ([ADR-0014](adr/0014-manejo-y-rotacion-de-secretos.md)).
 - `.env.example` solo contiene valores de ejemplo sin credenciales y sirve de plantilla local.
 
 ### 1.1 Estado real del inventario (2026-09-12)
@@ -52,18 +68,35 @@ consume el bootstrap de Vercel.
 Inventario de _Production_ y _Preview_ del proyecto `presupuesto-cifuentes` leído de la API de Vercel
 (metadatos, nunca valores):
 
-| Entorno       | Claves definidas                                         |
-| ------------- | -------------------------------------------------------- |
-| _Production_  | `DATABASE_URL` (Sensitive), `NEXT_PUBLIC_SITE_URL`       |
-| _Preview_     | `DATABASE_URL` (Sensitive)                               |
-| _Development_ | ninguna (las credenciales locales viven en `.env.local`) |
+| Entorno       | Claves definidas                                                                                                           |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| _Production_  | `DATABASE_URL` (Sensitive), `NEXT_PUBLIC_SITE_URL`, `ADMIN_SESSION_SECRET` (Sensitive), `ADMIN_PANEL_PASSWORD` (Sensitive) |
+| _Preview_     | `DATABASE_URL` (Sensitive)                                                                                                 |
+| _Development_ | ninguna (las credenciales locales viven en `.env.local`)                                                                   |
 
-`ADMIN_API_TOKEN` **no está definida en ningún entorno**, así que el API del panel responde `503`
-(`ADMIN_API_DISABLED`) en producción. La decisión es definirla **solo en _Production_** por ahora: el
-panel de administración todavía no tiene consumidor en _Preview_ (CIF-9) y una base de preview
-desechable no debe compartir el token de producción. El valor se emite y se propone al consejo en
-CIF-123 (nunca se escribe aquí); cuando se fije, y tras el despliegue que lo active, esta tabla deja
-de listar la ausencia y [api.md](api.md) pasa a describir `401` en lugar de `503`.
+No queda ninguna variable exigible pendiente de inyectar en _Production_. `ADMIN_SESSION_SECRET` y
+`ADMIN_PANEL_PASSWORD` se inyectaron como _Sensitive_ el 2026-09-12 (CIF-245) y ya están activas; no
+se han inyectado en _Preview_ porque no hay consumidor de la sesión ahí y la base de preview es
+desechable. `ADMIN_API_TOKEN` **no se despliega**: es la credencial opcional de automatización y el
+propietario entra con la sesión (CIF-123).
+
+**Una variable definida en Vercel no está en vigor hasta el siguiente despliegue de _Production_**
+(regla 1 de §2). La sesión ya está activa: el despliegue de producción es `main@9cc3efc`
+(`dpl_5u1AgZ3ZthpW1NQ8ARsb997nzrvn`, READY desde el 2026-09-12), así que las rutas del panel están
+servidas. Verificación del 2026-09-12: `GET /es/acceso` responde `200`, `GET /es/admin` redirige `307`
+a `/es/acceso` y `POST /api/admin/session` con credencial incorrecta responde `401` (CIF-248).
+
+El valor de `ADMIN_PANEL_PASSWORD` se propuso al consejo en el gestor de secretos (ADR-0014) para que
+el propietario pueda **leerlo**; la propuesta sigue pendiente de aprobación. Nunca se escribe aquí.
+
+`ADMIN_API_TOKEN` **no está definida en ningún entorno y no hace falta que lo esté**: el API del
+panel no responde `503` porque la sesión del propietario sí está configurada. Verificación del
+2026-09-12 en producción: `POST /api/admin/tariff-versions/<id>/publish` sin credencial responde
+`401` (no `503`), que es la señal de que la guarda decide en lugar de rendirse por falta de
+configuración; el cierre del hallazgo de CIF-123 es este. Si algún día la automatización necesita el
+token, se define **solo en _Production_** y su valor se propone al consejo por el gestor de secretos
+(ADR-0014); nunca se escribe aquí. Los dos valores propuestos en CIF-123 (`panel/admin-api-token` y
+su binding) se retiraron al quedar sin consumidor.
 
 ## 2. Reglas
 
@@ -205,6 +238,8 @@ scripts/despliegue-preflight.sh
 
 Informe de solo lectura (usuario del token, alcances, repositorio, protección de `main`, proyecto de
 Vercel, variables por entorno y accesibilidad de la base de datos). No imprime valores y devuelve 1
-si queda algo pendiente: es la primera parada cuando el despliegue no arranca. Además de
-`DATABASE_URL`, exige `ADMIN_API_TOKEN` en _Production_ (sin ella el API del panel responde `503`,
-CIF-123).
+si queda algo pendiente: es la primera parada cuando el despliegue no arranca. Exige
+`DATABASE_URL` y `ADMIN_SESSION_SECRET` y `ADMIN_PANEL_PASSWORD` en _Production_, **por nombre exacto
+de clave y nunca por subcadena** (sin las dos últimas la sesión del panel falla cerrada,
+`/[locale]/admin/**` queda denegado y `POST /api/admin/session` responde `503 ADMIN_ACCESS_DISABLED`,
+CIF-241). `ADMIN_API_TOKEN` no se exige: es la credencial opcional de automatización (CIF-123).

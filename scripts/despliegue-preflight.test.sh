@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 #
-# Tests de `scripts/despliegue-preflight.sh` (CIF-123).
+# Tests de `scripts/despliegue-preflight.sh` (CIF-123 y CIF-241).
 #
 # Contrato que se prueba: el preflight no puede dar por bueno un entorno de Production al que le
-# falta `ADMIN_API_TOKEN`, porque con esa variable ausente el API del panel responde `503`
-# (`ADMIN_API_DISABLED`) y el propietario no puede publicar ni archivar tarifas.
+# faltan `ADMIN_SESSION_SECRET` o `ADMIN_PANEL_PASSWORD`, porque entonces la sesión del panel falla
+# cerrada (`503 ADMIN_ACCESS_DISABLED`) y el propietario no puede entrar (CIF-241); tampoco si falta
+# `DATABASE_URL`; y las claves se comparan por nombre exacto, así que un `DATABASE_URL_UNPOOLED` no
+# cubre `DATABASE_URL` (CIF-129). `ADMIN_API_TOKEN` **no** es exigible: es la credencial opcional de
+# automatización por `Bearer` y el propietario entra con la sesión (CIF-123).
 #
 # `curl` se sustituye por un doble que responde con datos canónicos de GitHub, Vercel y del
 # inventario de variables: no se llama a ninguna API real y no se usa ninguna credencial. Los valores
@@ -147,22 +150,47 @@ esac
 STUB
 chmod +x "$TMP/bin/curl"
 
-cat > "$TMP/env-con-token.json" <<'JSON'
+cat > "$TMP/env-completo.json" <<'JSON'
 {
   "envs": [
     { "key": "DATABASE_URL", "target": ["production"], "type": "sensitive" },
     { "key": "NEXT_PUBLIC_SITE_URL", "target": ["production"], "type": "plain" },
-    { "key": "ADMIN_API_TOKEN", "target": ["production"], "type": "sensitive" }
+    { "key": "ADMIN_SESSION_SECRET", "target": ["production"], "type": "sensitive" },
+    { "key": "ADMIN_PANEL_PASSWORD", "target": ["production"], "type": "sensitive" }
   ]
 }
 JSON
 
-cat > "$TMP/env-sin-token.json" <<'JSON'
+cat > "$TMP/env-sin-sesion.json" <<'JSON'
 {
   "envs": [
     { "key": "DATABASE_URL", "target": ["production"], "type": "sensitive" },
     { "key": "NEXT_PUBLIC_SITE_URL", "target": ["production"], "type": "plain" },
-    { "key": "DATABASE_URL", "target": ["preview"], "type": "sensitive" }
+    { "key": "ADMIN_API_TOKEN", "target": ["production"], "type": "sensitive" },
+    { "key": "ADMIN_PANEL_PASSWORD", "target": ["production"], "type": "sensitive" }
+  ]
+}
+JSON
+
+cat > "$TMP/env-sin-password.json" <<'JSON'
+{
+  "envs": [
+    { "key": "DATABASE_URL", "target": ["production"], "type": "sensitive" },
+    { "key": "NEXT_PUBLIC_SITE_URL", "target": ["production"], "type": "plain" },
+    { "key": "ADMIN_API_TOKEN", "target": ["production"], "type": "sensitive" },
+    { "key": "ADMIN_SESSION_SECRET", "target": ["production"], "type": "sensitive" }
+  ]
+}
+JSON
+
+# Solo el nombre con sufijo: con comparación por subcadena el preflight lo daría por bueno (CIF-129).
+cat > "$TMP/env-con-sufijo.json" <<'JSON'
+{
+  "envs": [
+    { "key": "DATABASE_URL_UNPOOLED", "target": ["production"], "type": "sensitive" },
+    { "key": "NEXT_PUBLIC_SITE_URL", "target": ["production"], "type": "plain" },
+    { "key": "ADMIN_SESSION_SECRET_OLD", "target": ["production"], "type": "sensitive" },
+    { "key": "ADMIN_PANEL_PASSWORD", "target": ["production"], "type": "sensitive" }
   ]
 }
 JSON
@@ -182,35 +210,72 @@ ejecutar() { # ejecutar <fichero-de-inventario> -> código en $?, salida en $TMP
     bash "$PREFLIGHT" > "$TMP/salida" 2>&1
 }
 
-# Caso 1: Production define ADMIN_API_TOKEN -> todo en orden, código 0 y la variable en el informe.
-ejecutar "$TMP/env-con-token.json"
+# Caso 1: Production define DATABASE_URL y la sesión del panel -> todo en orden y código 0.
+ejecutar "$TMP/env-completo.json"
 codigo=$?
 if [[ "$codigo" -eq 0 ]]; then
-  pasa "con ADMIN_API_TOKEN en Production el preflight sale con código 0"
+  pasa "con DATABASE_URL y la sesión en Production el preflight sale con código 0"
 else
-  falla "con ADMIN_API_TOKEN en Production el preflight sale con código $codigo (se esperaba 0)"
+  falla "con DATABASE_URL y la sesión en Production el preflight sale con código $codigo (se esperaba 0)"
 fi
-if grep -qE '^  OK .*ADMIN_API_TOKEN' "$TMP/salida"; then
-  pasa "el informe lista ADMIN_API_TOKEN entre las variables de Production"
+if grep -qE '^  OK .*DATABASE_URL' "$TMP/salida" &&
+  grep -qE '^  OK .*ADMIN_SESSION_SECRET' "$TMP/salida" &&
+  grep -qE '^  OK .*ADMIN_PANEL_PASSWORD' "$TMP/salida"; then
+  pasa "el informe lista las claves exigidas de Production"
 else
-  falla "el informe no lista ADMIN_API_TOKEN entre las variables de Production"
+  falla "el informe no lista las claves exigidas de Production"
 fi
 
-# Caso 2: Production sin ADMIN_API_TOKEN -> pendiente explícito y código 1.
-ejecutar "$TMP/env-sin-token.json"
+# Caso 2: Production sin ADMIN_SESSION_SECRET -> pendiente explícito y código 1. Con
+# `ADMIN_API_TOKEN` presente: desde CIF-123 el token no es exigible y su falta no se avisa.
+ejecutar "$TMP/env-sin-sesion.json"
 codigo=$?
 if [[ "$codigo" -eq 1 ]]; then
-  pasa "sin ADMIN_API_TOKEN en Production el preflight sale con código 1"
+  pasa "sin ADMIN_SESSION_SECRET en Production el preflight sale con código 1"
 else
-  falla "sin ADMIN_API_TOKEN en Production el preflight sale con código $codigo (se esperaba 1)"
+  falla "sin ADMIN_SESSION_SECRET en Production el preflight sale con código $codigo (se esperaba 1)"
 fi
-if grep -qE '^  PENDIENTE falta ADMIN_API_TOKEN en Production' "$TMP/salida"; then
-  pasa "el informe marca PENDIENTE la falta de ADMIN_API_TOKEN"
+if grep -qE '^  PENDIENTE falta ADMIN_SESSION_SECRET en Production' "$TMP/salida"; then
+  pasa "el informe marca PENDIENTE la falta de ADMIN_SESSION_SECRET"
 else
-  falla "el informe no marca PENDIENTE la falta de ADMIN_API_TOKEN"
+  falla "el informe no marca PENDIENTE la falta de ADMIN_SESSION_SECRET"
+fi
+if grep -qE 'falta ADMIN_API_TOKEN' "$TMP/salida"; then
+  falla "el informe marca PENDIENTE la falta de ADMIN_API_TOKEN, que ya no es exigible (CIF-123)"
+else
+  pasa "el informe no exige ADMIN_API_TOKEN: su ausencia no se avisa (CIF-123)"
 fi
 
-# Caso 3: contrato de redacción (ADR-0014): el informe no imprime ningún valor de credencial.
+# Caso 3: Production sin ADMIN_PANEL_PASSWORD -> pendiente explícito y código 1.
+ejecutar "$TMP/env-sin-password.json"
+codigo=$?
+if [[ "$codigo" -eq 1 ]]; then
+  pasa "sin ADMIN_PANEL_PASSWORD en Production el preflight sale con código 1"
+else
+  falla "sin ADMIN_PANEL_PASSWORD en Production el preflight sale con código $codigo (se esperaba 1)"
+fi
+if grep -qE '^  PENDIENTE falta ADMIN_PANEL_PASSWORD en Production' "$TMP/salida"; then
+  pasa "el informe marca PENDIENTE la falta de ADMIN_PANEL_PASSWORD"
+else
+  falla "el informe no marca PENDIENTE la falta de ADMIN_PANEL_PASSWORD"
+fi
+
+# Caso 4: nombres con sufijo no cubren a la clave exacta (CIF-129).
+ejecutar "$TMP/env-con-sufijo.json"
+codigo=$?
+if [[ "$codigo" -eq 1 ]]; then
+  pasa "con DATABASE_URL_UNPOOLED y ADMIN_SESSION_SECRET_OLD el preflight sale con código 1"
+else
+  falla "con nombres con sufijo el preflight sale con código $codigo (se esperaba 1)"
+fi
+if grep -qE '^  PENDIENTE falta DATABASE_URL en Production' "$TMP/salida" &&
+  grep -qE '^  PENDIENTE falta ADMIN_SESSION_SECRET en Production' "$TMP/salida"; then
+  pasa "nombres con sufijo no cubren DATABASE_URL ni ADMIN_SESSION_SECRET"
+else
+  falla "un nombre con sufijo cubrió la clave exacta (comparación por subcadena)"
+fi
+
+# Caso 5: contrato de redacción (ADR-0014): el informe no imprime ningún valor de credencial.
 if grep -qF "$SENTINEL_GH" "$TMP/salida" || grep -qF "$SENTINEL_VERCEL" "$TMP/salida" ||
   grep -qF "$SENTINEL_DB" "$TMP/salida"; then
   falla "el informe imprime un valor de credencial"

@@ -26,7 +26,10 @@ servidores propios en ningún entorno ([ADR-0007](adr/0007-despliegue-vercel-git
 - **Protección de despliegue desactivada** (2026-09-11): Vercel traía activada la autenticación SSO
   para todos los despliegues, lo que dejaba el configurador público y las URLs de preview detrás de
   un login. Se desactiva a propósito para que el cliente pueda ver producción y QA pueda validar los
-  flujos del PR sin cuenta de Vercel; es asumible porque el preview no toca datos reales.
+  flujos del PR sin cuenta de Vercel; es asumible porque el preview no toca datos reales. La
+  autenticación del panel **no** se delega en esa protección ([ADR-0024](adr/0024-autenticacion-panel-sesion-firmada.md)):
+  es por proyecto y por entorno, así que aplicaría también al configurador público; el panel usa su
+  propia sesión firmada.
 
 ## 2. Cómo se despliega
 
