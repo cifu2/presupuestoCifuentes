@@ -4,11 +4,16 @@
 - **Estado:** Aceptado
 - **Decide:** CTO (decisión de tablero en CIF-482; petición de Frontend en CIF-482, contexto CIF-9 /
   CIF-101 / CIF-126 / CIF-243 / CIF-114)
-- **Revisión:** CIF-486 (Backend) devolvió **NO PASA** a la revisión 1 (`7360238`): el conjunto de
-  escritura autorizado no cubría ficheros que la propia tarea necesita (H1), la frontera declarada
-  omitía superficie compartida (H2), la dirección del E2E del flujo 3 no era viable ni tenía dueño real
-  (H3), una cita de ADR era incorrecta (H4), el gate de CIF-126b era algo más ancho de lo justificado
-  (H5) y `playwright.config.ts` tenía dos dueños (H6). Esta revisión 2 corrige H1–H6.
+- **Revisión 1:** CIF-486 (Backend) devolvió **NO PASA** a `7360238`: el conjunto de escritura autorizado
+  no cubría ficheros que la propia tarea necesita (H1), la frontera declarada omitía superficie
+  compartida (H2), la dirección del E2E del flujo 3 no era viable ni tenía dueño real (H3), una cita de
+  ADR era incorrecta (H4), el gate de CIF-126b era más ancho de lo justificado (H5) y
+  `playwright.config.ts` tenía dos dueños (H6). La revisión 2 (`415b2a7`) corrigió H1–H6 en parte.
+- **Revisión 2:** CIF-492 (Backend) devolvió **NO PASA** a `415b2a7`: H1, H3/H6 y H4 quedaron cerrados,
+  pero la frontera seguía sin cubrir la superficie documental del arnés de E2E (hallazgo 1) y el gate de
+  CIF-126b seguía siendo más ancho de lo justificado (hallazgo 2). **Esta revisión 3 acepta los dos
+  hallazgos**, divide la carga inicial en construcción y ejecución, completa la frontera de ficheros y
+  añade dos precisiones menores de cita y de redacción.
 - **Ámbito:** modelo de escritura de catálogo (ADR-0017 §8), alcance de escritura del panel
   (ADR-0023 §4 y §7), invariante de publicación de tarifas (ADR-0003)
 - **Relación con otros ADR:** ajusta ADR-0023 §7 (el gate de la fase 3 pasa de CIF-126 a su parte
@@ -18,9 +23,10 @@
 ## Contexto
 
 1. ADR-0023 §7 dejó la fase 3 del panel (CIF-243) bloqueada por CIF-126 y por la autenticación del
-   panel. La autenticación (CIF-241) está `done`; CIF-126 sigue `blocked` por CIF-114, la decisión de
-   negocio sobre la carga inicial del catálogo real (tarjeta pendiente del propietario, agente CEO en
-   `error`).
+   panel. La autenticación (CIF-241) está `done`; CIF-126 estaba `blocked` por CIF-114, la decisión de
+   negocio sobre la carga inicial del catálogo real (estado en el momento de la decisión: tarjeta
+   pendiente del propietario, agente CEO en `error`). Esta decisión cancela CIF-126 y su parte de carga
+   inicial queda repartida entre CIF-126b-α y CIF-126b-β.
 2. ADR-0023 §8 ya fijó el principio para la lectura: **leer no necesita ninguna decisión de negocio**.
    Por eso CIF-242 (lectura real) se construyó con CIF-114 parada. El **modelo** de escritura —puertos,
    casos de uso y adaptadores— es la misma clase de trabajo: no depende de _quién_ aporta el catálogo ni
@@ -36,23 +42,32 @@
    publicación (ADR-0003, requisito 2 de CIF-243); y los códigos de error nuevos obligan, **por
    compilación**, a tocar `src/app/api/_lib/http.ts`, `src/i18n/domain-errors.ts` y las traducciones
    `DomainErrors.*` de `messages/*.json`.
-5. ADR-0023 §4 dejó `src/application/**`, `src/infrastructure/**`, `src/composition/container.ts`,
-   `prisma/**` y `scripts/**` fuera del alcance de la fase 1. El modelo de escritura y la invariante de
-   publicación necesitan esos caminos autorizados de forma explícita.
+5. ADR-0023 §3 prohibió en la fase 1 tocar `src/application/**`, `src/infrastructure/**`,
+   `src/composition/container.ts`, `prisma/**` y `scripts/**` (§4 es, en ese mismo ADR, el conjunto
+   autorizado de la fase 1). El modelo de escritura, la invariante de publicación y el importador
+   necesitan esos caminos autorizados de forma explícita, y sus ampliaciones se documentan aquí.
 
 ## Decisión
 
-1. **Split de CIF-126 en dos tareas**, con CIF-126 como paraguas cancelada por quedar cubierta:
+1. **Split de CIF-126 en tres tareas** (CIF-126a, CIF-126b-α y CIF-126b-β), con CIF-126 como paraguas
+   cancelada por quedar cubierta:
 
    - **CIF-126a — modelo de escritura compartido** (item 2 de CIF-126; tarea CIF-483): puertos de
      escritura en `src/application/ports`, casos de uso de _upsert_ en `src/application/use-cases` y
      adaptadores Prisma y en memoria, idempotentes por `code` (series, acabados, complementos) y
      `(finishId, code)` (colores), incluidos los textos multi-idioma de `catalog_text`. Tests con
      catálogo sintético. **No depende de CIF-114.**
-   - **CIF-126b — carga inicial** (items 1, 3, 4, 6 y 7; tarea CIF-484): landing del ADR-0017 en
-     `docs/adr`, CLI `scripts/import-catalog.ts`, validación Zod del fichero, procedimiento en
-     `docs/despliegue.md` y verificación posterior. **Sigue bloqueada por CIF-114**, más el bloqueo
-     técnico de CIF-126a, cuyos casos de uso consume.
+   - **CIF-126b-α — construcción del importador** (items 1, 3 y 4; tarea CIF-498): aterrizaje del
+     ADR-0017 en `docs/adr`, contrato de formato versionado, CLI `scripts/import-catalog.ts` y validación
+     Zod, con los hallazgos H2/H4/H5 de `revision-adr-0017` resueltos en la decisión y tests con catálogo
+     sintético. **No depende de CIF-114**: construir la herramienta no es decidir quién aporta los datos,
+     por qué vía ni cuándo. Depende técnicamente de CIF-126a, cuyos casos de uso consume.
+   - **CIF-126b-β — ejecución de la carga real** (items 6 y 7; tarea CIF-484): el procedimiento verificado
+     con el fichero real del propietario, la carga con `--apply`/`--publish` sobre la base objetivo,
+     la comprobación previa de PITR/copia (ADR-0009) y la verificación posterior. **Sigue bloqueada por
+     CIF-114** —quién aporta, vía (importador CLI vs esperar al panel) y fecha— más el bloqueo técnico de
+     CIF-126b-α, cuyo CLI consume. Si CIF-114 elige esperar al panel, el importador sigue siendo la vía de
+     importación masiva aceptada en ADR-0017 y el trabajo de α no se tira.
 
 2. **Orden respecto a CIF-243: la fase 3 se bloquea por CIF-126a, no por CIF-126.** CIF-126a es dueña de
    `src/composition/container.ts` y de `src/application/use-cases/publish-tariff-version.ts` hasta que su
@@ -74,13 +89,14 @@
 
    Quedan para **CIF-243**, y siempre después del merge de CIF-126a: el resto de `src/app/api/admin/**`,
    `src/ui/admin/**`, las claves `CatalogAdmin.*` de `messages/*.json` y los specs **nuevos** de `e2e/`
-   (en particular `e2e/admin-write.spec.ts`). Para **CIF-126b**: `scripts/**`, `docs/adr/0017-*` y
-   `docs/despliegue.md`.
+   (en particular `e2e/admin-write.spec.ts`). Para **CIF-126b-α (CIF-498)**: `scripts/**`,
+   `docs/adr/0017-*`, la fila del ADR-0017 en `docs/adr/README.md` y el contrato de formato
+   (`docs/carga-inicial-catalogo.md`). Para **CIF-126b-β (CIF-484)**: `docs/despliegue.md`.
 
-   Nota de coordinación: `src/composition/container.ts`, `playwright.config.ts` y `e2e/support/**` los ha
-   tocado también CIF-436 (`catalog-empty`, rama `test/cif436-e2e-catalogo-vacio`, `107a65f`). Su tercer
-   `webServer` con `CATALOG_DEMO_EMPTY` **no se revierte**: resuelve otro problema y es compatible con
-   esta decisión.
+   Nota de coordinación: CIF-436 (`catalog-empty`, rama `test/cif436-e2e-catalogo-vacio`, `107a65f`) tocó
+   `src/composition/container.ts`, `playwright.config.ts`, `e2e/support/**` y además `.env.example`,
+   `docs/e2e-playbook.md`, `docs/testing-strategy.md` y `docs/variables-entorno.md`. Su tercer `webServer`
+   con `CATALOG_DEMO_EMPTY` **no se revierte**: resuelve otro problema y es compatible con esta decisión.
 
 4. **Ampliación explícita de ADR-0023 §4.** Quedan autorizados, dentro de sus tareas y con alcance
    aditivo siempre que sea posible:
@@ -92,10 +108,17 @@
      con sus tests.
    - **CIF-243:** `src/app/api/admin/**` (menos el route test reservado a CIF-126a), `src/ui/admin/**`,
      claves `CatalogAdmin.*` de `messages/*.json` y `e2e/admin-write.spec.ts`.
+   - **CIF-126b-α (CIF-498):** `scripts/**`, `docs/adr/0017-*`, `docs/adr/README.md` (solo su fila) y
+     `docs/carga-inicial-catalogo.md`.
+   - **CIF-126b-β (CIF-484):** `docs/despliegue.md` (apartado de carga inicial).
    - **CIF-490 (DevOps, arnés del E2E):** `.github/workflows/ci.yml` (job `e2e`),
-     `playwright.config.ts` y `e2e/support/**`.
+     `playwright.config.ts`, `e2e/support/**` y la documentación que el arnés deja obsoleta:
+     `docs/e2e-playbook.md` (sus apartados «E2E con base de datos» y «dos servidores»),
+     `docs/testing-strategy.md` (la referencia a ese apartado) y, **solo si el arnés introduce variables
+     nuevas**, `docs/variables-entorno.md`, `.env.example` y `src/config/env.ts`.
 
-   Cualquier otro fichero requiere volver a pasar por el CTO. `scripts/**` sigue reservado a CIF-126b.
+   Cualquier otro fichero requiere volver a pasar por el CTO: las dos revisiones ampliaron esta frontera
+   dos veces, y la ampliación se documenta aquí en vez de improvisarse en un PR.
 
 5. **Invariante de publicación compartida (ADR-0003, requisito 2 de CIF-243 y criterio añadido de
    CIF-9).** Una versión de tarifa **sin tabla de precios no se publica**: la serie queda en borrador y
@@ -113,8 +136,9 @@
    ADR-0026 §2). **El cambio concreto no era de CIF-436**: CIF-436 cubre `catalog-empty` y lo resolvió con
    un tercer `webServer` en memoria, que es otro problema y se conserva. El dueño es **CIF-490** (DevOps),
    con autorización sobre `.github/workflows/ci.yml`, `playwright.config.ts` y `e2e/support/**` según el
-   apartado 4. CIF-243 no queda bloqueada por CIF-490 —puede construir la UI, sus unitarios y el resto de
-   specs—, pero su requisito 3 (flujo 3) no puede estar en verde hasta que CIF-490 fusione.
+   apartado 4. CIF-490 **no bloquea el arranque** de CIF-243 —puede construir la UI, sus unitarios y el
+   resto de specs—, pero sí condiciona el cierre de su requisito 3 (flujo 3), que no puede estar en verde
+   hasta ese merge.
 
 7. **Sin datos reales.** El modelo de escritura, sus tests, el arnés de CIF-490 y este ADR usan catálogo
    sintético; los datos del propietario están fuera del repositorio y nunca se versionan (ADR-0014 §1,
@@ -126,28 +150,36 @@
   de negocio parada y el MVP recupera su último tramo de frontend.
 - La invariante de publicación existe en el dominio **antes** de que la UI pueda confiar en ella, que era
   el orden correcto y el que ADR-0023 §7 no garantizaba.
-- La frontera de ficheros del apartado 3 es la completa, no una aproximación: incluye los puntos de borde
-  que los códigos de error nuevos obligan a tocar. CIF-243 arranca después del merge de CIF-126a, así que
-  el reparto no genera conflictos de fusión, solo dueños claros.
-- CIF-126b conserva el gate de CIF-114 sin relajarlo: ni el CLI, ni el ADR-0017, ni el procedimiento de
-  carga se escriben antes de que exista la decisión de negocio.
+- La frontera de ficheros del apartado 3 incluye los puntos de borde que los códigos de error nuevos
+  obligan a tocar y la documentación que mueve cada tarea. Es una frontera viva: las dos revisiones la
+  ampliaron dos veces y cada ampliación queda escrita aquí. CIF-243 arranca después del merge de CIF-126a,
+  así que el reparto no genera conflictos de fusión, solo dueños claros.
+- La carga inicial deja de ser un bloque único: la herramienta (ADR-0017, contrato de formato, CLI y Zod)
+  se construye ya, y **solo la ejecución con datos reales espera a CIF-114**. Si la respuesta es B
+  (esperar al panel), el importador sigue siendo la vía de importación masiva aceptada en ADR-0017 y su
+  trabajo no se tira; lo que no se hace sin la decisión es cargar datos del propietario.
 - Coste asumido: el modelo de escritura se diseña sin el catálogo real delante. Se mitiga con _upsert_
-  idempotente por `code`, tests sintéticos y `--dry-run` por defecto en el CLI de CIF-126b.
+  idempotente por `code`, tests sintéticos y `--dry-run` por defecto en el CLI de CIF-126b-α.
 - Coste de secuencia: CIF-243 espera al merge de CIF-126a (no a CIF-114). Es un retraso acotado y
   preferible a editar `container.ts` y el caso de uso de publicación en paralelo.
-- Riesgo asumido: si la decisión de CIF-114 cambia el formato del catálogo, la parte de carga
-  (CIF-126b) puede necesitar ajustes; al ser idempotente por `code` y aditivo, el ajuste es local.
+- Riesgo asumido: si la decisión de CIF-114 cambia el formato del catálogo, la ejecución de la carga
+  (CIF-126b-β) puede necesitar ajustes; al ser el importador idempotente por `code` y aditivo, el ajuste
+  es local. Si el formato cambiase antes de que α fusione, se corrige el contrato en el mismo PR.
 
-## Puntos revisados que no se aceptan
+## Hallazgos de la revisión 2 aceptados en la revisión 3
 
-- **H5 — el gate de CIF-126b es algo más ancho de lo justificado.** Cierto en parte: el mecanismo, los
-  flags y el `--dry-run` ya están fijados por ADR-0017 §3/§5/§6, así que dentro del gate no queda trabajo
-  de diseño. Se mantiene el gate sobre el conjunto (landing del ADR-0017, CLI, Zod y procedimiento)
-  **como una unidad** porque el formato y las columnas del fichero de carga forman parte de la respuesta
-  de negocio de CIF-114: documentar un procedimiento de carga para un formato sin confirmar produciría
-  documentación que habría que reescribir. Lo que se corrige es la afirmación: el gate no cubre «todo lo
-  que no depende de la decisión de negocio», cubre la carga inicial completa. CIF-126b arranca sin trabajo
-  de diseño pendiente el día en que CIF-114 se resuelva.
+- **Hallazgo 1 — la frontera no cubría la documentación del arnés de E2E.** Aceptado: el apartado 4
+  autoriza a CIF-490 `docs/e2e-playbook.md`, `docs/testing-strategy.md` y, solo si introduce variables
+  nuevas, `docs/variables-entorno.md`, `.env.example` y `src/config/env.ts`. La nota sobre lo que tocó
+  CIF-436 lista ya los ficheros reales de `107a65f`, no una aproximación.
+- **Hallazgo 2 — el gate de CIF-126b era más ancho de lo justificado.** Aceptado, y la revisión 2 tenía
+  razón: el mecanismo, los flags y el `--dry-run` están fijados por ADR-0017; el contrato de formato está
+  cerrado en `formato-carga-inicial` (rev 2), que además declara que **no** decide la vía, quién aporta ni
+  la fecha; y el aterrizaje del ADR-0017 es mecánico. Lo que sostiene el gate es la **ejecución** con
+  datos reales, no la construcción. Por eso CIF-126b se parte en CIF-126b-α (CIF-498, sin gate) y
+  CIF-126b-β (CIF-484, gated por CIF-114), y se corrige también la afirmación falsa de la revisión 2
+  («CIF-126b arranca sin trabajo de diseño pendiente»): los hallazgos H2, H4 y H5 de `revision-adr-0017`
+  siguen abiertos y son trabajo de α, resoluble sin CIF-114.
 
 ## Alternativas consideradas
 
