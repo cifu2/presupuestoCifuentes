@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 #
 # Comprobación de solo lectura de la puesta en marcha del despliegue (CIF-11, docs/despliegue.md 6).
-# Exige que Production defina DATABASE_URL, ADMIN_API_TOKEN (sin esta última el API del panel
-# responde 503, CIF-123), ADMIN_SESSION_SECRET y ADMIN_PANEL_PASSWORD (sin estas dos el panel
-# deniega /[locale]/admin/** y el propietario no puede entrar, CIF-241). Los avisos de esta
-# comprobación se prueban en scripts/despliegue-preflight.test.sh.
+# Exige que Production defina DATABASE_URL y las dos variables de la sesión del panel
+# (ADMIN_SESSION_SECRET y ADMIN_PANEL_PASSWORD): sin estas dos el panel deniega /[locale]/admin/**
+# y el propietario no puede entrar (CIF-241). `ADMIN_API_TOKEN` es la credencial **opcional** de
+# automatización por `Bearer` (ADR-0024 §7) y no se exige, porque el propietario entra con la sesión
+# (CIF-123). Las claves se comparan por nombre exacto, nunca por subcadena (CIF-129). Los avisos de
+# esta comprobación se prueban en scripts/despliegue-preflight.test.sh.
 #
 # No crea, no modifica ni borra nada y no imprime ningún valor secreto: solo metadatos (usuario,
 # repositorio, proyecto, nombres de variables). Funciona sin las CLI de GitHub y de Vercel, así que
@@ -47,6 +49,12 @@ try: d = json.load(open(sys.argv[1]))
 except Exception: print(""); raise SystemExit
 v = d.get(sys.argv[2])
 print(v if isinstance(v, (str, int, bool)) else ("" if v is None else json.dumps(v, ensure_ascii=False)))' "$1" "$2"
+}
+
+tiene_clave() { # tiene_clave <fichero-json> <clave> -> 0 si esa clave exacta está en Production
+  python3 -c 'import json,sys
+e = json.load(open(sys.argv[1])).get("envs", [])
+raise SystemExit(0 if any(x.get("key") == sys.argv[2] and "production" in (x.get("target") or []) for x in e) else 1)' "$1" "$2"
 }
 
 echo "== 1/6 GitHub: token"
@@ -131,15 +139,16 @@ if [[ -n "$VERCEL_TOKEN_RESOLVED" ]]; then
 e = json.load(open(sys.argv[1])).get("envs", [])
 print(", ".join(sorted({x["key"] for x in e if "production" in (x.get("target") or [])})))' "$TMP/env.json")"
       ok "variables de Production definidas: ${keys:-ninguna}"
-      [[ "$keys" == *DATABASE_URL* ]] || ko "falta DATABASE_URL en Production"
-      # Sin ADMIN_API_TOKEN el API del panel responde 503 y el propietario no puede publicar
-      # ni archivar tarifas (CIF-123): la falta tiene que doler aquí, antes del despliegue.
-      [[ "$keys" == *ADMIN_API_TOKEN* ]] || ko "falta ADMIN_API_TOKEN en Production: el API del panel responde 503 (CIF-123)"
+      # Por nombre exacto: `DATABASE_URL_UNPOOLED` no cubre `DATABASE_URL`, ni
+      # `ADMIN_PANEL_PASSWORD_OLD` cubre `ADMIN_PANEL_PASSWORD` (CIF-129).
+      tiene_clave "$TMP/env.json" DATABASE_URL || ko "falta DATABASE_URL en Production"
       # Sin ADMIN_SESSION_SECRET/ADMIN_PANEL_PASSWORD la sesión falla cerrada: /[locale]/admin/**
       # queda denegado y /api/admin/session responde 503 ADMIN_ACCESS_DISABLED, así que el
-      # propietario no puede entrar al panel (ADR-0024, CIF-241).
-      [[ "$keys" == *ADMIN_SESSION_SECRET* ]] || ko "falta ADMIN_SESSION_SECRET en Production: la sesión del panel falla cerrada y /api/admin/session responde 503 (CIF-241)"
-      [[ "$keys" == *ADMIN_PANEL_PASSWORD* ]] || ko "falta ADMIN_PANEL_PASSWORD en Production: el propietario no puede canjear la credencial del panel (CIF-241)"
+      # propietario no puede entrar al panel (ADR-0024, CIF-241). `ADMIN_API_TOKEN` no se exige:
+      # es la credencial opcional de automatización (ADR-0024 §7) y el propietario entra con la
+      # sesión (CIF-123).
+      tiene_clave "$TMP/env.json" ADMIN_SESSION_SECRET || ko "falta ADMIN_SESSION_SECRET en Production: la sesión del panel falla cerrada y /api/admin/session responde 503 (CIF-241)"
+      tiene_clave "$TMP/env.json" ADMIN_PANEL_PASSWORD || ko "falta ADMIN_PANEL_PASSWORD en Production: el propietario no puede canjear la credencial del panel (CIF-241)"
     else
       ko "no se pudo listar las variables (HTTP $code)"
     fi
