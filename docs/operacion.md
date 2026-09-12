@@ -37,10 +37,24 @@ Decisiones asociadas: [ADR-0007](adr/0007-despliegue-vercel-github.md) y
 
 ## 3. Monitorización
 
-- **Salud de la aplicación:** `GET /api/health` devuelve `status`, `environment` y
-  `database: "configured" | "unconfigured"`. `environment` sale de `VERCEL_ENV` (`production` o
-  `preview`; `NODE_ENV` fuera de Vercel), así que el monitor distingue producción de preview. Se usa
-  como comprobación manual tras cada release y como sonda del monitor externo.
+- **Salud de la aplicación:** `GET /api/health` devuelve `status`, `environment` y `database`.
+  `environment` sale de `VERCEL_ENV` (`production` o `preview`; `NODE_ENV` fuera de Vercel), así que
+  el monitor distingue producción de preview. `database` tiene cuatro estados (ADR-0015 §5):
+  - `unconfigured`: no hay `DATABASE_URL` (o `CATALOG_DEMO_MODE=true`). HTTP **200**.
+  - `ok`: la base responde y tiene el esquema migrado (`_prisma_migrations` y `door_series`).
+    HTTP **200**.
+  - `unreachable`: hay `DATABASE_URL` pero la consulta falla o no responde en **2 s**. HTTP **503**,
+    con `status: "degraded"`. El monitor de uptime se dispara aquí, que es justo lo que no ocurría
+    durante la avería del 2026-09-11 (ADR-0015).
+  - `unmigrated`: hay `DATABASE_URL` y la base **responde**, pero no tiene el esquema de la
+    aplicación o le falta el historial de migraciones. HTTP **503**, con `status: "degraded"`. Es la
+    puerta que faltaba en el incidente del 2026-09-11: la base de producción era alcanzable pero
+    estaba vacía. Se corrige con `prisma migrate deploy` contra esa base (ADR-0015 §6).
+  - La sonda comprueba presencia de esquema e historial, no el detalle de cada migración: una
+    migración pendiente o a medias se verifica con `prisma migrate status` en la puerta de release.
+  - El cuerpo nunca incluye la cadena de conexión ni credenciales, y el `console.error` del
+    adaptador solo registra un mensaje fijo (el error del driver puede contener la URL).
+  - Se usa como comprobación manual tras cada release y como sonda del monitor externo.
 - **Monitorización básica sin coste añadido:**
   - _Deployment notifications_ de Vercel al correo del propietario/CTO en cada despliegue de
     producción (éxito y fallo).
