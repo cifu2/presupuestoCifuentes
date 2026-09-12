@@ -18,7 +18,14 @@ import type { QuoteExtra } from '@/domain/pricing/quote-configuration'
 
 const MESSAGES: Readonly<Record<Locale, typeof es>> = { es, en }
 
-const INTL_LOCALES: Readonly<Record<Locale, string>> = { es: 'es-ES', en: 'en-GB' }
+/**
+ * Idioma BCP 47 del documento: formatos de fecha e importe y metadatos del PDF (§6.4 y §6.5).
+ * `@react-pdf` lo declara en el catálogo del PDF, así que un lector sabe en qué idioma leerlo.
+ */
+export const DOCUMENT_LANGUAGES: Readonly<Record<Locale, string>> = {
+  es: 'es-ES',
+  en: 'en-GB',
+}
 
 export interface QuoteDocumentTexts {
   readonly documentTitle: string
@@ -34,15 +41,16 @@ export interface QuoteDocumentTexts {
   readonly accessories: string
   readonly noAccessories: string
   readonly unitPrice: string
+  readonly quantity: string
   readonly amount: string
   readonly concept: string
+  readonly breakdown: string
   readonly extrasTitle: string
   readonly subtotal: string
   readonly total: string
   readonly issuer: string
   readonly conditions: string
   readonly frozenPriceNotice: string
-  readonly contactPrompt: string
   readonly pdfFooter: string
   readonly extras: Readonly<Record<QuoteExtra, string>>
   readonly pendingFields: Readonly<Record<string, string>>
@@ -76,15 +84,16 @@ export function quoteDocumentTexts(locale: Locale): QuoteDocumentTexts {
     accessories: quote.accessories,
     noAccessories: quote.noAccessories,
     unitPrice: quote.unitPrice,
+    quantity: quote.quantity,
     amount: quote.amount,
     concept: quote.concept,
+    breakdown: quote.breakdown,
     extrasTitle: quote.extrasTitle,
     subtotal: quote.subtotal,
     total: quote.total,
     issuer: quote.issuer,
     conditions: quote.conditions,
     frozenPriceNotice: quote.frozenPriceNotice,
-    contactPrompt: quote.contactPrompt,
     pdfFooter: quote.pdf.footer,
     extras: quote.extras,
     pendingFields: quote.pendingFields,
@@ -129,7 +138,7 @@ export function formatMoney(cents: bigint, currency: string, locale: Locale): st
 }
 
 export function formatDate(date: Date, locale: Locale): string {
-  return new Intl.DateTimeFormat(INTL_LOCALES[locale], {
+  return new Intl.DateTimeFormat(DOCUMENT_LANGUAGES[locale], {
     dateStyle: 'long',
     timeZone: 'UTC',
   }).format(date)

@@ -150,10 +150,20 @@ describe('shell del panel: iconos SVG del sistema de diseño (CIF-296)', () => {
     expect(markup).toContain('focusable="false"')
     expect(PICTOGRAPHS.test(markup)).toBe(false)
   })
+
+  it('ordena con chevrones SVG y no con glifos de plataforma (D2 de CIF-361)', async () => {
+    const markup = render('es', <SeriesList state="ready" series={await reader.listSeries()} />)
+
+    // El indicador de ordenación ya no es `▲`/`▼` pintados por la fuente del sistema.
+    expect(/[▲▼]/.test(markup)).toBe(false)
+    expect(markup).toContain('<svg')
+    expect(markup).toContain('stroke-width="1.75"')
+    expect(PICTOGRAPHS.test(markup)).toBe(false)
+  })
 })
 
 describe('shell del panel: detalle de serie', () => {
-  it('nombra el tablist por clave traducida (M2 de CIF-101)', async () => {
+  it('es una navegación con aria-current y nombre traducido (M2 de CIF-101, D5 de CIF-361)', async () => {
     const detail = await reader.getSeries('serie-a')
 
     expect(detail).not.toBeNull()
@@ -170,6 +180,12 @@ describe('shell del panel: detalle de serie', () => {
     expect(spanish).toContain('aria-label="Secciones de la serie"')
     expect(spanish).toContain('Medidas')
     expect(spanish).toContain('400 mm')
+    expect(spanish).toContain('aria-current="page"')
+    // No se anuncia un patrón `tabs` que el componente no honra (sin flechas ni roving tabindex).
+    expect(spanish).not.toContain('role="tablist"')
+    expect(spanish).not.toContain('role="tab"')
+    // Las medidas de la fase 1 son texto de solo lectura, no campos editables.
+    expect(spanish).not.toContain('<input')
     expect(english).toContain('aria-label="Series sections"')
     expect(english).toContain('Sizes')
   })
@@ -186,6 +202,9 @@ describe('shell del panel: detalle de serie', () => {
     expect(markup).toContain('serie-b')
     expect(markup).toContain('Falta traducción')
     expect(markup).toContain('disabled')
+    // Los dos botones muertos de la fase 1 dicen por qué lo están (D4 de CIF-361).
+    expect(markup).toContain('title="Disponible al activar la edición."')
+    expect(markup).toContain('Disponible al activar la edición.')
   })
 })
 
@@ -229,6 +248,8 @@ describe('shell del panel: tarifas e idiomas', () => {
 
     // El estado manda sobre el contenido: `empty` no pinta la tabla aunque el lector devuelva versiones.
     expect(empty).toContain('Sin tarifas para esta serie.')
+    expect(empty).toContain('+ Nueva versión')
+    expect(empty).toContain('title="Disponible al activar la edición."')
     expect(empty).not.toContain('admin-table')
     expect(englishEmpty).toContain('No price lists for this series.')
     expect(loading).toContain('role="status"')

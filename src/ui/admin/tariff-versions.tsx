@@ -6,9 +6,9 @@ import { useState } from 'react'
 import type { Locale } from '@/domain/catalog/locale'
 
 import { AdminDialog } from './admin-dialog'
-import { WarningIcon } from './panel-icons'
+import { TagIcon, WarningIcon } from './panel-icons'
 import { formatDay, formatVersionNumber, statusLabelKey } from './panel-navigation'
-import { Alert, Badge, buttonClass, Card, type BadgeTone } from './panel-primitives'
+import { Alert, Badge, buttonClass, Card, EmptyState, type BadgeTone } from './panel-primitives'
 import { PanelError, PanelForbidden, PanelLoading } from './panel-states'
 import type { AdminPanelState, TariffVersionSummary } from './view-models'
 
@@ -54,9 +54,13 @@ export function TariffVersions({
 
   const isEmpty = state === 'empty' || versions.length === 0
 
+  // La pista de la CTA reutiliza la clave de la fase 1 de series (D3 de CIF-361): describe el mismo
+  // «todavía no se puede escribir» sin tocar el inventario de claves.
+  const newVersionHint = t('newSeriesHint')
+
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-ink-muted">{t(captionKey)}</p>
+      {isEmpty ? null : <p className="text-sm text-ink-muted">{t(captionKey)}</p>}
       <Alert tone="warning">
         <span className="flex items-center gap-2">
           <WarningIcon className="size-4 shrink-0" />
@@ -64,7 +68,15 @@ export function TariffVersions({
         </span>
       </Alert>
       {isEmpty ? (
-        <p className="text-sm text-ink-muted">{t('tariffsEmpty')}</p>
+        <EmptyState
+          icon={<TagIcon className="size-8" />}
+          title={t('tariffsEmpty')}
+          help={t(captionKey)}
+        >
+          <button type="button" className={buttonClass('primary')} disabled title={newVersionHint}>
+            {t('newTariffVersion')}
+          </button>
+        </EmptyState>
       ) : (
         <Card className="overflow-x-auto">
           <table className="admin-table w-full border-collapse text-left text-sm">

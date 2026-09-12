@@ -42,20 +42,15 @@ function isMobile(page: Page): boolean {
 }
 
 /**
- * El foco está dentro del menú móvil: en uno de sus enlaces o en el botón que lo abre. Es la
- * comprobación que pide el patrón de `sistema-de-diseno` §5: mientras el menú está abierto, el
- * contenido que tapa el scrim no recibe el foco.
+ * El foco está en el contenido que tapa el scrim (`main`). Es la invariante real del menú móvil:
+ * al ser un *disclosure* (`prototipos-y-flujos` §7) no atrapa el foco, pero el `inert` de la capa
+ * tapada mantiene el contenido fuera del orden de tabulación (D1 de CIF-361).
  */
-async function focusIsInMenu(page: Page): Promise<boolean> {
+async function focusIsInCoveredContent(page: Page): Promise<boolean> {
   return page.evaluate(() => {
     const active = document.activeElement
-    const menu = document.getElementById('nav-mobile')
 
-    if (active === null || menu === null) {
-      return false
-    }
-
-    return menu.contains(active) || active.getAttribute('aria-controls') === 'nav-mobile'
+    return active !== null && document.querySelector('main')?.contains(active) === true
   })
 }
 
@@ -92,15 +87,17 @@ test.describe('shell del panel: lista de series', () => {
     const table = page.getByRole('table')
 
     await expect(table).toBeVisible()
-    await expect(table).toContainText('Serie A')
+    // La lectura es la real (CIF-242): el catálogo de demostración con el que abre el E2E, no los
+    // fixtures de la fase 1. El catálogo de demostración solo tiene series publicadas, así que los
+    // badges de borrador y archivado se cubren en `panel-render.test.tsx`; aquí se comprueba el
+    // estado publicado, el aviso de traducción que falta (CI-300 no tiene descripción) y el enlace.
+    await expect(table).toContainText('Serie CI-100')
     await expect(table).toContainText('Publicada')
-    await expect(table).toContainText('Borrador')
-    await expect(table).toContainText('Archivada')
     await expect(table).toContainText('Falta traducción')
-    await expect(table).toContainText('2400 × 2100 mm')
-    await expect(page.getByRole('link', { name: 'Editar Serie A' })).toHaveAttribute(
+    await expect(table).toContainText('1000 × 2200 mm')
+    await expect(page.getByRole('link', { name: 'Editar Serie CI-100' })).toHaveAttribute(
       'href',
-      '/es/admin/series/serie-a',
+      '/es/admin/series/ci-100',
     )
   })
 
@@ -140,6 +137,9 @@ test.describe('shell del panel: navegación entre secciones', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Tarifas' })).toBeVisible()
     await expect(page.getByRole('main')).toContainText('Catálogo')
     await expect(page.getByRole('table')).toContainText('Vigente')
+    // El catálogo de demostración tiene borradores de tarifa (CI-400), así que el badge de borrador
+    // se comprueba contra la lectura real, no contra fixtures.
+    await expect(page.getByRole('table')).toContainText('Borrador')
   })
 
   test('las secciones sin datos reales del catálogo son ejemplos declarados', async ({ page }) => {
@@ -248,7 +248,9 @@ test.describe('shell del panel: menú móvil con scrim y foco (CIF-296)', () => 
     await expect(page.getByRole('button', { name: 'Abrir menú' })).toBeFocused()
   })
 
-  test('contiene el foco: tabular no alcanza el contenido que tapa el scrim', async ({ page }) => {
+  test('es un disclosure: no atrapa el foco y ES|EN siguen alcanzables con Tab', async ({
+    page,
+  }) => {
     test.skip(!isMobile(page), 'el menú desplegable solo existe por debajo de 768 px')
 
     await page.goto('/es/admin')
@@ -258,20 +260,30 @@ test.describe('shell del panel: menú móvil con scrim y foco (CIF-296)', () => 
 
     await expect(navigation.getByRole('link', { name: 'Series', exact: true })).toBeFocused()
 
-    // Recorrido medido por QA (H2 de CIF-300): con seis secciones, el 7.º tabulador salía del menú y
-    // caía en la tabla tapada («Estado» → «Nombre▲» → «Medidas máx.»). Dos vueltas completas cubren
-    // también el salto del último enlace al botón y de ahí al primero.
-    for (let step = 0; step < 14; step += 1) {
+    // El ciclo de la trampa retirada expulsaba el conmutador ES|EN del recorrido de teclado: era
+    // visible por encima del scrim, pero inalcanzable. Ahora tabular sale del menú hacia la
+    // cabecera sin caer nunca en el contenido tapado (`inert`).
+    let reachedLocaleSwitch = false
+
+    for (let step = 0; step < 10; step += 1) {
       await page.keyboard.press('Tab')
 
-      expect(await focusIsInMenu(page)).toBe(true)
+      expect(await focusIsInCoveredContent(page)).toBe(false)
+
+      reachedLocaleSwitch ||= await page.evaluate(() => {
+        const nav = document.activeElement?.closest('nav')
+
+        return nav?.getAttribute('aria-label') === 'Idioma'
+      })
     }
 
-    // Hacia atrás tampoco: `Shift+Tab` desde el primer enlace da la vuelta al ciclo.
+    expect(reachedLocaleSwitch).toBe(true)
+
+    // Hacia atrás tampoco se cuela el contenido tapado.
     for (let step = 0; step < 3; step += 1) {
       await page.keyboard.press('Shift+Tab')
 
-      expect(await focusIsInMenu(page)).toBe(true)
+      expect(await focusIsInCoveredContent(page)).toBe(false)
     }
 
     // `Esc` sigue cerrando y devolviendo el foco al botón, como en CIF-296.
@@ -301,18 +313,28 @@ test.describe('shell del panel: i18n y nombres accesibles (M2)', () => {
     await expect(await panelNavigation(page, 'en')).toBeVisible()
   })
 
-  test('el tablist del detalle usa las claves a11y.tabs en los dos idiomas', async ({ page }) => {
-    await page.goto('/es/admin/series/serie-a?tab=tariffs')
+  test('la navegación de secciones usa a11y.tabs y aria-current en los dos idiomas', async ({
+    page,
+  }) => {
+    await page.goto('/es/admin/series/ci-100?tab=tariffs')
 
-    await expect(page.getByRole('tablist', { name: 'Secciones de la serie' })).toBeVisible()
-    await expect(page.getByRole('tab', { name: 'Tarifas' })).toHaveAttribute(
-      'aria-selected',
-      'true',
+    const spanish = page.getByRole('navigation', { name: 'Secciones de la serie' })
+
+    await expect(spanish).toBeVisible()
+    await expect(spanish.getByRole('link', { name: 'Tarifas', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
     )
 
-    await page.goto('/en/admin/series/serie-a?tab=tariffs')
+    await page.goto('/en/admin/series/ci-100?tab=tariffs')
 
-    await expect(page.getByRole('tablist', { name: 'Series sections' })).toBeVisible()
+    const english = page.getByRole('navigation', { name: 'Series sections' })
+
+    await expect(english).toBeVisible()
+    await expect(english.getByRole('link', { name: 'Price lists', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
   })
 })
 
@@ -326,7 +348,7 @@ test.describe('shell del panel: diálogo centrado y pestaña al cambiar de idiom
     const dialog = page.locator('dialog[open]')
 
     await expect(dialog).toBeVisible()
-    await expect(dialog).toContainText('Serie A · v3')
+    await expect(dialog).toContainText('Serie CI-100 · v1')
 
     const viewport = page.viewportSize()
     const box = await dialog.boundingBox()
@@ -351,11 +373,11 @@ test.describe('shell del panel: diálogo centrado y pestaña al cambiar de idiom
   })
 
   test('conserva la pestaña del detalle al cambiar de idioma', async ({ page }) => {
-    await page.goto('/es/admin/series/serie-a?tab=measures')
+    await page.goto('/es/admin/series/ci-100?tab=measures')
 
-    await expect(page.getByRole('tab', { name: 'Medidas' })).toHaveAttribute(
-      'aria-selected',
-      'true',
+    await expect(page.getByRole('link', { name: 'Medidas', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
     )
 
     // `usePathname` no lleva la query: sin el arreglo el conmutador dejaba la pestaña en General.
@@ -364,8 +386,11 @@ test.describe('shell del panel: diálogo centrado y pestaña al cambiar de idiom
       .getByRole('link', { name: 'en', exact: true })
       .click()
 
-    await expect(page).toHaveURL(/\/en\/admin\/series\/serie-a\?tab=measures$/)
-    await expect(page.getByRole('tab', { name: 'Sizes' })).toHaveAttribute('aria-selected', 'true')
+    await expect(page).toHaveURL(/\/en\/admin\/series\/ci-100\?tab=measures$/)
+    await expect(page.getByRole('link', { name: 'Sizes', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
   })
 })
 /**
@@ -387,7 +412,7 @@ const DATA_SCREENS = [
     path: '/admin/tarifas',
     title: 'Tarifas',
     emptyText: 'Sin tarifas para esta serie.',
-    emptyHelp: null,
+    emptyHelp: 'Todas las versiones de tarifa del catálogo.',
     emptyCta: '+ Nueva versión',
   },
 ] as const
@@ -402,7 +427,12 @@ test.describe('shell del panel: estados del DoD §6', () => {
       await expect(page.getByRole('heading', { level: 1, name: screen.title })).toBeVisible()
       await expect(main).toContainText(screen.emptyText)
       // En series la llamada a la acción está en la cabecera y en el propio vacío: basta con la primera.
-      await expect(page.getByRole('button', { name: screen.emptyCta }).first()).toBeVisible()
+      const emptyCta = page.getByRole('button', { name: screen.emptyCta }).first()
+
+      await expect(emptyCta).toBeVisible()
+      // La escritura llega en CIF-243: la CTA está deshabilitada y lo explica con `title` (D3/D4).
+      await expect(emptyCta).toBeDisabled()
+      await expect(emptyCta).toHaveAttribute('title', 'Disponible al activar la edición.')
 
       if (screen.emptyHelp !== null) {
         await expect(main).toContainText(screen.emptyHelp)
@@ -461,7 +491,7 @@ test.describe('shell del panel: scrim y táctil (M1 de CIF-101)', () => {
     const dialog = page.locator('dialog[open]')
 
     await expect(dialog).toBeVisible()
-    await expect(dialog).toContainText('Serie A · v3')
+    await expect(dialog).toContainText('Serie CI-100 · v1')
 
     // El color se mide computado: ningún componente escribe el literal, sale de `--color-scrim`.
     const backdropColor = await dialog.evaluate(

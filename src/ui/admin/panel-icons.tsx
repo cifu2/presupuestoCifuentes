@@ -83,6 +83,38 @@ export function CloseIcon({ className = 'size-5' }: { className?: string }) {
 }
 
 /**
+ * Indicadores de ordenación de la tabla de series (D2 de CIF-361): chevrones del lenguaje SVG, en
+ * lugar de los glifos `▲`/`▼`, que los pinta la fuente de la plataforma. Van `aria-hidden` como el
+ * resto; el sentido lo anuncia `aria-sort` y el nombre accesible del botón.
+ */
+export function SortAscIcon({ className = 'size-4' }: { className?: string }) {
+  return (
+    <Glyph className={className}>
+      <path d="m6 14 6-6 6 6" />
+    </Glyph>
+  )
+}
+
+/** Indicador de orden descendente (D2 de CIF-361). */
+export function SortDescIcon({ className = 'size-4' }: { className?: string }) {
+  return (
+    <Glyph className={className}>
+      <path d="m6 10 6 6 6-6" />
+    </Glyph>
+  )
+}
+
+/** Etiqueta de precio: vacío de tarifas (`tariffsEmpty`, D3 de CIF-361). */
+export function TagIcon({ className = 'size-6' }: { className?: string }) {
+  return (
+    <Glyph className={className}>
+      <path d="M12.5 4H5.5A1.5 1.5 0 0 0 4 5.5v7a1.5 1.5 0 0 0 .44 1.06l6 6a1.5 1.5 0 0 0 2.12 0l7-7a1.5 1.5 0 0 0 0-2.12l-6-6A1.5 1.5 0 0 0 12.5 4Z" />
+      <path d="M8.5 8.5h.01" />
+    </Glyph>
+  )
+}
+
+/**
  * Flecha de enlace saliente: acompaña a «Ver web» sin volver a pintar un glifo de plataforma (H1 de
  * CIF-300 → CIF-311). Es decorativa: el nombre accesible del enlace lo pone su texto.
  */

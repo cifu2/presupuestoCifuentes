@@ -164,10 +164,12 @@ describe('contraste no textual de `--color-border-strong` (§2.1 / WCAG 2.1 1.4.
 })
 
 /**
- * §2.1 punto 2: ningún separador usa `border-strong`; su peso queda reservado al contorno de
- * control. La guarda es estática a propósito: si reaparece un uso decorativo en cualquier
- * fichero de `src/**` (fuera de tests), la lista de apariciones deja de cuadrar con los cuatro usos
- * de control y la declaración del token, aunque el uso nuevo no cambie ningún ratio.
+ * §2.1 rev 8: en la interfaz ningún separador usa `border-strong`; en el documento (papel, sin
+ * controles) solo lo usa la regla estructural de la cabecera de tabla, declarada en la allowlist.
+ * La guarda es estática a propósito: si reaparece un uso decorativo en cualquier fichero de
+ * `src/**` (fuera de tests), la lista de apariciones deja de cuadrar con los cuatro usos de control,
+ * la declaración del token y la regla estructural del documento, aunque el uso nuevo no cambie
+ * ningún ratio.
  *
  * La guarda cuenta el **token** (`border-strong`), no una grafía: `divide-border-strong`,
  * `border-t-border-strong`, `border-[var(--color-border-strong)]` o un
@@ -179,7 +181,7 @@ describe('contraste no textual de `--color-border-strong` (§2.1 / WCAG 2.1 1.4.
  * esta guarda y la de «los dos usos decorativos»; un `divide-border-strong` decorativo en un
  * fichero nuevo pone en rojo solo esta.
  */
-describe('guarda estática de `border-strong` decorativo (§2.1 punto 2, CIF-365)', () => {
+describe('guarda estática de `border-strong` decorativo (§2.1 rev 8, CIF-365)', () => {
   /**
    * Apariciones del token `border-strong` en un fuente, sea cual sea la utilidad de Tailwind v4 que
    * lo consume: clase (`border-border-strong`), variante de eje (`border-t-*`, `divide-*`), valor
@@ -193,8 +195,8 @@ describe('guarda estática de `border-strong` decorativo (§2.1 punto 2, CIF-365
   const USOS_PERMITIDOS = new Map([
     ['ui/admin/panel-primitives.tsx', 1], // Button secundario
     ['ui/admin/panel-shell.tsx', 2], // chips ES|EN + IconButton del menú
-    ['ui/admin/series-detail.tsx', 1], // campos de formulario (MeasurementField)
     ['app/globals.css', 1], // declaración del token en el @theme
+    ['infrastructure/pdf/quote-document-palette.ts', 1], // regla estructural del documento (papel), §2.1 rev 8
   ])
 
   const srcRoot = fileURLToPath(new URL('..', import.meta.url))

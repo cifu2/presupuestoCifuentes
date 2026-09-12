@@ -23,6 +23,7 @@ import type { EmailMessage, EmailSender } from '@/application/ports/email-sender
 import type { QuoteDocumentSettings } from '@/application/ports/quote-document-settings'
 import type { QuotePdfRenderer } from '@/application/ports/quote-pdf-renderer'
 import { calculatePrice } from '@/application/use-cases/calculate-price'
+import { createAdminCatalogUseCase } from '@/application/use-cases/get-admin-catalog'
 import {
   deliverQuote,
   retryQuoteDeliveries,
@@ -30,6 +31,7 @@ import {
 } from '@/application/use-cases/deliver-quote'
 import { issueQuote } from '@/application/use-cases/issue-quote'
 import { publishTariffVersion } from '@/application/use-cases/publish-tariff-version'
+import { PrismaAdminCatalogReader } from './admin-catalog-reader'
 import { createPrismaClient } from './client'
 import { PrismaQuoteDeliveryRepository } from './quote-delivery-repository'
 import {
@@ -912,6 +914,352 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
           name: CUSTOMER.name,
           email: CUSTOMER.email,
         })
+      })
+    })
+
+    /**
+     * Lectura de administración del panel (CIF-242, ADR-0023 §6).
+     *
+     * Este bloque vive aquí y no en un fichero propio a propósito: es el único test de integración
+     * del repositorio contra PostgreSQL y su `clean()` borra `catalog_text` entera, así que dos
+     * ficheros que corrieran en paralelo se pisarían entre sí. Siembra sus propias filas sintéticas
+     * —ninguna serie ni tarifa real (ADR-0017 §2)— y las limpia por id.
+     */
+    describe('lectura de administración (CIF-242)', () => {
+      const ADMIN_IDS = {
+        series: 'c1f24200-0000-4000-8000-000000000001',
+        seriesArchived: 'c1f24200-0000-4000-8000-000000000002',
+        finish: 'c1f24200-0000-4000-8000-000000000003',
+        color: 'c1f24200-0000-4000-8000-000000000004',
+        accessory: 'c1f24200-0000-4000-8000-000000000005',
+        tariff: 'c1f24200-0000-4000-8000-000000000006',
+        tariffDraft: 'c1f24200-0000-4000-8000-000000000007',
+        band: 'c1f24200-0000-4000-8000-000000000008',
+        modifier: 'c1f24200-0000-4000-8000-000000000009',
+      } as const
+
+      const ADMIN_ENTITY_IDS = [
+        ADMIN_IDS.series,
+        ADMIN_IDS.seriesArchived,
+        ADMIN_IDS.finish,
+        ADMIN_IDS.color,
+        ADMIN_IDS.accessory,
+      ]
+
+      async function cleanAdmin(): Promise<void> {
+        await prisma.tariffVersion.deleteMany({
+          where: { id: { in: [ADMIN_IDS.tariff, ADMIN_IDS.tariffDraft] } },
+        })
+        await prisma.color.deleteMany({ where: { id: ADMIN_IDS.color } })
+        await prisma.doorSeries.deleteMany({
+          where: { id: { in: [ADMIN_IDS.series, ADMIN_IDS.seriesArchived] } },
+        })
+        await prisma.catalogText.deleteMany({ where: { entityId: { in: ADMIN_ENTITY_IDS } } })
+        await prisma.finish.deleteMany({ where: { id: ADMIN_IDS.finish } })
+        await prisma.accessory.deleteMany({ where: { id: ADMIN_IDS.accessory } })
+      }
+
+      async function seedAdmin(): Promise<void> {
+        await prisma.finish.create({
+          data: {
+            id: ADMIN_IDS.finish,
+            code: 'ADMIN-CI242-LACADO',
+            status: 'PUBLISHED',
+            sortOrder: 1,
+          },
+        })
+
+        await prisma.color.create({
+          data: {
+            id: ADMIN_IDS.color,
+            finishId: ADMIN_IDS.finish,
+            code: 'ADMIN-CI242-RAL-9010',
+            hex: '#F1EDE1',
+            // Archivado: el panel lo sigue viendo aunque el configurador ya no lo ofrezca.
+            status: 'ARCHIVED',
+            sortOrder: 1,
+          },
+        })
+
+        await prisma.accessory.create({
+          data: {
+            id: ADMIN_IDS.accessory,
+            code: 'ADMIN-CI242-MANILLA',
+            category: 'HARDWARE',
+            status: 'PUBLISHED',
+            sortOrder: 1,
+          },
+        })
+
+        await prisma.doorSeries.create({
+          data: {
+            id: ADMIN_IDS.series,
+            code: 'ADMIN-CI242',
+            slug: 'admin-ci242',
+            // En borrador: es el caso que el configurador no ve y el panel sí.
+            status: 'DRAFT',
+            minWidthMm: 600,
+            maxWidthMm: 1100,
+            minHeightMm: 1800,
+            maxHeightMm: 2300,
+            sortOrder: 1,
+            finishLinks: { create: [{ finishId: ADMIN_IDS.finish }] },
+            accessoryLinks: { create: [{ accessoryId: ADMIN_IDS.accessory }] },
+          },
+        })
+
+        await prisma.doorSeries.create({
+          data: {
+            id: ADMIN_IDS.seriesArchived,
+            code: 'ADMIN-CI242-ARCHIVADA',
+            slug: 'admin-ci242-archivada',
+            status: 'ARCHIVED',
+            minWidthMm: 500,
+            maxWidthMm: 900,
+            minHeightMm: 1500,
+            maxHeightMm: 2000,
+            sortOrder: 2,
+          },
+        })
+
+        await prisma.catalogText.createMany({
+          data: [
+            {
+              entityType: 'SERIES',
+              entityId: ADMIN_IDS.series,
+              field: 'NAME',
+              locale: 'es',
+              value: 'Serie de panel',
+            },
+            {
+              entityType: 'SERIES',
+              entityId: ADMIN_IDS.series,
+              field: 'NAME',
+              locale: 'en',
+              value: 'Panel series',
+            },
+            {
+              entityType: 'SERIES',
+              entityId: ADMIN_IDS.series,
+              field: 'DESCRIPTION',
+              locale: 'es',
+              value: 'Serie sintética de integración',
+            },
+            {
+              entityType: 'SERIES',
+              entityId: ADMIN_IDS.series,
+              field: 'DESCRIPTION',
+              locale: 'en',
+              value: 'Synthetic integration series',
+            },
+            // La archivada solo tiene español: el panel tiene que avisar de que falta el inglés.
+            {
+              entityType: 'SERIES',
+              entityId: ADMIN_IDS.seriesArchived,
+              field: 'NAME',
+              locale: 'es',
+              value: 'Serie archivada',
+            },
+            {
+              entityType: 'FINISH',
+              entityId: ADMIN_IDS.finish,
+              field: 'NAME',
+              locale: 'es',
+              value: 'Lacado de panel',
+            },
+            {
+              entityType: 'FINISH',
+              entityId: ADMIN_IDS.finish,
+              field: 'NAME',
+              locale: 'en',
+              value: 'Panel lacquer',
+            },
+            {
+              entityType: 'COLOR',
+              entityId: ADMIN_IDS.color,
+              field: 'NAME',
+              locale: 'es',
+              value: 'Blanco puro',
+            },
+            {
+              entityType: 'COLOR',
+              entityId: ADMIN_IDS.color,
+              field: 'NAME',
+              locale: 'en',
+              value: 'Pure white',
+            },
+            {
+              entityType: 'ACCESSORY',
+              entityId: ADMIN_IDS.accessory,
+              field: 'NAME',
+              locale: 'es',
+              value: 'Manilla de acero',
+            },
+            {
+              entityType: 'ACCESSORY',
+              entityId: ADMIN_IDS.accessory,
+              field: 'NAME',
+              locale: 'en',
+              value: 'Steel handle',
+            },
+            {
+              entityType: 'ACCESSORY',
+              entityId: ADMIN_IDS.accessory,
+              field: 'DESCRIPTION',
+              locale: 'es',
+              value: 'Manilla sintética',
+            },
+          ],
+        })
+
+        await prisma.tariffVersion.create({
+          data: {
+            id: ADMIN_IDS.tariff,
+            seriesId: ADMIN_IDS.series,
+            versionNumber: 1,
+            status: 'PUBLISHED',
+            strategy: 'SIZE_BANDS',
+            validFrom: new Date('2026-01-01T00:00:00.000Z'),
+            taxRatePercent: '21',
+            currency: 'EUR',
+            publishedAt: new Date('2026-01-01T00:00:00.000Z'),
+            priceTable: {
+              create: {
+                bands: {
+                  create: [
+                    {
+                      id: ADMIN_IDS.band,
+                      minWidthMm: 600,
+                      maxWidthMm: 1100,
+                      minHeightMm: 1800,
+                      maxHeightMm: 2300,
+                      priceCents: 90_000n,
+                      sortOrder: 1,
+                    },
+                  ],
+                },
+                modifiers: {
+                  create: [
+                    {
+                      id: ADMIN_IDS.modifier,
+                      code: 'ADMIN-CI242-INSTALACION',
+                      kind: 'FIXED',
+                      target: 'INSTALLATION',
+                      amountCents: 12_000n,
+                      sortOrder: 1,
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        })
+
+        // Borrador sin tabla de precios: el panel lo lista con 0 precios.
+        await prisma.tariffVersion.create({
+          data: {
+            id: ADMIN_IDS.tariffDraft,
+            seriesId: ADMIN_IDS.series,
+            versionNumber: 2,
+            status: 'DRAFT',
+            strategy: 'SIZE_BANDS',
+            validFrom: new Date('2027-01-01T00:00:00.000Z'),
+            taxRatePercent: '21',
+            currency: 'EUR',
+          },
+        })
+      }
+
+      beforeAll(async () => {
+        await cleanAdmin()
+        await seedAdmin()
+      })
+
+      afterAll(async () => {
+        await cleanAdmin()
+      })
+
+      it('devuelve el catálogo completo aunque la serie esté en borrador', async () => {
+        const snapshot = await new PrismaAdminCatalogReader(prisma).loadAdminCatalog()
+
+        const series = snapshot.series.find((item) => item.id === ADMIN_IDS.series)
+
+        expect(series?.status).toBe('draft')
+        expect(series?.limits.maxWidthMm).toBe(1100)
+        expect(series?.name.resolve('en')).toBe('Panel series')
+        expect(series?.description?.resolve('es')).toBe('Serie sintética de integración')
+        expect(series?.allowedFinishIds).toEqual([ADMIN_IDS.finish])
+        expect(series?.allowedAccessoryIds).toEqual([ADMIN_IDS.accessory])
+
+        const archived = snapshot.series.find((item) => item.id === ADMIN_IDS.seriesArchived)
+
+        expect(archived?.status).toBe('archived')
+        expect(archived?.description).toBeNull()
+      })
+
+      it('cuenta las filas de precio y conserva estado y vigencia de cada versión', async () => {
+        const snapshot = await new PrismaAdminCatalogReader(prisma).loadAdminCatalog()
+
+        const published = snapshot.tariffVersions.find((item) => item.id === ADMIN_IDS.tariff)
+        const draft = snapshot.tariffVersions.find((item) => item.id === ADMIN_IDS.tariffDraft)
+
+        expect(published?.status).toBe('published')
+        expect(published?.priceCount).toBe(2)
+        expect(published?.validFrom.toISOString()).toBe('2026-01-01T00:00:00.000Z')
+        expect(published?.validUntil).toBeNull()
+        expect(draft?.status).toBe('draft')
+        expect(draft?.priceCount).toBe(0)
+      })
+
+      it('mapea acabados con color archivado y complementos con sus textos', async () => {
+        const snapshot = await new PrismaAdminCatalogReader(prisma).loadAdminCatalog()
+
+        const finish = snapshot.finishes.find((item) => item.id === ADMIN_IDS.finish)
+        const color = snapshot.colors.find((item) => item.id === ADMIN_IDS.color)
+        const accessory = snapshot.accessories.find((item) => item.id === ADMIN_IDS.accessory)
+
+        expect(finish?.name.resolve('en')).toBe('Panel lacquer')
+        expect(color?.status).toBe('archived')
+        expect(color?.hex).toBe('#F1EDE1')
+        expect(color?.name.resolve('es')).toBe('Blanco puro')
+        expect(accessory?.category).toBe('hardware')
+        expect(accessory?.description?.resolve('es')).toBe('Manilla sintética')
+      })
+
+      it('el caso de uso sirve las vistas del panel sobre el adaptador real', async () => {
+        const adminCatalog = createAdminCatalogUseCase({
+          reader: new PrismaAdminCatalogReader(prisma),
+          clock,
+          locale: 'es',
+        })
+
+        const [series, versions, languages] = await Promise.all([
+          adminCatalog.listSeries(),
+          adminCatalog.listTariffVersions(),
+          adminCatalog.listLanguages(),
+        ])
+
+        const borrador = series.find((item) => item.id === ADMIN_IDS.series)
+
+        expect(borrador?.tariffVersionNumber).toBe(1)
+        expect(borrador?.finishCount).toBe(1)
+        expect(borrador?.missingLocales).toEqual([])
+
+        const archivada = series.find((item) => item.id === ADMIN_IDS.seriesArchived)
+
+        expect(archivada?.missingLocales).toEqual(['es', 'en'])
+
+        const draft = versions.find((item) => item.id === ADMIN_IDS.tariffDraft)
+
+        expect(draft?.effectiveFrom).toBeNull()
+
+        // Cuenta todo el catálogo, no solo las series de este bloque: la archivada (nombre solo en
+        // español, sin descripción) y las dos series del seed base (una sin descripción y la de la
+        // carrera de tarifas, sin textos) están pendientes en los dos idiomas.
+        expect(languages).toEqual([
+          { code: 'es', isActive: true, missingSeries: 3 },
+          { code: 'en', isActive: true, missingSeries: 3 },
+        ])
       })
     })
   },

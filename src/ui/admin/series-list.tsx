@@ -6,7 +6,7 @@ import { useState } from 'react'
 import type { Locale } from '@/domain/catalog/locale'
 
 import { Link } from '@/i18n/navigation'
-import { DoorIcon } from './panel-icons'
+import { DoorIcon, SortAscIcon, SortDescIcon } from './panel-icons'
 import {
   formatMeasurementPair,
   formatVersionNumber,
@@ -148,8 +148,14 @@ export function SeriesList({
                     className="inline-flex min-h-11 items-center gap-1 rounded-control font-semibold text-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500"
                   >
                     {t(labelKey)}
-                    <span aria-hidden="true">
-                      {sort.key === key ? (sort.direction === 'ascending' ? '▲' : '▼') : ''}
+                    <span aria-hidden="true" className="text-brand-400">
+                      {sort.key === key ? (
+                        sort.direction === 'ascending' ? (
+                          <SortAscIcon />
+                        ) : (
+                          <SortDescIcon />
+                        )
+                      ) : null}
                     </span>
                   </button>
                 </th>
