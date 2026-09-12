@@ -12,13 +12,26 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { ManualQuoteRequest } from '@/domain/catalog/manual-quote-request'
 import { Dimensions } from '@/domain/catalog/measurement'
+import { QuoteDelivery, quoteDeliveryKey } from '@/domain/quote/quote-delivery'
+import type { Quote } from '@/domain/quote/quote'
+import type { QuoteDocument } from '@/domain/quote/quote-document'
 import { AmbiguousTariffError } from '@/domain/shared/errors'
 import { CurrentInstantClock } from '@/infrastructure/clock/system-clock'
 
+import { QUOTE_DELIVERY_CLAIM_LEASE_MS } from '@/application/ports/quote-delivery-repository'
+import type { EmailMessage, EmailSender } from '@/application/ports/email-sender'
+import type { QuoteDocumentSettings } from '@/application/ports/quote-document-settings'
+import type { QuotePdfRenderer } from '@/application/ports/quote-pdf-renderer'
 import { calculatePrice } from '@/application/use-cases/calculate-price'
+import {
+  deliverQuote,
+  retryQuoteDeliveries,
+  type DeliverQuoteDeps,
+} from '@/application/use-cases/deliver-quote'
 import { issueQuote } from '@/application/use-cases/issue-quote'
 import { publishTariffVersion } from '@/application/use-cases/publish-tariff-version'
 import { createPrismaClient } from './client'
+import { PrismaQuoteDeliveryRepository } from './quote-delivery-repository'
 import {
   PrismaAccessoryRepository,
   PrismaColorRepository,
@@ -637,6 +650,269 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
       })
 
       expect(published).toHaveLength(1)
+    })
+
+    /**
+     * Entrega del presupuesto contra PostgreSQL real (F5 de CIF-175).
+     *
+     * La revisión de QA encontró que la idempotencia concurrente (F1) y la escritura rezagada (F2)
+     * se habían colado porque el adaptador Prisma no tenía test de integración: el E2E usa el
+     * adaptador en memoria. Aquí se ejercitan de verdad el índice único y la escritura condicional.
+     */
+    describe('entrega del presupuesto (CIF-175 F1/F2/F3)', () => {
+      const deliveries = new PrismaQuoteDeliveryRepository(prisma)
+      const CUSTOMER = { name: 'Ana', email: 'cliente@example.com' }
+      const INTERNAL = 'comercial@example.com'
+      const PDF_BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46])
+
+      const settings: QuoteDocumentSettings = {
+        issuer: {
+          name: 'Puertas Cifuentes S.L.',
+          taxId: 'B12345678',
+          address: 'Calle Mayor 1',
+          email: 'presupuestos@example.com',
+          phone: '+34 900 000 000',
+          website: 'https://example.com',
+          isPending: false,
+        },
+        conditions: { es: ['Validez 30 días'], en: ['Valid for 30 days'] },
+        internalRecipients: [INTERNAL],
+        pendingFields: [],
+      }
+
+      async function issueTestQuote(): Promise<Quote> {
+        const deps = { seriesRepository, tariffPricingRepository, colorRepository, clock }
+
+        const issued = await issueQuote(
+          {
+            ...deps,
+            quoteRepository,
+            quoteNumberSequence,
+            idGenerator: { nextId: () => randomUUID() },
+            validityDays: 30,
+          },
+          {
+            slug: 'ci-integracion',
+            widthMm: 900,
+            heightMm: 2100,
+            finishId: null,
+            colorId: null,
+            accessoryIds: [],
+            extras: ['installation'],
+            discountCode: null,
+            locale: 'es',
+          },
+        )
+
+        if (issued.status !== 'issued') {
+          throw new Error('no se pudo emitir el presupuesto de prueba')
+        }
+
+        const stored = await quoteRepository.findByReference(issued.quote.reference)
+
+        if (stored === null) {
+          throw new Error('el presupuesto emitido no quedó persistido')
+        }
+
+        return stored
+      }
+
+      function makeDelivery(
+        quote: Quote,
+        recipient: string,
+        at: Date,
+        audience: 'customer' | 'internal' = 'customer',
+        id: string = randomUUID(),
+      ): QuoteDelivery {
+        return QuoteDelivery.pending({
+          id,
+          quoteId: quote.id,
+          quoteReference: quote.reference,
+          version: 1,
+          audience,
+          recipient,
+          customerName: audience === 'customer' ? CUSTOMER.name : null,
+          createdAt: at,
+        })
+      }
+
+      /** Dobles de frontera: ni se renderiza un PDF real ni se envía correo de verdad. */
+      function makeDoubles(): {
+        readonly sent: EmailMessage[]
+        readonly documents: QuoteDocument[]
+        readonly failTo: Set<string>
+        readonly emailSender: EmailSender
+        readonly renderer: QuotePdfRenderer
+      } {
+        const sent: EmailMessage[] = []
+        const documents: QuoteDocument[] = []
+        const failTo = new Set<string>()
+
+        return {
+          sent,
+          documents,
+          failTo,
+          emailSender: {
+            send: async (message) => {
+              if (failTo.has(message.to)) {
+                throw new Error('proveedor caído')
+              }
+
+              sent.push(message)
+
+              return { providerMessageId: `msg-${sent.length}` }
+            },
+          },
+          renderer: {
+            render: async (document) => {
+              documents.push(document)
+
+              return PDF_BYTES
+            },
+          },
+        }
+      }
+
+      function makeDeps(doubles: ReturnType<typeof makeDoubles>): DeliverQuoteDeps {
+        return {
+          seriesRepository,
+          finishRepository,
+          colorRepository,
+          accessoryRepository,
+          quoteRepository,
+          quoteDeliveryRepository: deliveries,
+          quotePdfRenderer: doubles.renderer,
+          emailSender: doubles.emailSender,
+          idGenerator: { nextId: () => randomUUID() },
+          clock,
+          settings,
+        }
+      }
+
+      it('un solo intento gana el reclamo entre varios simultáneos', async () => {
+        const quote = await issueTestQuote()
+        const at = clock.now()
+        const candidate = makeDelivery(quote, CUSTOMER.email, at)
+
+        const results = await Promise.all(
+          [1, 2, 3, 4].map(() => deliveries.claim(candidate.startAttempt(at))),
+        )
+
+        expect(results.filter((result) => result !== null)).toHaveLength(1)
+
+        const rows = await prisma.quoteDelivery.findMany({
+          where: { idempotencyKey: quoteDeliveryKey(quote.id, 1, CUSTOMER.email) },
+        })
+
+        expect(rows).toHaveLength(1)
+        expect(rows[0]?.attempts).toBe(1)
+      })
+
+      it('una escritura rezagada no devuelve a pendiente una entrega enviada (F2)', async () => {
+        const quote = await issueTestQuote()
+        const at = clock.now()
+        const key = quoteDeliveryKey(quote.id, 1, CUSTOMER.email)
+        const claimed = await deliveries.claim(
+          makeDelivery(quote, CUSTOMER.email, at).startAttempt(at),
+        )
+
+        expect(claimed).not.toBeNull()
+
+        await deliveries.save(claimed!.markSent('msg-1', at))
+        // Copia rezagada: leída antes del envío, llega después con el mismo id.
+        await deliveries.save(
+          makeDelivery(quote, CUSTOMER.email, at, 'customer', claimed!.id).startAttempt(at),
+        )
+
+        const stored = await deliveries.findByKey(key)
+
+        expect(stored?.status).toBe('sent')
+        expect(stored?.attempts).toBe(1)
+        expect(stored?.providerMessageId).toBe('msg-1')
+        expect(stored?.sentAt?.toISOString()).toBe(at.toISOString())
+      })
+
+      it('no vuelve a reclamar ni a enviar una entrega ya enviada', async () => {
+        const quote = await issueTestQuote()
+        const at = clock.now()
+        const claimed = await deliveries.claim(
+          makeDelivery(quote, CUSTOMER.email, at).startAttempt(at),
+        )
+
+        await deliveries.save(claimed!.markSent('msg-1', at))
+
+        // Petición tardía con el mismo destinatario: no puede reclamar lo ya entregado.
+        const later = new Date(at.getTime() + 60 * 60 * 1000)
+
+        expect(
+          await deliveries.claim(makeDelivery(quote, CUSTOMER.email, at).startAttempt(later)),
+        ).toBeNull()
+      })
+
+      it('deja retomar un reclamo abandonado pasado el margen', async () => {
+        const quote = await issueTestQuote()
+        const at = clock.now()
+        const key = quoteDeliveryKey(quote.id, 1, CUSTOMER.email)
+
+        await deliveries.claim(makeDelivery(quote, CUSTOMER.email, at).startAttempt(at))
+        await prisma.quoteDelivery.update({
+          where: { idempotencyKey: key },
+          data: { claimedAt: new Date(at.getTime() - QUOTE_DELIVERY_CLAIM_LEASE_MS - 1000) },
+        })
+
+        const stored = await deliveries.findByKey(key)
+        const retaken = await deliveries.claim(stored!.startAttempt(new Date(at.getTime() + 1000)))
+
+        expect(retaken).not.toBeNull()
+        expect(retaken?.attempts).toBe(2)
+        expect(retaken?.lastError).toBeNull()
+      })
+
+      it('dos entregas simultáneas del mismo presupuesto envían un solo correo (F1)', async () => {
+        const quote = await issueTestQuote()
+        const doubles = makeDoubles()
+        const deps = makeDeps(doubles)
+
+        const results = await Promise.all([
+          deliverQuote(deps, { reference: quote.reference, customer: CUSTOMER }),
+          deliverQuote(deps, { reference: quote.reference, customer: CUSTOMER }),
+        ])
+
+        // El repro de QA: una fila por destinatario y un solo envío a cada uno.
+        expect(doubles.sent.map((message) => message.to).sort()).toEqual(
+          [CUSTOMER.email, INTERNAL].sort(),
+        )
+
+        const rows = await prisma.quoteDelivery.findMany({ where: { quoteId: quote.id } })
+
+        expect(rows).toHaveLength(2)
+        expect(rows.every((row) => row.status === 'SENT')).toBe(true)
+        expect(results.filter((result) => result.status === 'delivered')).toHaveLength(1)
+      })
+
+      it('el reintento conserva los datos del cliente en el documento (F3)', async () => {
+        const quote = await issueTestQuote()
+        const doubles = makeDoubles()
+        const deps = makeDeps(doubles)
+
+        doubles.failTo.add(INTERNAL)
+        const first = await deliverQuote(deps, { reference: quote.reference, customer: CUSTOMER })
+
+        expect(first.status).toBe('incomplete')
+        expect(doubles.documents[0]?.customer).toEqual({
+          name: CUSTOMER.name,
+          email: CUSTOMER.email,
+        })
+
+        doubles.failTo.clear()
+        const retried = await retryQuoteDeliveries(deps, { reference: quote.reference })
+
+        expect(retried.status).toBe('delivered')
+        expect(doubles.documents.at(-1)?.customer).toEqual({
+          name: CUSTOMER.name,
+          email: CUSTOMER.email,
+        })
+      })
     })
   },
 )

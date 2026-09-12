@@ -27,7 +27,12 @@ si falla la generación o el envío. El plan deja abierto "¿PDF, email o ambos?
    congelado), después se genera el PDF y después se envía el email. Un fallo de PDF o de email
    **no pierde** el presupuesto: queda registrado como envío pendiente y se puede reintentar.
 6. **Envío idempotente y reintentable**: cada envío guarda una clave de idempotencia
-   (`quoteId + versión + destinatario`) y su estado; reintentar no duplica correos.
+   (`quoteId + versión + destinatario`) y su estado; reintentar no duplica correos. La clave única
+   evita filas duplicadas pero no envíos duplicados: antes de renderizar, el intento se **reclama**
+   con una escritura condicional atómica (`claimed_at`), de modo que dos peticiones simultáneas de
+   la misma entrega convergen en una fila y solo envía la que gana el reclamo. Un reclamo sin
+   resultado (proceso caído) caduca y el reintento lo retoma; una entrega ya enviada no se reclama.
+   La escritura del resultado nunca degrada una entrega ya enviada.
 7. **Sin filtrar datos personales a terceros innecesarios**: el PDF se genera en nuestra
    infraestructura; al proveedor de email solo viajan los datos imprescindibles del envío.
 
@@ -65,7 +70,10 @@ configuración**. Lo que la implementación fija:
 6. **Los datos del cliente viajan con la entrega**, no se guardan en el presupuesto: el configurador
    los envía en la petición de entrega y la entrega los conserva para el reintento.
 7. **Reintento sin duplicar** (`POST /api/quotes/:reference/delivery/retry`): reintenta solo las
-   entregas pendientes o fallidas de la versión pedida; si no queda ninguna, no renderiza nada.
+   entregas pendientes o fallidas de la versión pedida; si no queda ninguna, no renderiza nada. El
+   documento del reintento toma los datos del cliente de **todas** las entregas de esa versión, no
+   solo de las que se reintentan: si la entrega al cliente ya salió y falló el aviso interno, el
+   PDF del reintento sigue llevando el bloque del cliente.
 
 ## Pendiente de negocio (CIF-13, hoy CIF-14)
 

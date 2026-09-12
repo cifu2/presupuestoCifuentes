@@ -30,6 +30,7 @@ function makeDelivery(overrides: Partial<QuoteDeliveryProps> = {}): QuoteDeliver
     createdAt: overrides.createdAt ?? CREATED_AT,
     updatedAt: overrides.updatedAt ?? CREATED_AT,
     sentAt: overrides.sentAt ?? null,
+    claimedAt: overrides.claimedAt ?? null,
   })
 }
 

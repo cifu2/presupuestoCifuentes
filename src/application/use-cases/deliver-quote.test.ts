@@ -16,6 +16,7 @@ import {
 } from '@/domain/catalog/testing/factories'
 import { makeBreakdown, makeConfiguration } from '@/domain/pricing/testing/factories'
 import { Quote } from '@/domain/quote/quote'
+import type { QuoteDocument } from '@/domain/quote/quote-document'
 import { ResourceNotFoundError, InvalidQuoteDeliveryError } from '@/domain/shared/errors'
 
 import type { EmailMessage, EmailSender } from '@/application/ports/email-sender'
@@ -86,6 +87,8 @@ function makeHarness(options: HarnessOptions = {}) {
   const sent: EmailMessage[] = []
   const sendCalls: string[] = []
   const store = new InMemoryQuoteDeliveryRepository()
+  /** Documentos que ha recibido el renderizador; permite comprobar qué se imprime. */
+  const documents: QuoteDocument[] = []
   /** Fallos de proveedor programados por el test; mutable para simular la recuperación. */
   const failEmails = new Set(options.failEmailsTo ?? [])
   let renderCount = 0
@@ -101,6 +104,11 @@ function makeHarness(options: HarnessOptions = {}) {
       events.push(`delivery.save:${delivery.status}`)
 
       return store.save(delivery)
+    },
+    claim: async (delivery) => {
+      events.push(`delivery.claim:${delivery.status}`)
+
+      return store.claim(delivery)
     },
     listByQuoteId: async (quoteId) => {
       events.push('delivery.listByQuoteId')
@@ -141,8 +149,9 @@ function makeHarness(options: HarnessOptions = {}) {
   }
 
   const quotePdfRenderer: QuotePdfRenderer = {
-    render: async () => {
+    render: async (document) => {
       events.push('pdf.render')
+      documents.push(document)
       renderCount += 1
 
       if (options.failPdf === true) {
@@ -190,6 +199,7 @@ function makeHarness(options: HarnessOptions = {}) {
     store,
     quote,
     failEmails,
+    documents,
     renders: () => renderCount,
   }
 }
@@ -212,9 +222,9 @@ describe('deliverQuote', () => {
     const order = harness.events
 
     expect(order.indexOf('quote.findByReference')).toBeLessThan(
-      order.indexOf('delivery.save:pending'),
+      order.indexOf('delivery.claim:pending'),
     )
-    expect(order.indexOf('delivery.save:pending')).toBeLessThan(order.indexOf('pdf.render'))
+    expect(order.indexOf('delivery.claim:pending')).toBeLessThan(order.indexOf('pdf.render'))
     expect(order.indexOf('pdf.render')).toBeLessThan(order.indexOf('email.send:ana@example.com'))
   })
 
@@ -356,6 +366,63 @@ describe('deliverQuote', () => {
     await expect(
       deliverQuote(harness.deps, { reference: 'PC-2026-999999', customer: CUSTOMER }),
     ).rejects.toBeInstanceOf(ResourceNotFoundError)
+  })
+
+  it('dos entregas simultáneas del mismo presupuesto envían un solo correo (F1 de CIF-175)', async () => {
+    const harness = makeHarness()
+    const input = { reference: 'PC-2026-000001', customer: CUSTOMER }
+
+    const results = await Promise.all([
+      deliverQuote(harness.deps, input),
+      deliverQuote(harness.deps, input),
+    ])
+
+    const statuses = results.map((result) => result.status).sort()
+
+    expect(statuses).toEqual(['delivered', 'in_progress'])
+    // Un envío por destinatario, no dos: la clave única evita filas duplicadas, el reclamo atómico
+    // evita correos duplicados.
+    expect(harness.sendCalls).toEqual([CUSTOMER.email, SALES_MAILBOX])
+    expect(harness.store.size()).toBe(2)
+    // La petición que pierde el reclamo no renderiza el PDF.
+    expect(harness.renders()).toBe(1)
+  })
+
+  it('la petición que pierde el reclamo informa del estado real de la entrega', async () => {
+    const harness = makeHarness()
+    const input = { reference: 'PC-2026-000001', customer: CUSTOMER }
+
+    const results = await Promise.all([
+      deliverQuote(harness.deps, input),
+      deliverQuote(harness.deps, input),
+    ])
+
+    const waiting = results.find((result) => result.status === 'in_progress')
+
+    expect(waiting?.reason).toBe('none')
+    expect(waiting?.pdfBytes).toBe(0)
+    // La entrega está en curso o ya salió, pero nunca se informa de un envío que no ha hecho.
+    expect(
+      waiting?.deliveries.every(
+        (delivery) => delivery.status === 'pending' || delivery.status === 'sent',
+      ),
+    ).toBe(true)
+  })
+
+  it('conserva los datos del cliente en el PDF del reintento (F3 de CIF-175)', async () => {
+    const harness = makeHarness({ failEmailsTo: [SALES_MAILBOX] })
+
+    await deliverQuote(harness.deps, { reference: 'PC-2026-000001', customer: CUSTOMER })
+
+    // El correo al cliente ya salió; solo falló el aviso interno.
+    harness.failEmails.clear()
+    const retried = await retryQuoteDeliveries(harness.deps, { reference: 'PC-2026-000001' })
+
+    expect(retried.status).toBe('delivered')
+    expect(harness.documents.at(-1)?.customer).toEqual({
+      name: CUSTOMER.name,
+      email: CUSTOMER.email,
+    })
   })
 
   it('no repite el email al cliente cuando su dirección coincide con el buzón interno', async () => {

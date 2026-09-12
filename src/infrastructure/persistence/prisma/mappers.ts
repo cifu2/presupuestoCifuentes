@@ -695,6 +695,7 @@ export interface QuoteDeliveryRow {
   readonly providerMessageId: string | null
   readonly lastError: string | null
   readonly sentAt: Date | null
+  readonly claimedAt: Date | null
   readonly createdAt: Date
   readonly updatedAt: Date
 }
@@ -713,6 +714,7 @@ export function toQuoteDelivery(row: QuoteDeliveryRow): QuoteDelivery {
     providerMessageId: row.providerMessageId,
     lastError: row.lastError,
     sentAt: row.sentAt,
+    claimedAt: row.claimedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   })

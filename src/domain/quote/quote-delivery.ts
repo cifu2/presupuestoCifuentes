@@ -62,6 +62,12 @@ export interface QuoteDeliveryProps {
   readonly createdAt: Date
   readonly updatedAt: Date
   readonly sentAt: Date | null
+  /**
+   * Momento en que este intento reservó la entrega (ADR-0004 §5-6). Mientras la reserva está viva,
+   * ningún otro intento puede enviar la misma entrega: es lo que impide dos correos simultáneos.
+   * `null` cuando no hay intento en curso (recién creada, enviada o fallida).
+   */
+  readonly claimedAt: Date | null
 }
 
 export class QuoteDelivery {
@@ -79,6 +85,7 @@ export class QuoteDelivery {
   readonly createdAt: Date
   readonly updatedAt: Date
   readonly sentAt: Date | null
+  readonly claimedAt: Date | null
 
   private constructor(props: QuoteDeliveryProps) {
     this.id = props.id
@@ -95,6 +102,7 @@ export class QuoteDelivery {
     this.createdAt = props.createdAt
     this.updatedAt = props.updatedAt
     this.sentAt = props.sentAt
+    this.claimedAt = props.claimedAt
   }
 
   static create(props: QuoteDeliveryProps): QuoteDelivery {
@@ -130,6 +138,16 @@ export class QuoteDelivery {
       throw new InvalidQuoteDeliveryError('solo una entrega enviada puede tener fecha de envío')
     }
 
+    if (props.claimedAt !== null) {
+      assertValidDate(props.claimedAt, 'claimedAt')
+
+      if (props.status !== 'pending') {
+        throw new InvalidQuoteDeliveryError(
+          'solo una entrega pendiente puede tener un intento reservado',
+        )
+      }
+    }
+
     return new QuoteDelivery({ ...props, recipient: normalizeRecipient(props.recipient) })
   }
 
@@ -152,6 +170,7 @@ export class QuoteDelivery {
       lastError: null,
       updatedAt: props.createdAt,
       sentAt: null,
+      claimedAt: null,
     })
   }
 
@@ -167,7 +186,18 @@ export class QuoteDelivery {
     return this.status === 'pending'
   }
 
-  /** Marca el inicio de un intento. Una entrega ya enviada no se reintenta: no se duplican correos. */
+  /**
+   * `true` mientras otro intento mantiene viva la reserva de esta entrega: la reserva caduca a los
+   * `leaseMs` para que un proceso caído no bloquee el reintento para siempre.
+   */
+  hasActiveClaim(now: Date, leaseMs: number): boolean {
+    return this.claimedAt !== null && now.getTime() - this.claimedAt.getTime() < leaseMs
+  }
+
+  /**
+   * Marca el inicio de un intento y reserva la entrega. Una entrega ya enviada no se reintenta: no se
+   * duplican correos.
+   */
   startAttempt(at: Date): QuoteDelivery {
     assertValidDate(at, 'updatedAt')
 
@@ -182,6 +212,7 @@ export class QuoteDelivery {
       status: 'pending',
       attempts: this.attempts + 1,
       lastError: null,
+      claimedAt: at,
       updatedAt: at,
     })
   }
@@ -201,6 +232,7 @@ export class QuoteDelivery {
       providerMessageId,
       lastError: null,
       sentAt: at,
+      claimedAt: null,
       updatedAt: at,
     })
   }
@@ -218,6 +250,7 @@ export class QuoteDelivery {
       ...this,
       status: 'failed',
       lastError: truncate(reason),
+      claimedAt: null,
       updatedAt: at,
     })
   }

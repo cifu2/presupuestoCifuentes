@@ -479,6 +479,10 @@ model QuoteDelivery {
   providerMessageId String?               @map("provider_message_id") @db.VarChar(200)
   lastError         String?               @map("last_error") @db.VarChar(500)
   sentAt            DateTime?             @map("sent_at") @db.Timestamptz(3)
+  /// Reclamo del intento en curso (CIF-178, ADR-0004 §6): una sola petición puede reservar el
+  /// envío a la vez, así que dos llamadas simultáneas no duplican el correo. Un reclamo sin
+  /// resultado caduca y el reintento puede retomarlo.
+  claimedAt         DateTime?             @map("claimed_at") @db.Timestamptz(3)
   createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
 

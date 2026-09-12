@@ -298,9 +298,9 @@ curl -s http://localhost:3000/api/quotes/PC-2026-000001/pdf -o presupuesto.pdf
 ## POST /api/quotes/:reference/delivery
 
 Entrega el presupuesto: renderiza el PDF y envía el email al cliente y al buzón interno configurado
-(`QUOTE_INTERNAL_RECIPIENTS`). El orden es el de ADR-0004 §5: primero queda registrada la entrega
-como _pendiente de envío_, después se genera el PDF y después se envía. Un fallo **no pierde** el
-presupuesto.
+(`QUOTE_INTERNAL_RECIPIENTS`). El orden es el de ADR-0004 §5: primero se **reclama** la entrega de
+forma atómica y queda registrada como _pendiente de envío_, después se genera el PDF y después se
+envía. Un fallo **no pierde** el presupuesto.
 
 | Campo      | Tipo           | Obligatorio | Descripción                                                  |
 | ---------- | -------------- | ----------- | ------------------------------------------------------------ |
@@ -309,6 +309,8 @@ presupuesto.
 
 - `200` `{ "status": "delivered", "deliveries": [ … ] }` si se envió a todos los destinatarios.
   `status: "already_delivered"` cuando ya se había enviado a todos (no se reenvía nada).
+  `status: "in_progress"` cuando **otra petición simultánea** tiene el envío reclamado: esta no
+  envía nada y devuelve el estado real de cada entrega.
 - `502` `{ "status": "incomplete", "reason": "pdf_render_failed" | "email_send_failed", … }` si algo
   falló; el detalle por destinatario va en `deliveries` (`status`: `pending` | `sent` | `failed`,
   con `attempts` y `lastError`). El presupuesto sigue emitido y se reintenta.
@@ -316,7 +318,10 @@ presupuesto.
 - `404 NOT_FOUND` si la referencia no existe.
 
 La clave de idempotencia es `quoteId + versión + destinatario`: dos llamadas con el mismo
-destinatario y versión no duplican correos (ADR-0004 §6).
+destinatario y versión no duplican correos (ADR-0004 §6). La clave única evita filas duplicadas; el
+**reclamo atómico** evita además envíos duplicados: dos peticiones simultáneas convergen en la misma
+fila y solo la que gana el reclamo envía. El reclamo de un intento que murió antes de registrar su
+resultado caduca (ver `QUOTE_DELIVERY_CLAIM_LEASE_MS`) y el reintento puede retomarlo.
 
 **Acceso.** Igual que el resto del API del panel: `Authorization: Bearer <ADMIN_API_TOKEN>`. Sin la
 variable responde `503` `ADMIN_API_DISABLED` y con credenciales incorrectas `401`. Enviar correo es
@@ -330,7 +335,11 @@ Cuerpo opcional `{ "version": 1 }` para acotar el reintento a una versión del d
 
 - `200` `{ "status": "delivered", … }` si el reintento salió bien.
 - `200` `{ "status": "nothing_to_retry", … }` si no quedaba nada por enviar (no renderiza el PDF).
+- `200` `{ "status": "in_progress", … }` si otra petición simultánea tiene reclamadas las entregas.
 - `502` `{ "status": "incomplete", … }` si vuelve a fallar.
+
+El documento del reintento conserva los datos del cliente aunque su entrega ya se haya enviado y
+solo se reintente el aviso interno: el cliente se toma de **todas** las entregas de esa versión.
 
 ```bash
 curl -s -X POST http://localhost:3000/api/quotes/PC-2026-000001/delivery/retry \

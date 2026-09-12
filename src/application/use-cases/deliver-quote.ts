@@ -4,13 +4,15 @@
  * El orden es a prueba de fallos:
  *
  * 1. el presupuesto ya está persistido (el precio se congela al emitirlo, ADR-0003);
- * 2. el estado de cada entrega se persiste **antes** de renderizar: «pendiente de envío»;
+ * 2. cada entrega se **reclama** de forma atómica antes de renderizar: queda registrada como
+ *    «pendiente de envío» y solo la petición que gana el reclamo envía;
  * 3. se renderiza el PDF una sola vez;
  * 4. se envía el email a cada destinatario.
  *
  * Un fallo de PDF o de email no pierde el presupuesto: la entrega queda registrada con su motivo y
  * `retryQuoteDeliveries` la reintenta **sin duplicar correos**, porque cada entrega tiene su clave de
- * idempotencia (`quoteId + versión + destinatario`) y una entrega ya enviada nunca se reenvía.
+ * idempotencia (`quoteId + versión + destinatario`), una entrega ya enviada nunca se reenvía y dos
+ * peticiones simultáneas no pueden reclamar el mismo envío a la vez (CIF-175 F1/F2).
  */
 
 import { InvalidQuoteDeliveryError, ResourceNotFoundError } from '@/domain/shared/errors'
@@ -51,7 +53,7 @@ export interface DeliverQuoteDeps extends ComposeQuoteDocumentDeps {
 }
 
 export type DeliverQuoteStatus =
-  'delivered' | 'already_delivered' | 'incomplete' | 'nothing_to_retry'
+  'delivered' | 'already_delivered' | 'in_progress' | 'incomplete' | 'nothing_to_retry'
 
 export type DeliverQuoteReason = 'none' | 'pdf_render_failed' | 'email_send_failed'
 
@@ -137,13 +139,25 @@ export async function retryQuoteDeliveries(
   }
 
   const version = input.version ?? candidates[0]?.version ?? DEFAULT_QUOTE_DOCUMENT_VERSION
+  // El cliente viaja en su propia entrega: si ya salió y solo falló el aviso interno, el documento
+  // del reintento debe conservar sus datos (F3 de CIF-175). Se miran **todas** las entregas de esta
+  // versión, no solo las que se reintentan.
+  const customer = customerOf(stored.filter((delivery) => delivery.version === version))
   const at = deps.clock.now()
-  const prepared = await Promise.all(
-    candidates.map((delivery) => save(deps, delivery.startAttempt(at))),
+  const observed = stored.filter(
+    (delivery) => input.version === undefined || delivery.version === version,
   )
-  const customer = customerOf(candidates)
+  const claimed: QuoteDelivery[] = []
 
-  return runDeliveries(deps, quote, version, customer, prepared)
+  for (const candidate of candidates) {
+    const outcome = await claimDelivery(deps, candidate.startAttempt(at))
+
+    if (outcome.claimed !== null) {
+      claimed.push(outcome.claimed)
+    }
+  }
+
+  return runDeliveries(deps, quote, version, customer, { claimed, observed })
 }
 
 async function requireQuote(repository: QuoteRepository, reference: string): Promise<Quote> {
@@ -184,29 +198,30 @@ function deliveryTargets(
 
 /**
  * Registra el estado «pendiente de envío» de cada destinatario **antes** de renderizar o enviar.
- * Reutiliza la entrega existente por su clave de idempotencia: reintentar no crea filas nuevas.
+ * Reutiliza la entrega existente por su clave de idempotencia (reintentar no crea filas nuevas) y la
+ * reclama de forma atómica: si otra petición simultánea se adelantó, no se envía nada.
  */
 async function prepareDeliveries(
   deps: DeliverQuoteDeps,
   quote: Quote,
   version: number,
   targets: readonly DeliveryTarget[],
-): Promise<readonly QuoteDelivery[]> {
+): Promise<PreparedDeliveries> {
   const at = deps.clock.now()
-  const prepared: QuoteDelivery[] = []
+  const claimed: QuoteDelivery[] = []
+  const observed: QuoteDelivery[] = []
 
   for (const target of targets) {
-    const existing = await deps.quoteDeliveryRepository.findByKey(
-      quoteDeliveryKey(quote.id, version, target.recipient),
-    )
+    const key = quoteDeliveryKey(quote.id, version, target.recipient)
+    const existing = await deps.quoteDeliveryRepository.findByKey(key)
 
     if (existing !== null && existing.isSent()) {
-      prepared.push(existing)
+      observed.push(existing)
 
       continue
     }
 
-    const base =
+    const candidate = (
       existing ??
       QuoteDelivery.pending({
         id: deps.idGenerator.nextId(),
@@ -218,11 +233,54 @@ async function prepareDeliveries(
         customerName: target.customerName,
         createdAt: at,
       })
+    ).startAttempt(at)
 
-    prepared.push(await save(deps, base.startAttempt(at)))
+    const outcome = await claimDelivery(deps, candidate)
+
+    if (outcome.stored !== null) {
+      observed.push(outcome.stored)
+    }
+
+    if (outcome.claimed !== null) {
+      claimed.push(outcome.claimed)
+    }
   }
 
-  return prepared
+  return { claimed, observed }
+}
+
+interface PreparedDeliveries {
+  /** Entregas cuyo envío ha reclamado esta petición: son las únicas que se renderizan y envían. */
+  readonly claimed: readonly QuoteDelivery[]
+  /** Todo lo registrado para la respuesta, lo haya reclamado esta petición o no. */
+  readonly observed: readonly QuoteDelivery[]
+}
+
+interface ClaimOutcome {
+  /** La entrega reclamada por esta petición; `null` si otra se adelantó. */
+  readonly claimed: QuoteDelivery | null
+  /** Estado real de la fila: la reclamada o la que tiene otra petición. */
+  readonly stored: QuoteDelivery | null
+}
+
+/**
+ * Reclama un intento. Quien no gana el reclamo (otra petición lo tiene en curso o ya se envió) no
+ * envía: se relee la fila para informar de su estado real (F1 de CIF-175).
+ */
+async function claimDelivery(
+  deps: DeliverQuoteDeps,
+  candidate: QuoteDelivery,
+): Promise<ClaimOutcome> {
+  const claimed = await deps.quoteDeliveryRepository.claim(candidate)
+
+  if (claimed !== null) {
+    return { claimed, stored: claimed }
+  }
+
+  return {
+    claimed: null,
+    stored: await deps.quoteDeliveryRepository.findByKey(candidate.idempotencyKey),
+  }
 }
 
 async function runDeliveries(
@@ -230,13 +288,15 @@ async function runDeliveries(
   quote: Quote,
   version: number,
   customer: QuoteDocumentCustomer | null,
-  deliveries: readonly QuoteDelivery[],
+  prepared: PreparedDeliveries,
 ): Promise<DeliverQuoteResult> {
-  const toSend = deliveries.filter((delivery) => !delivery.isSent())
+  const { claimed: toSend, observed: deliveries } = prepared
 
   if (toSend.length === 0) {
+    const allSent = deliveries.length > 0 && deliveries.every((delivery) => delivery.isSent())
+
     return {
-      status: 'already_delivered',
+      status: allSent ? 'already_delivered' : 'in_progress',
       reason: 'none',
       quoteReference: quote.reference,
       version,
