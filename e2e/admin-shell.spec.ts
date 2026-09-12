@@ -1,12 +1,29 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
+import { E2E_ADMIN_BASE_URL, E2E_ADMIN_PANEL_PASSWORD } from './support/servers'
+
 /**
  * E2E del shell del panel (fase 1, ADR-0023): corre en los dos proyectos (`chromium` y `movil`)
  * contra la build de producción con el catálogo de demostración, que es la configuración que abre
  * el panel en el E2E (guarda de ADR-0023 §5). Cubre el DoD §9 —estados, navegación, migas,
  * responsive y i18n— y los nombres accesibles traducidos del hallazgo M2 de CIF-55/CIF-101, sin
  * datos de negocio reales.
+ *
+ * El shell vive detrás de la guarda de sesión del panel (CIF-241, ADR-0024), así que corre contra
+ * el **servidor de administración** y cada test obtiene antes su cookie firmada con la credencial
+ * de pruebas, igual que el propietario. El servidor principal —sin credenciales— se queda para los
+ * casos «el panel no está configurado» de `e2e/admin-auth.spec.ts`.
  */
+
+test.use({ baseURL: E2E_ADMIN_BASE_URL })
+
+test.beforeEach(async ({ page }) => {
+  const session = await page.request.post('/api/admin/session', {
+    data: { password: E2E_ADMIN_PANEL_PASSWORD },
+  })
+
+  expect(session.status()).toBe(200)
+})
 
 /** El sidebar es `md:block` (768 px); por debajo, la navegación es el menú desplegable. */
 const MOBILE_BREAKPOINT_PX = 768
