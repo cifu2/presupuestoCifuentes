@@ -26,7 +26,7 @@ import { ResendEmailSender } from '@/infrastructure/email/resend-email-sender'
 import { CryptoIdGenerator } from '@/infrastructure/id/crypto-id-generator'
 import { InMemoryAdminCatalogReader } from '@/infrastructure/persistence/in-memory/admin-catalog-reader'
 import { ReactPdfQuoteRenderer } from '@/infrastructure/pdf/react-pdf-quote-renderer'
-import { PrismaHealthProbe } from '@/infrastructure/persistence/prisma/health-probe'
+import { createHealthProbe } from '@/infrastructure/persistence/prisma/health-probe'
 import {
   InMemoryAccessoryRepository,
   InMemoryColorRepository,
@@ -128,7 +128,7 @@ function createPrismaContainer(connectionString: string): Container {
   return {
     mode: 'prisma',
     clock: new SystemClock(),
-    healthProbe: new PrismaHealthProbe(prisma),
+    healthProbe: createHealthProbe(connectionString),
     idGenerator: new CryptoIdGenerator(),
     seriesRepository: new PrismaSeriesRepository(prisma),
     finishRepository: new PrismaFinishRepository(prisma),

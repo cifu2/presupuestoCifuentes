@@ -62,6 +62,12 @@ Hechos comprobados (CIF-109 y CIF-110):
      de release con `prisma migrate status` y `prisma migrate deploy` (§6). Detectar desde la propia
      base una migración fallida o a medias queda como endurecimiento posterior no bloqueante
      (CIF-147).
+   - El tope de 2 s **cancela la consulta**, no solo acota la respuesta HTTP: el puerto `HealthProbe`
+     recibe un `AbortSignal` y el adaptador destruye la conexión que la ejecuta al abortarse. La
+     sonda usa un pool propio de una sola conexión (`max: 1`), fuera del pool de la aplicación, para
+     que cancelar no toque las conexiones que atienden peticiones. El código HTTP del borde lo fija
+     `status` del caso de uso, única fuente de verdad de la salud. Cierra las dos observaciones no
+     bloqueantes del PASA de CIF-438 (CIF-451).
 6. **`prisma migrate deploy` sigue siendo un paso explícito de release** contra la base de
    producción, incluida `20260911150000_constraint_solape_tarifas_publicadas` con
    `CREATE EXTENSION IF NOT EXISTS btree_gist`.
