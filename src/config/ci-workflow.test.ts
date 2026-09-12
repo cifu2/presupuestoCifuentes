@@ -60,6 +60,21 @@ describe('job `calidad` con base de datos de test', () => {
       calidad.indexOf('pnpm test:coverage'),
     )
   })
+
+  it('comprueba el contrato HTTP real de /api/health sobre la build servida (CIF-456)', () => {
+    // El E2E hermético solo cubre `unconfigured` en el borde; sin este paso, una regresión de los
+    // 503 (base sin migrar o inalcanzable) pasaría las dos puertas requeridas sin que nadie la vea.
+    expect(calidad).toMatch(/^\s+run:\s*\.\/scripts\/health-http-check\.sh\s*$/m)
+    expect(calidad).toMatch(/^\s+run:\s*\.\/scripts\/health-http-check\.test\.sh\s*$/m)
+
+    const migraciones = calidad.indexOf('pnpm db:deploy')
+
+    expect(calidad.indexOf('health-http-check.sh')).toBeGreaterThan(migraciones)
+  })
+
+  it('adjunta el informe del contrato de salud como evidencia de la puerta (CIF-456)', () => {
+    expect(calidad).toMatch(/^\s+name:\s*salud-http\s*$/m)
+  })
 })
 
 describe('checks requeridos en `main`', () => {
