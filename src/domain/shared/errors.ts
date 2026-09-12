@@ -25,6 +25,7 @@ export type DomainErrorCode =
   | 'INVALID_QUOTE_REFERENCE'
   | 'INVALID_QUOTE_DELIVERY'
   | 'INVALID_QUOTE_DELIVERY_TRANSITION'
+  | 'QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED'
   | 'NOT_FOUND'
 
 export class DomainError extends Error {
@@ -160,6 +161,13 @@ export class InvalidQuoteDeliveryError extends DomainError {
 export class InvalidQuoteDeliveryTransitionError extends DomainError {
   constructor(message: string) {
     super('INVALID_QUOTE_DELIVERY_TRANSITION', message)
+  }
+}
+
+/** La entrega agotó su tope de intentos y ya no se reintenta sola (CIF-186). */
+export class QuoteDeliveryAttemptsExhaustedError extends DomainError {
+  constructor(message: string) {
+    super('QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED', message)
   }
 }
 

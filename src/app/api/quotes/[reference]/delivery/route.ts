@@ -11,7 +11,8 @@ export const dynamic = 'force-dynamic'
  *
  * El orden es el de ADR-0004 §5: el presupuesto ya está persistido, la entrega queda registrada
  * antes de renderizar y, si algo falla, responde `502` con el detalle por destinatario sin perder
- * el presupuesto (se reintenta con `/delivery/retry`).
+ * el presupuesto (se reintenta con `/delivery/retry`). Si la entrega ya gastó sus intentos responde
+ * `200` con `status: "attempts_exhausted"`: es terminal, no un error del cliente (CIF-186).
  *
  * Va detrás de la guarda del API del panel (CIF-9/CIF-14): enviar correo es una acción con coste y
  * superficie de abuso, así que no queda abierta mientras el propietario no decida quién la lanza.

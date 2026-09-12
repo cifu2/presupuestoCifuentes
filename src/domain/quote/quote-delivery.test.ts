@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  MAX_QUOTE_DELIVERY_ATTEMPTS,
   QuoteDelivery,
   quoteDeliveryKey,
   type QuoteDeliveryProps,
@@ -8,6 +9,7 @@ import {
 import {
   InvalidQuoteDeliveryError,
   InvalidQuoteDeliveryTransitionError,
+  QuoteDeliveryAttemptsExhaustedError,
   InvalidValueError,
 } from '@/domain/shared/errors'
 
@@ -122,5 +124,55 @@ describe('QuoteDelivery', () => {
     expect(() => sent.startAttempt(SENT_AT)).toThrow(InvalidQuoteDeliveryTransitionError)
     expect(() => sent.markSent('otro', SENT_AT)).toThrow(InvalidQuoteDeliveryTransitionError)
     expect(() => sent.markFailed('tarde', SENT_AT)).toThrow(InvalidQuoteDeliveryTransitionError)
+  })
+})
+
+describe('tope de intentos de una entrega (CIF-186)', () => {
+  it('marca como agotada la entrega que gastó los intentos sin llegar a enviarse', () => {
+    const exhausted = makeDelivery({ status: 'failed', attempts: MAX_QUOTE_DELIVERY_ATTEMPTS })
+
+    expect(exhausted.isExhausted()).toBe(true)
+  })
+
+  it('no marca como agotada una entrega enviada, aunque haya usado los 100 intentos', () => {
+    const sent = makeDelivery({
+      status: 'sent',
+      sentAt: SENT_AT,
+      attempts: MAX_QUOTE_DELIVERY_ATTEMPTS,
+    })
+
+    expect(sent.isExhausted()).toBe(false)
+  })
+
+  it('el intento 101 no arranca: es un error de dominio con el motivo, no un valor inválido', () => {
+    const exhausted = makeDelivery({ status: 'failed', attempts: MAX_QUOTE_DELIVERY_ATTEMPTS })
+
+    expect(() => exhausted.startAttempt(SENT_AT)).toThrow(QuoteDeliveryAttemptsExhaustedError)
+    expect(() => exhausted.startAttempt(SENT_AT)).not.toThrow(InvalidValueError)
+
+    try {
+      exhausted.startAttempt(SENT_AT)
+    } catch (error) {
+      expect((error as QuoteDeliveryAttemptsExhaustedError).code).toBe(
+        'QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED',
+      )
+      expect((error as Error).message).toContain('nueva versión del documento')
+    }
+  })
+
+  it('permite el último intento disponible: del 99 al 100', () => {
+    const started = makeDelivery({
+      status: 'failed',
+      attempts: MAX_QUOTE_DELIVERY_ATTEMPTS - 1,
+    }).startAttempt(SENT_AT)
+
+    expect(started.status).toBe('pending')
+    expect(started.attempts).toBe(MAX_QUOTE_DELIVERY_ATTEMPTS)
+  })
+
+  it('conserva la invariante: una entrega no se persiste por encima del tope', () => {
+    expect(() => makeDelivery({ attempts: MAX_QUOTE_DELIVERY_ATTEMPTS + 1 })).toThrow(
+      InvalidValueError,
+    )
   })
 })

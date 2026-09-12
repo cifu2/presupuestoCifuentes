@@ -12,6 +12,9 @@ export const dynamic = 'force-dynamic'
  * No duplica correos: cada entrega tiene su clave de idempotencia y las ya enviadas no se reenvían
  * (ADR-0004 §6). Si no queda nada por enviar responde `200` con `status: "nothing_to_retry"`.
  * Cuerpo opcional: `{ "version": 1 }` para reintentar solo una versión del documento.
+ *
+ * Una entrega que agotó su tope de intentos (`MAX_QUOTE_DELIVERY_ATTEMPTS`) no se reintenta: queda
+ * fallida con el motivo persistido y responde `200` con `status: "attempts_exhausted"` (CIF-186).
  */
 export async function POST(
   request: Request,

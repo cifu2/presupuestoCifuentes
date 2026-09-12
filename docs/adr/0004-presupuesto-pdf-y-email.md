@@ -74,6 +74,11 @@ configuración**. Lo que la implementación fija:
    documento del reintento toma los datos del cliente de **todas** las entregas de esa versión, no
    solo de las que se reintentan: si la entrega al cliente ya salió y falló el aviso interno, el
    PDF del reintento sigue llevando el bloque del cliente.
+8. **Tope de intentos terminal** (`MAX_QUOTE_DELIVERY_ATTEMPTS`, 100): una entrega que gasta sus
+   intentos sin enviarse queda fallida y deja de reintentarse; el motivo («se agotaron los intentos»)
+   se persiste en `lastError` y el caso de uso responde `attempts_exhausted` en vez de romper la
+   invariante de `attempts`. Un fallo permanente no reintenta para siempre y volver a entregar exige
+   una versión nueva del documento, que estrena contador (CIF-186).
 
 ## Pendiente de negocio (CIF-13, hoy CIF-14)
 

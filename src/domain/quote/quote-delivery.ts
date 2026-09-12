@@ -15,6 +15,7 @@ import {
 } from '@/domain/shared/assertions'
 import {
   InvalidQuoteDeliveryError,
+  QuoteDeliveryAttemptsExhaustedError,
   InvalidQuoteDeliveryTransitionError,
 } from '@/domain/shared/errors'
 
@@ -29,6 +30,16 @@ export type QuoteDeliveryAudience = (typeof QUOTE_DELIVERY_AUDIENCES)[number]
 
 /** Tope de `lastError`: el motivo se guarda para diagnosticar, no para volcar un stack trace. */
 const MAX_ERROR_LENGTH = 500
+
+/**
+ * Tope de intentos por entrega (CIF-186). Al alcanzarlo la entrega queda fallida y **no se reintenta
+ * sola**: un fallo permanente (destinatario inexistente, proveedor caído) no puede reintentar para
+ * siempre. Volver a entregar el mismo documento exige pedir una versión nueva, que estrena contador.
+ */
+export const MAX_QUOTE_DELIVERY_ATTEMPTS = 100
+
+/** Motivo con el que se cierra una entrega que agotó sus intentos; se guarda tal cual en `lastError`. */
+export const QUOTE_DELIVERY_ATTEMPTS_EXHAUSTED_REASON = `Se agotaron los ${MAX_QUOTE_DELIVERY_ATTEMPTS} intentos de envío; envía una nueva versión del documento para reintentarlo`
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -110,7 +121,7 @@ export class QuoteDelivery {
     assertNonEmptyString(props.quoteId, 'quoteId')
     assertNonEmptyString(props.quoteReference, 'quoteReference')
     assertIntegerInRange(props.version, 'version', 1, 1_000)
-    assertIntegerInRange(props.attempts, 'attempts', 0, 100)
+    assertIntegerInRange(props.attempts, 'attempts', 0, MAX_QUOTE_DELIVERY_ATTEMPTS)
     assertValidDate(props.createdAt, 'createdAt')
     assertValidDate(props.updatedAt, 'updatedAt')
 
@@ -187,6 +198,14 @@ export class QuoteDelivery {
   }
 
   /**
+   * `true` cuando la entrega gastó todos sus intentos sin llegar a enviarse: ya no se puede reclamar
+   * ni reintentar (CIF-186). Una entrega enviada nunca está agotada, aunque haya usado 100 intentos.
+   */
+  isExhausted(): boolean {
+    return !this.isSent() && this.attempts >= MAX_QUOTE_DELIVERY_ATTEMPTS
+  }
+
+  /**
    * `true` mientras otro intento mantiene viva la reserva de esta entrega: la reserva caduca a los
    * `leaseMs` para que un proceso caído no bloquee el reintento para siempre.
    */
@@ -196,7 +215,8 @@ export class QuoteDelivery {
 
   /**
    * Marca el inicio de un intento y reserva la entrega. Una entrega ya enviada no se reintenta: no se
-   * duplican correos.
+   * duplican correos. Una entrega que agotó sus intentos tampoco: el motivo es de dominio y no un
+   * valor inválido del cliente (CIF-186).
    */
   startAttempt(at: Date): QuoteDelivery {
     assertValidDate(at, 'updatedAt')
@@ -204,6 +224,12 @@ export class QuoteDelivery {
     if (this.isSent()) {
       throw new InvalidQuoteDeliveryTransitionError(
         `La entrega de "${this.quoteReference}" a "${this.recipient}" ya se envió`,
+      )
+    }
+
+    if (this.isExhausted()) {
+      throw new QuoteDeliveryAttemptsExhaustedError(
+        `La entrega de "${this.quoteReference}" a "${this.recipient}" agotó los ${MAX_QUOTE_DELIVERY_ATTEMPTS} intentos; envía una nueva versión del documento para volver a intentarlo`,
       )
     }
 
