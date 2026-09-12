@@ -80,8 +80,29 @@ function panelKeySet(locale: (typeof SUPPORTED_LOCALES)[number]): Set<string> {
 }
 
 /**
+ * Fin del string que abre en `start`, o `null` si la comilla no abre un literal de verdad: un
+ * apóstrofo dentro de una palabra (`don't`), la comilla de un regex (`/['"]/`) o una comilla que no
+ * cierra en la misma línea. Tratar esos casos como string barría el fichero hasta la siguiente
+ * comilla y los `//` posteriores dejaban de borrarse (H3 de CIF-309).
+ */
+function endOfRealString(source: string, start: number): number | null {
+  const quote = source[start]
+
+  if (quote !== '"' && quote !== "'" && quote !== '`') return null
+
+  const end = endOfString(source, start)
+
+  if (end <= start + 1) return null
+  if (/[\w$]/.test(source[start - 1] ?? '')) return null
+  if (quote !== '`' && source.slice(start, end).includes('\n')) return null
+
+  return end
+}
+
+/**
  * Quita los comentarios de bloque y de línea. El escáner distingue strings y plantillas, así que un
- * `//` dentro de un literal (`href="https://…"`) no borra media línea de código (H3 de CIF-302).
+ * `//` dentro de un literal (`href="https://…"`) no borra media línea de código (H3 de CIF-302) y una
+ * comilla descolocada no desincroniza el barrido (H3 de CIF-309).
  */
 export function stripComments(source: string, syntax: 'js' | 'css' = 'js'): string {
   let result = ''
@@ -91,11 +112,13 @@ export function stripComments(source: string, syntax: 'js' | 'css' = 'js'): stri
     const char = source[index]
 
     if (char === '"' || char === "'" || char === '`') {
-      const end = endOfString(source, index)
+      const end = endOfRealString(source, index)
 
-      result += source.slice(index, end)
-      index = end
-      continue
+      if (end !== null) {
+        result += source.slice(index, end)
+        index = end
+        continue
+      }
     }
 
     if (char === '/' && source[index + 1] === '*') {
@@ -359,15 +382,16 @@ const NAMED_COLORS = [
 const COLOR_LITERALS = new RegExp(
   [
     '#[0-9a-fA-F]{3,8}\\b',
-    '\\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\\([^)]*\\)',
+    '\\b(?:rgba?|hsla?|hwb|oklch|oklab|lab|lch|color|device-cmyk)\\([^)]*\\)',
     `(?<![\\w-])(?:${NAMED_COLORS.join('|')})(?![\\w-])`,
   ].join('|'),
-  'g',
+  'gi',
 )
 
 /**
  * Literales de color de un fragmento: `#fff`, `rgb(…)`, `hsl(…)`, sus equivalentes modernos y los
- * colores con nombre (`white`, `transparent`).
+ * colores con nombre (`white`, `transparent`). La `i` cubre las variantes en mayúsculas (`White`,
+ * `RGB(…)`, `hwb(…)`, `color(…)`, `device-cmyk(…)`) que la revisión CIF-308 dejó verdes (H1 de CIF-309).
  */
 export function findColorLiterals(source: string): string[] {
   return [...source.matchAll(COLOR_LITERALS)].map((match) => match[0])
@@ -435,18 +459,58 @@ function readAttributeValue(source: string, start: number): AttributeValue | nul
   return null
 }
 
-/** `true` si la posición cae dentro de una etiqueta JSX (`<a …>`), no en una expresión suelta. */
+/**
+ * `true` si la posición cae dentro de una etiqueta JSX (`<a …>`), no en una expresión suelta.
+ *
+ * El barrido va hacia delante y mantiene el estado real de la etiqueta: un `>` dentro de un string,
+ * de una plantilla o de una expresión `{…}` no la cierra (H2 de CIF-309), y un `<` de comparación
+ * (`a < b`, `Array<string>`) no la abre (H2 de CIF-309, dirección contraria).
+ */
 function isInsideJsxTag(source: string, index: number): boolean {
-  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+  let insideTag = false
+  let braceDepth = 0
+  let cursor = 0
+
+  while (cursor < index) {
     const char = source[cursor]
 
-    if (char === '<') return true
+    if (char === '"' || char === "'" || char === '`') {
+      const end = endOfRealString(source, cursor)
 
-    // El `=>` de una prop anterior no cierra la etiqueta; el `>` de cierre, sí.
-    if (char === '>' && source[cursor - 1] !== '=') return false
+      // Dentro de una etiqueta las comillas son valores de atributo o strings de `{…}`; fuera, un
+      // string de JS con un `<` dentro no puede abrir una etiqueta.
+      cursor = end === null ? cursor + 1 : end
+      continue
+    }
+
+    if (insideTag) {
+      if (char === '{') {
+        braceDepth += 1
+      } else if (char === '}') {
+        braceDepth = Math.max(0, braceDepth - 1)
+      } else if (braceDepth === 0 && (char === '>' || char === '<')) {
+        insideTag = false
+      }
+
+      cursor += 1
+      continue
+    }
+
+    // Solo un `<` seguido de nombre, `/` o `>` abre JSX; una comparación (`a < b`) o un genérico
+    // (`Array<string>`) no lo hacen, y tampoco un `<` precedido de un identificador (`a<b`).
+    if (
+      char === '<' &&
+      /[A-Za-z/>]/.test(source[cursor + 1] ?? '') &&
+      !/[\w$)\]]/.test(source[cursor - 1] ?? '')
+    ) {
+      insideTag = true
+      braceDepth = 0
+    }
+
+    cursor += 1
   }
 
-  return false
+  return insideTag
 }
 
 /**
@@ -566,14 +630,22 @@ function collectLiterals(expression: string): StringLiteral[] {
  */
 export function findLiteralTextAttributes(source: string): string[] {
   const scanned = stripComments(source)
-  const pattern = new RegExp(`(?<![\\w.$-])(${TEXT_ATTRIBUTES.join('|')})\\s*=\\s*`, 'g')
+  // `aria-label="Idioma"` o su forma de spread (`{...{ 'aria-label': 'Idioma' }}`), que también
+  // escribe el atributo y quedaba verde (H2 de CIF-309).
+  const pattern = new RegExp(
+    [
+      `(?<![\\w.$-])(?:(?<name>${TEXT_ATTRIBUTES.join('|')})\\s*=\\s*`,
+      `|\\.\\.\\.\\s*\\{[^{}]*?['"](?<spread>${TEXT_ATTRIBUTES.join('|')})['"]\\s*:\\s*)`,
+    ].join(''),
+    'g',
+  )
   const offenders: string[] = []
   let match: RegExpExecArray | null
 
   while ((match = pattern.exec(scanned)) !== null) {
     if (!isInsideJsxTag(scanned, match.index)) continue
 
-    const attribute = match[1] ?? ''
+    const attribute = match.groups?.name ?? match.groups?.spread ?? ''
     const value = readAttributeValue(scanned, match.index + match[0].length)
 
     if (value === null) continue
@@ -1002,5 +1074,125 @@ describe('endurecimiento de las guardas (H1–H3 de CIF-302)', () => {
     expect(backdropRules('dialog::backdrop { background: url(//cdn/x.png) white; }')).toHaveLength(
       1,
     )
+  })
+})
+
+/**
+ * Cierre de los cuatro huecos residuales que dejó verdes la revisión CIF-308 sobre el head de
+ * PR #60. Cada punto trae su test y, cuando el hueco se podía reproducir sobre el fichero real, su
+ * control de mutación: si la clase de literal vuelve al panel, la guarda tiene que fallar.
+ */
+describe('cierre de los huecos residuales (CIF-309)', () => {
+  const panelDirectory = SOURCES[0] ?? ''
+  const adminCss = readFileSync(join(panelDirectory, 'admin.css'), 'utf8')
+  const panelShell = readFileSync(join(panelDirectory, 'panel-shell.tsx'), 'utf8')
+
+  it('H1: los literales de color ignoran mayúsculas y cubren hwb/color/device-cmyk', () => {
+    expect(findColorLiteralsOutsideTheme('.x { color: White; }')).toEqual(['White'])
+    expect(findColorLiteralsOutsideTheme('.x { color: WHITE; }')).toEqual(['WHITE'])
+    expect(findColorLiteralsOutsideTheme('.x { color: Transparent; }')).toEqual(['Transparent'])
+    expect(findColorLiteralsOutsideTheme('.x { color: RGB(1 2 3); }')).toEqual(['RGB(1 2 3)'])
+    expect(findColorLiteralsOutsideTheme('.x { color: HSLA(0 0% 0% / .5); }')).toEqual([
+      'HSLA(0 0% 0% / .5)',
+    ])
+    expect(findColorLiteralsOutsideTheme('.x { color: hwb(0 0% 100%); }')).toEqual([
+      'hwb(0 0% 100%)',
+    ])
+    expect(findColorLiteralsOutsideTheme('.x { color: color(display-p3 1 0 0); }')).toEqual([
+      'color(display-p3 1 0 0)',
+    ])
+    expect(findColorLiteralsOutsideTheme('.x { color: DEVICE-CMYK(0 0 0 1); }')).toEqual([
+      'DEVICE-CMYK(0 0 0 1)',
+    ])
+  })
+
+  it('H1: un color con nombre en mayúsculas dentro de admin.css haría fallar la guarda', () => {
+    const mutated = adminCss.replace('background: var(--color-surface);', 'background: White;')
+
+    expect(mutated).not.toBe(adminCss)
+    expect(findColorLiteralsOutsideTheme(mutated)).toEqual(['White'])
+  })
+
+  it('H2: un `>` en una prop, en un string o dentro de `{…}` no cierra la etiqueta', () => {
+    expect(
+      findLiteralTextAttributes('<button onClick={() => setOk(n > 0)} aria-label="Idioma" />'),
+    ).toEqual(['aria-label="Idioma"'])
+    expect(findLiteralTextAttributes('<div data-arrow=">" aria-label="Idioma" />')).toEqual([
+      'aria-label="Idioma"',
+    ])
+    // El valor de `title` no llega a dos letras seguidas, pero la etiqueta sigue abierta para el
+    // atributo siguiente; con un valor de verdad se delatan los dos.
+    expect(findLiteralTextAttributes('<div title="a > b" aria-label="Idioma" />')).toEqual([
+      'aria-label="Idioma"',
+    ])
+    expect(findLiteralTextAttributes('<div title="Foto > casa" aria-label="Idioma" />')).toEqual([
+      'title="Foto > casa"',
+      'aria-label="Idioma"',
+    ])
+    expect(
+      findLiteralTextAttributes('<div className={n > 0 ? "a" : "b"} aria-label="Idioma" />'),
+    ).toEqual(['aria-label="Idioma"'])
+    expect(findLiteralTextAttributes("<span {...{ 'aria-label': 'Idioma' }} />")).toEqual([
+      'aria-label="Idioma"',
+    ])
+    expect(findLiteralTextAttributes("<span {...{ 'title': t('a11y.locale') }} />")).toEqual([])
+  })
+
+  it('H2: una comparación en una prop real de panel-shell.tsx haría fallar la guarda', () => {
+    const mutated = panelShell.replace(
+      "aria-label={t('a11y.locale')}",
+      'aria-hidden={index > 0} aria-label="Idioma"',
+    )
+
+    expect(mutated).not.toBe(panelShell)
+    expect(findLiteralTextAttributes(mutated)).toEqual(['aria-label="Idioma"'])
+  })
+
+  it('H2: un `<` de comparación no abre una etiqueta JSX (no hay falsos positivos)', () => {
+    expect(
+      findLiteralTextAttributes(['const ok = a < b', "const alt = 'Foto'"].join('\n')),
+    ).toEqual([])
+    expect(findLiteralTextAttributes(['const ok = a < b', "title = 'Foto'"].join('\n'))).toEqual([])
+    expect(
+      findLiteralTextAttributes(['if (a <= b) {', "  aria-label = 'Foto'", '}'].join('\n')),
+    ).toEqual([])
+    expect(
+      findLiteralTextAttributes(['const list: Array<string> = []', "alt = 'Foto'"].join('\n')),
+    ).toEqual([])
+    // Control: una etiqueta JSX real sigue delatando el literal.
+    expect(findLiteralTextAttributes('<img alt="Foto" />')).toEqual(['alt="Foto"'])
+  })
+
+  it('H3: un apóstrofo suelto o un regex con comilla no ocultan el comentario siguiente', () => {
+    const apostrophe = [
+      "const label = don't",
+      '// <span aria-label="Idioma">x</span>',
+      "<div aria-label={t('a11y.x')} />",
+    ].join('\n')
+
+    expect(stripComments(apostrophe)).not.toContain('Idioma')
+    expect(findLiteralTextAttributes(apostrophe)).toEqual([])
+
+    const jsxText = [
+      "<p>Don't panic</p>",
+      '// aria-label="Idioma"',
+      "<span aria-label={t('a11y.x')} />",
+    ].join('\n')
+
+    expect(stripComments(jsxText)).not.toContain('Idioma')
+    expect(findLiteralTextAttributes(jsxText)).toEqual([])
+
+    const regex = [
+      'const pattern = /[\'"]/',
+      '// aria-label="Idioma"',
+      "<span aria-label={t('a11y.x')} />",
+    ].join('\n')
+
+    expect(stripComments(regex)).not.toContain('Idioma')
+    expect(findLiteralTextAttributes(regex)).toEqual([])
+
+    // Control: el string legítimo sigue protegido y la clave de `t(…)` no es un literal.
+    expect(stripComments('const url = "https://x" // nota\n')).toContain('https://x')
+    expect(findLiteralTextAttributes("<span aria-label={t('a11y.x')} />")).toEqual([])
   })
 })
