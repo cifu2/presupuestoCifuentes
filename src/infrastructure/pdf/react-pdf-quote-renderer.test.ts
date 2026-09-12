@@ -6,6 +6,10 @@
  * (referencia, configuración, IVA, condiciones, aviso de valores pendientes).
  */
 
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { inflateSync } from 'node:zlib'
+
 import { describe, expect, it } from 'vitest'
 import { extractText, extractTextItems, getMeta } from 'unpdf'
 
@@ -19,6 +23,7 @@ import {
 import { Quote } from '@/domain/quote/quote'
 import { Money } from '@/domain/shared/money'
 
+import { QUOTE_DOCUMENT_PALETTE } from './quote-document-palette'
 import { hardCurrencySpace, ReactPdfQuoteRenderer } from './react-pdf-quote-renderer'
 
 const ISSUED_AT = new Date('2026-09-12T08:00:00.000Z')
@@ -393,5 +398,140 @@ describe('banda inferior del pie (§3.1 y §3.6)', () => {
     // Arriba del todo (841,89 − 40 de margen) pero por debajo del borde superior.
     expect(runningHeader.y).toBeGreaterThan(770)
     expect(runningHeader.y).toBeGreaterThan(tableHeader.y)
+  })
+})
+
+/**
+ * Guarda de la regla estructural de la cabecera de tabla (CIF-399; reserva R1 de CIF-396).
+ *
+ * La cabecera se cierra con `ruleStrong` —la regla estructural de §2.1 rev 8, de 0,75 pt y ≥3:1
+ * sobre `surface`—, no con la regla decorativa `rule` de filas y pie. Es la decisión que costó una
+ * revisión de Diseño (CIF-397 rev 8) y ninguna prueba la ataba: volver a `rule` dejaba la suite en
+ * verde. Aquí se ancla por dos vías complementarias: el color tiene que estar **pintado** en el PDF
+ * renderizado y el estilo tiene que declararlo y aplicarlo a la cabecera de la tabla.
+ */
+
+/** Código del renderer sin comentarios, para leer sus bloques de estilo. */
+const rendererCode = readFileSync(
+  fileURLToPath(new URL('./react-pdf-quote-renderer.tsx', import.meta.url)),
+  'utf8',
+).replace(/\/\*[\s\S]*?\*\//g, '')
+
+/** Canales 0..1 que el PDF escribe para un `#rrggbb` de la paleta. */
+function rgbChannels(hex: string): readonly number[] {
+  return [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255)
+}
+
+/**
+ * Colores de **trazo** del PDF, en orden de aparición. `@react-pdf` comprime los flujos de contenido
+ * con zlib y fija el color de trazo con `SCN` (`RG` en la notación clásica), así que hay que
+ * descomprimirlos para ver lo que de verdad se pinta en la página.
+ */
+async function strokeColors(document: QuoteDocument): Promise<readonly (readonly number[])[]> {
+  const pdf = Buffer.from(await new ReactPdfQuoteRenderer().render(document))
+  const colors: number[][] = []
+
+  let cursor = 0
+  while ((cursor = pdf.indexOf('stream', cursor)) !== -1) {
+    const start = pdf.indexOf('\n', cursor) + 1
+    const end = pdf.indexOf('endstream', start)
+    if (end === -1) break
+
+    let content: string
+    try {
+      content = inflateSync(pdf.subarray(start, end)).toString('latin1')
+    } catch {
+      content = pdf.subarray(start, end).toString('latin1')
+    }
+
+    for (const match of content.matchAll(/([\d.]+) +([\d.]+) +([\d.]+) +(?:SCN|RG)\b/g)) {
+      const [, red, green, blue] = match
+      if (red === undefined || green === undefined || blue === undefined) continue
+
+      colors.push([Number(red), Number(green), Number(blue)])
+    }
+
+    cursor = end + 'endstream'.length
+  }
+
+  return colors
+}
+
+/** ¿Algún trazo del PDF usa el color `hex`? */
+function paintsColor(strokes: readonly (readonly number[])[], hex: string): boolean {
+  const expected = rgbChannels(hex)
+
+  return strokes.some((stroke) =>
+    expected.every((channel, index) => {
+      const painted = stroke[index]
+
+      return painted !== undefined && Math.abs(painted - channel) < 1e-3
+    }),
+  )
+}
+
+/** Bloque `nombre: { … }` de un `StyleSheet.create`, con sus llaves. */
+function styleBlock(source: string, name: string): string | null {
+  const start = new RegExp(`(?:^|\\n)\\s*${name}\\s*:\\s*\\{`).exec(source)
+  if (start === null) return null
+
+  const open = source.indexOf('{', start.index)
+  let depth = 0
+
+  for (let cursor = open; cursor < source.length; cursor += 1) {
+    if (source[cursor] === '{') depth += 1
+    else if (source[cursor] === '}') {
+      depth -= 1
+      if (depth === 0) return source.slice(open, cursor + 1)
+    }
+  }
+
+  return null
+}
+
+/** Valor declarado de una propiedad dentro de un bloque de estilo. */
+function declared(block: string | null, property: string): string | null {
+  if (block === null) return null
+
+  const match = new RegExp(`(?:^|[\\s,{])${property}\\s*:\\s*([^,\\n}]+)`).exec(block)
+
+  return match?.[1]?.trim() ?? null
+}
+
+describe('la cabecera de tabla se cierra con la regla estructural (R1 de CIF-396)', () => {
+  it('el PDF pinta `ruleStrong` y `rule` como colores de trazo', async () => {
+    const strokes = await strokeColors(buildQuoteDocument(makeInput()))
+
+    expect(strokes.length).toBeGreaterThan(0)
+    expect(
+      paintsColor(strokes, QUOTE_DOCUMENT_PALETTE.ruleStrong),
+      'ningún trazo del PDF usa `ruleStrong`: la cabecera perdió su regla estructural',
+    ).toBe(true)
+    expect(
+      paintsColor(strokes, QUOTE_DOCUMENT_PALETTE.rule),
+      'la regla decorativa `rule` de filas y pie ya no se pinta',
+    ).toBe(true)
+  })
+
+  it('`tableHeader` declara `ruleStrong` a 0,75 pt; filas y pie siguen con `rule`', () => {
+    expect(declared(styleBlock(rendererCode, 'tableHeader'), 'borderBottomColor')).toBe(
+      'QUOTE_DOCUMENT_PALETTE.ruleStrong',
+    )
+    expect(declared(styleBlock(rendererCode, 'tableHeader'), 'borderBottomWidth')).toBe('0.75')
+
+    expect(declared(styleBlock(rendererCode, 'tableRow'), 'borderBottomColor')).toBe(
+      'QUOTE_DOCUMENT_PALETTE.rule',
+    )
+    expect(declared(styleBlock(rendererCode, 'footer'), 'borderTopColor')).toBe(
+      'QUOTE_DOCUMENT_PALETTE.rule',
+    )
+  })
+
+  it('la cabecera de la tabla aplica ese estilo', () => {
+    expect(rendererCode).toMatch(/style=\{styles\.tableHeader\}/)
+  })
+
+  it('la guarda no es vacua: `ruleStrong` y `rule` son colores distintos', () => {
+    expect(QUOTE_DOCUMENT_PALETTE.ruleStrong).not.toBe(QUOTE_DOCUMENT_PALETTE.rule)
   })
 })
