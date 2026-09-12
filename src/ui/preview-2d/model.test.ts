@@ -7,6 +7,7 @@ import {
   buildPreviewGeometry,
   clamp,
   type DoorType,
+  type GlassAperture,
   type PreviewConfig,
   type PreviewGeometry,
 } from './model'
@@ -37,6 +38,11 @@ const BASE: PreviewConfig = {
 
 const geometryOf = (overrides: Partial<PreviewConfig> = {}): PreviewGeometry =>
   buildPreviewGeometry({ ...BASE, ...overrides })
+
+/** Hueco de reproducción de CIF-158: relativo a la hoja, así que la mano debe recolocarlo (C1). */
+const APERTURAS_HOJA_SIMPLE: readonly GlassAperture[] = [
+  { x: 0.15, y: 0.2, w: 0.25, h: 0.3, forma: 'rect' },
+]
 
 const marginFor = (type: DoorType, width: number, height: number): number =>
   Math.round(
@@ -323,6 +329,30 @@ describe('modelo 2D · determinismo, espejo y rango', () => {
       ],
       moulding: true,
     })
+    /* C1/CIF-158: los huecos de cristal de la hoja simple también se recolocan con la mano. */
+    expectMirrored('abatible-1-hoja', { aperturas: APERTURAS_HOJA_SIMPLE })
+    expectMirrored('entrada-acorazada', { aperturas: APERTURAS_HOJA_SIMPLE })
+  })
+
+  it('el hueco de cristal de la hoja simple se recoloca con la mano (CIF-158)', () => {
+    const glazingCenter = (type: DoorType, hingeSide: 'derecha' | 'izquierda'): number => {
+      const glazing = geometryOf({
+        type,
+        widthMm: 900,
+        hingeSide,
+        aperturas: APERTURAS_HOJA_SIMPLE,
+      }).shapes.find((shape) => shape.kind === 'glazing')
+
+      expect(glazing, `${type} ${hingeSide}: hueco de cristal`).toBeDefined()
+
+      return glazing === undefined ? Number.NaN : glazing.x + glazing.w / 2
+    }
+
+    /* Tabla de CIF-158: sin espejo, la columna izquierda repetía la derecha. */
+    expect(glazingCenter('abatible-1-hoja', 'derecha')).toBeCloseTo(274.5, 2)
+    expect(glazingCenter('abatible-1-hoja', 'izquierda')).toBeCloseTo(625.5, 2)
+    expect(glazingCenter('entrada-acorazada', 'derecha')).toBeCloseTo(285.3, 2)
+    expect(glazingCenter('entrada-acorazada', 'izquierda')).toBeCloseTo(614.7, 2)
   })
 
   it('la corredera no tiene mano', () => {

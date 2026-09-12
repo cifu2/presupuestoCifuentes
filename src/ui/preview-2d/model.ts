@@ -7,6 +7,8 @@
  * - `modelo-2d-catalogo.mjs` v5.1 (CIF-116/CIF-131): tipos nuevos —`pivotante-1-hoja`,
  *   `pivotante-2-hojas`—, capas `planking`/`aperturas`/`moulding`/bicolor, `alcance` y el cierre
  *   de H9 (los pivotantes respetan `hingeSide` con la regla de espejo M11 completa, C1 incluido).
+ *   Las hojas simples (`abatible-1-hoja`, `entrada-acorazada`) también se construyen en mano
+ *   derecha canónica y pasan por M11 cuando la mano es izquierda (CIF-158).
  *
  * Reglas del contrato (`modelo-visual-2d` §1):
  * - Sin DOM, sin red, sin i18n y sin precios: solo geometría y pintura ya resueltas.
@@ -619,20 +621,22 @@ export function buildPreviewGeometry(config: PreviewConfig): PreviewGeometry {
       }
       markLeaf(F, F, abW, abH)
 
-      const hingeX = hingeLeft ? F : W - F
-
+      /* Hojas simples: se construyen en mano derecha canónica (bisagras en el cerco derecho,
+         tirador/cerradura en el lado opuesto, B3) y se reflejan enteras con M11 si la mano es
+         izquierda; así C1 también recoloca `aperturas`. Nada de ternarios por mano aquí dentro:
+         los ternarios doblarían el reflejo. */
       for (const centerY of hingeRows()) {
-        hingeAt(hingeX, centerY)
+        hingeAt(W - F, centerY)
       }
 
       if (type === 'entrada-acorazada') {
         const barW = 200
         const barH = largoUtil(30)
-        const barX = hingeLeft ? W - F - Math.round(0.06 * abW) - barW : F + Math.round(0.06 * abW)
+        const barX = F + Math.round(0.06 * abW)
         push('handle', barX, tiradorY(barH), barW, barH, { rx: 6, tone: 'metal' })
 
         /* Cerradura de 3 puntos: lado del tirador / borde de cierre (opuesto a las bisagras). */
-        const lockX = hingeLeft ? W - F - 24 : F
+        const lockX = F
         for (const position of [0.18, 0.5, 0.82]) {
           push('lock', lockX, F + abH * position - 45, 24, 90, { rx: 4, tone: 'metal' })
         }
@@ -650,13 +654,15 @@ export function buildPreviewGeometry(config: PreviewConfig): PreviewGeometry {
         })
       } else {
         const handleLength = largoUtil(tiradorL)
-        const handleX = hingeLeft
-          ? W - F - tiradorT - Math.round(0.06 * abW)
-          : F + Math.round(0.06 * abW)
+        const handleX = F + Math.round(0.06 * abW)
         push('handle', handleX, tiradorY(handleLength), tiradorT, handleLength, {
           rx: tiradorT / 2,
           tone: 'metal',
         })
+      }
+
+      if (hingeLeft) {
+        mirrorM11()
       }
     }
   }
