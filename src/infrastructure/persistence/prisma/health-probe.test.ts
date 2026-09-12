@@ -5,6 +5,9 @@
  * - tabla de decisión completa (`ok` / `unmigrated` / `unreachable`);
  * - cancelación: al abortarse la señal se destruye la conexión que ejecuta la consulta, de modo que
  *   no queda ninguna consulta en vuelo (CIF-451).
+ * - establecimiento de la conexión acotado: el pool del adaptador usa `connectionTimeoutMillis`
+ *   igual al tope de la sonda, así que un host que traga la conexión no deja el `connect` en vuelo
+ *   ni encola la sonda siguiente (CIF-455).
  *
  * Con base real (`TEST_DATABASE_URL`, se salta si no existe):
  * - base de test viva y migrada (`ok`);
@@ -17,14 +20,14 @@
  *   cancelación de la sonda.
  */
 
-import { createServer } from 'node:net'
+import { createServer, type Socket } from 'node:net'
 
 import pg, { type Pool } from 'pg'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 
 import { HEALTH_PROBE_TIMEOUT_MS } from '@/application/use-cases/get-system-status'
 
-import { PgHealthProbe } from './health-probe'
+import { createHealthProbe, PgHealthProbe } from './health-probe'
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL
 
@@ -103,6 +106,44 @@ async function closedPort(): Promise<number> {
   await new Promise<void>((resolve) => server.close(() => resolve()))
 
   return port
+}
+
+/**
+ * Host TCP que acepta la conexión y **nunca responde** al handshake de PostgreSQL: es el modo de
+ * fallo que midió QA (CIF-453, observación 1). `openSockets` cuenta los sockets que el servidor
+ * sigue viendo abiertos: si el intento de la sonda queda en vuelo más allá del tope, no bajan a 0.
+ */
+async function swallowingHost(): Promise<{
+  port: number
+  openSockets: () => number
+  close: () => Promise<void>
+}> {
+  const sockets = new Set<Socket>()
+  const server = createServer((socket) => {
+    sockets.add(socket)
+    // Sin leer, el socket queda en modo pausado y Node no detecta el FIN del cliente: nunca
+    // llegaría el `close` y el conteo no probaría que el intento se cortó.
+    socket.resume()
+    socket.on('close', () => sockets.delete(socket))
+  })
+
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+
+  const address = server.address()
+  const port = typeof address === 'object' && address !== null ? address.port : 0
+
+  return {
+    port,
+    openSockets: () => sockets.size,
+    close: () =>
+      new Promise<void>((resolve) => {
+        for (const socket of sockets) {
+          socket.destroy()
+        }
+
+        server.close(() => resolve())
+      }),
+  }
 }
 
 /** Añade `search_path` a la cadena de conexión sin pisar otros parámetros. */
@@ -207,6 +248,69 @@ describe('PgHealthProbe (doble)', () => {
       '[health] la sonda de la base de datos se canceló al agotarse el tiempo de espera',
     )
   })
+
+  it('registra la cancelación cuando el `connect` falla después de abortarse la señal', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let rejectConnect: (error: Error) => void = () => {}
+    const pool = {
+      connect: () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectConnect = reject
+        }),
+    } as unknown as Pool
+    const controller = new AbortController()
+    const pending = new PgHealthProbe(pool).ping({ signal: controller.signal })
+
+    // La señal se aborta con el `connect` todavía en vuelo y el establecimiento falla después: el
+    // estado ya era `unreachable`, pero el mensaje debe ser el de la cancelación (CIF-455).
+    controller.abort()
+    rejectConnect(new Error('timeout exceeded when trying to connect'))
+
+    await expect(pending).resolves.toBe('unreachable')
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[health] la sonda de la base de datos se canceló al agotarse el tiempo de espera',
+    )
+  })
+})
+
+describe('PgHealthProbe (establecimiento de la conexión)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('fija el tope de establecimiento de la conexión al tope de la sonda', () => {
+    const probe = createHealthProbe('postgresql://sonda@127.0.0.1:5432/sonda')
+    const { pool } = probe as unknown as { pool: pg.Pool }
+
+    expect(pool.options.max).toBe(1)
+    expect(pool.options.connectionTimeoutMillis).toBe(HEALTH_PROBE_TIMEOUT_MS)
+
+    void pool.end()
+  })
+
+  it('acota el `connect` al tope y no deja encolada la sonda siguiente', async () => {
+    const host = await swallowingHost()
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const probe = createHealthProbe(`postgresql://sonda@127.0.0.1:${host.port}/sonda`)
+
+    try {
+      const startedAt = Date.now()
+
+      // Sin `connectionTimeoutMillis`, `pool.connect` nunca rechazaría y esto no resolvería.
+      await expect(probe.ping()).resolves.toBe('unreachable')
+      expect(Date.now() - startedAt).toBeLessThan(HEALTH_PROBE_TIMEOUT_MS + 1500)
+      // El socket se destruye al agotarse el tope: el intento no queda en vuelo.
+      await vi.waitFor(() => expect(host.openSockets()).toBe(0))
+
+      // Y como el pool (`max: 1`) ya liberó la conexión, la sonda siguiente arranca la suya.
+      await expect(probe.ping()).resolves.toBe('unreachable')
+      await vi.waitFor(() => expect(host.openSockets()).toBe(0))
+    } finally {
+      errorSpy.mockRestore()
+      await (probe as unknown as { pool: pg.Pool }).pool.end()
+      await host.close()
+    }
+  }, 15_000)
 })
 
 describe.runIf(TEST_DATABASE_URL !== undefined)('PgHealthProbe (integración)', () => {

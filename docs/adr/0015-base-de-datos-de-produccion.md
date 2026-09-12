@@ -68,6 +68,10 @@ Hechos comprobados (CIF-109 y CIF-110):
      que cancelar no toque las conexiones que atienden peticiones. El código HTTP del borde lo fija
      `status` del caso de uso, única fuente de verdad de la salud. Cierra las dos observaciones no
      bloqueantes del PASA de CIF-438 (CIF-451).
+   - El tope también acota el **establecimiento de la conexión**, no solo la consulta en vuelo: el
+     pool de la sonda fija `connectionTimeoutMillis` al mismo `HEALTH_PROBE_TIMEOUT_MS`, de modo que
+     un host que traga el handshake no deja el `connect` vivo más allá del tope ni encola las sondas
+     siguientes del pool de una sola conexión. Cierra la observación 1 del PASA de CIF-453 (CIF-455).
 6. **`prisma migrate deploy` sigue siendo un paso explícito de release** contra la base de
    producción, incluida `20260911150000_constraint_solape_tarifas_publicadas` con
    `CREATE EXTENSION IF NOT EXISTS btree_gist`.
