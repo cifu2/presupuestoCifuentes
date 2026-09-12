@@ -41,6 +41,7 @@ Proyectos: `chromium` (Desktop Chrome) y `movil` (Pixel 7). Todo flujo nuevo se 
 | —   | Vista previa 2D del configurador                                   | Pendiente: depende de la vista 2D (CIF-6)                                 |
 | —   | Panel de administración (catálogo y precios)                       | Pendiente: depende del panel (CIF-9)                                      |
 | —   | API de publicación de tarifas del panel (503/401/404/200/409)      | API: `e2e/admin-tariff-publish.spec.ts` · en verde                        |
+| —   | Acceso al panel: sin sesión no se entra; con sesión sí (CIF-241)   | UI: `e2e/admin-auth.spec.ts` · en verde                                   |
 | —   | Home, salud del sistema y selector de idioma                       | `e2e/smoke.spec.ts`, `e2e/i18n.spec.ts` · en verde                        |
 
 Un flujo es **puerta obligatoria en cuanto tiene spec**: su spec debe pasar en el CI antes de
@@ -61,22 +62,34 @@ fusionar. Los flujos pendientes se añaden en el mismo PR que trae la funcionali
   contactos de prueba usan siempre el dominio reservado (`@example.com`).
 - Medidas, precios y acabados de prueba salen de las factorías del dominio, no de literales sueltos.
 
-## Guarda del API del panel: dos servidores
+## Guardas del panel: dos servidores
 
-El API de administración exige `Authorization: Bearer …` y **falla cerrado** cuando no hay
-`ADMIN_API_TOKEN` en el servidor (`503 ADMIN_API_DISABLED`). Los dos estados no se pueden observar en
-el mismo proceso, así que la suite levanta dos servidores con la misma build:
+Las dos guardas del panel **fallan cerradas** sin configuración, y sus estados no se pueden observar
+en el mismo proceso:
 
-| Servidor       | Puerto                  | `ADMIN_API_TOKEN`            | Specs que lo usan                                 |
-| -------------- | ----------------------- | ---------------------------- | ------------------------------------------------- |
-| principal      | `E2E_PORT` (3000)       | vacío → guarda deshabilitada | el resto de la suite y el caso `503`              |
-| administración | `E2E_ADMIN_PORT` (3001) | valor de pruebas             | `401`, `200` al publicar y `409 AMBIGUOUS_TARIFF` |
+- el API de administración exige credenciales y responde `503 ADMIN_API_DISABLED` si no hay
+  `ADMIN_API_TOKEN` ni sesión configurada;
+- el acceso a la interfaz (`/[locale]/admin/**`, CIF-241) redirige a `/[locale]/acceso` sin sesión
+  válida, y `POST /api/admin/session` responde `503 ADMIN_ACCESS_DISABLED` si el servidor no tiene
+  `ADMIN_SESSION_SECRET` ni `ADMIN_PANEL_PASSWORD`.
 
-- Puertos y token se centralizan en `e2e/support/servers.ts`; el spec cambia de servidor con
+Por eso la suite levanta dos servidores con la misma build:
+
+| Servidor       | Puerto                  | Credenciales del panel                | Specs que lo usan                                                         |
+| -------------- | ----------------------- | ------------------------------------- | ------------------------------------------------------------------------- |
+| principal      | `E2E_PORT` (3000)       | todas vacías → guardas deshabilitadas | el resto de la suite, `503` del API y acceso deshabilitado                |
+| administración | `E2E_ADMIN_PORT` (3001) | token y sesión de pruebas             | `401`, `200` al publicar, `409 AMBIGUOUS_TARIFF` y acceso del propietario |
+
+- Puertos y credenciales se centralizan en `e2e/support/servers.ts`; el spec cambia de servidor con
   `test.use({ baseURL: E2E_ADMIN_BASE_URL })`. Se ajustan con `E2E_ADMIN_PORT`,
-  `E2E_ADMIN_BASE_URL` y `E2E_ADMIN_TOKEN`.
-- El token por defecto **no es un secreto**: es un valor de pruebas que vive en el repositorio y solo
-  sirve contra el servidor que levanta la propia suite. Nunca se usa el token real de un despliegue.
+  `E2E_ADMIN_BASE_URL`, `E2E_ADMIN_TOKEN`, `E2E_ADMIN_SESSION_SECRET` y `E2E_ADMIN_PANEL_PASSWORD`.
+- El token, el secreto de sesión y la credencial por defecto **no son secretos**: son valores de
+  pruebas que viven en el repositorio y solo sirven contra el servidor que levanta la propia suite.
+  Nunca se usan los valores reales de un despliegue.
+- `e2e/admin-auth.spec.ts` (CIF-241) cubre la guarda de `/[locale]/admin/**` en los dos proyectos: sin
+  sesión redirige al acceso (y avisa si el panel no está configurado), una cookie manipulada no abre
+  el panel, el propietario entra con su credencial —cookie `HttpOnly`, `SameSite=Lax`—, el API acepta
+  esa sesión sin `Bearer`, el cierre de sesión la borra y sin credenciales el API responde `401`.
 - Playwright arranca los `webServer` **en orden** y espera a que cada uno responda, así que solo el
   primero compila; el segundo sirve la misma build. El CI no cambia: sigue bastando `pnpm e2e`.
 - Contra un entorno ya desplegado hay que definir `E2E_BASE_URL` (servidor sin token) y

@@ -62,6 +62,20 @@
       "pageNumber": "Página {page} de {total}"
     }
   },
+  "AdminAccess": {
+    "metadataTitle": "Acceso al panel",
+    "metadataDescription": "Acceso restringido al panel de administración de Puertas Cifuentes.",
+    "eyebrow": "Administración",
+    "title": "Acceso al panel",
+    "intro": "Introduce la credencial del propietario para gestionar el catálogo y los precios.",
+    "passwordLabel": "Credencial",
+    "submit": "Entrar",
+    "submitting": "Entrando…",
+    "invalid": "La credencial no es válida. Inténtalo de nuevo.",
+    "unavailable": "No se pudo comprobar la credencial. Inténtalo de nuevo.",
+    "disabled": "El acceso al panel no está configurado en este despliegue.",
+    "backHome": "Volver a la página principal"
+  },
   "CatalogAdmin": {
     "title": "Catálogo",
     "loading": "Cargando el catálogo…",
