@@ -30,6 +30,23 @@ export const envSchema = z.object({
     (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
     z.string().min(1).optional(),
   ),
+  /**
+   * Secreto de firma de la cookie de sesión del panel (CIF-241/ADR-0024). Sin él, la sesión de la
+   * interfaz no existe y `/[locale]/admin/**` queda denegado.
+   */
+  ADMIN_SESSION_SECRET: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().min(1).optional(),
+  ),
+  /**
+   * Credencial del propietario del panel (CIF-241/ADR-0024). El MVP tiene un único dueño: no hay
+   * usuarios ni roles. Los mínimos de longitud los aplica la guarda (`admin-session.ts`), que falla
+   * cerrada en vez de tumbar el sitio público.
+   */
+  ADMIN_PANEL_PASSWORD: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().min(1).optional(),
+  ),
 })
 
 export type Env = z.infer<typeof envSchema>
