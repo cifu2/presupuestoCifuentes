@@ -1349,5 +1349,37 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
         ])
       })
     })
+
+    /**
+     * Catálogo vacío (CIF-449, riesgo residual R1 de CIF-445).
+     *
+     * El E2E de `catalog-empty` (CIF-436) recorre ese estado de punta a punta, pero solo con el
+     * adaptador en memoria; ningún test ejercía el camino de producción con la tabla sin filas. Este
+     * bloque va al final del fichero a propósito: reutiliza `clean()` (que borra `catalog_text`
+     * entera) y solo después comprueba que el catálogo quedó de verdad a cero, para no pisar a los
+     * tests anteriores. `afterAll` resiembra por si en el futuro se añaden casos detrás.
+     */
+    describe('catálogo vacío (CIF-449)', () => {
+      beforeAll(async () => {
+        await clean(prisma)
+      })
+
+      afterAll(async () => {
+        await clean(prisma)
+        await seed(prisma)
+      })
+
+      it('sin series publicadas, las lecturas publicadas devuelven listas vacías', async () => {
+        expect(await prisma.doorSeries.count()).toBe(0)
+        expect(await prisma.finish.count()).toBe(0)
+        expect(await prisma.accessory.count()).toBe(0)
+
+        expect(await seriesRepository.listPublished()).toEqual([])
+        expect(await seriesRepository.findPublishedBySlug('ci-integracion')).toBeNull()
+        expect(await finishRepository.listPublished()).toEqual([])
+        expect(await accessoryRepository.listPublished()).toEqual([])
+        expect(await colorRepository.listPublishedByFinishId(IDS.finish)).toEqual([])
+      })
+    })
   },
 )
