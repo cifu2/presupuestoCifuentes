@@ -287,3 +287,93 @@ test.describe('vista previa 2D del configurador', () => {
     expect(median).toBeLessThan(200)
   })
 })
+
+/**
+ * N1 de CIF-62: el rango de serie es **inclusivo** en sus dos extremos (`SizeRange.assess`:
+ * `widthMm > maxWidthMm`). La suite solo probaba `1300 > 1200` y el mínimo de forma indirecta, así
+ * que un off-by-one que dejase fuera el máximo exacto (1200 × 2400 de CI-200 pasando a presupuesto
+ * manual, perdiendo el precio automático) cruzaba la puerta entera en verde. Estos casos fijan el
+ * límite por los dos lados, en el borde de la UI.
+ */
+test.describe('límites exactos del rango de serie (N1 de CIF-62)', () => {
+  /** Rango publicado de CI-200 en el catálogo de demostración: 700-1200 × 1900-2400 mm. */
+  const CI_200 = 'ci-200'
+
+  test('acepta el máximo exacto de la serie como dentro de rango (1200 × 2400)', async ({
+    page,
+  }) => {
+    await page.goto(CONFIGURATOR_PATH)
+    await page.getByTestId('configurator-series').selectOption(CI_200)
+
+    await page.getByTestId('preview-width').fill('1200')
+    await page.getByTestId('preview-height').fill('2400')
+
+    await expect(page.getByTestId('preview-measurement')).toHaveText('1200 × 2400 mm')
+    await expect(page.getByTestId('preview-out-of-range')).toHaveCount(0)
+    await expect(preview(page)).toHaveAttribute('data-out-of-range', 'false')
+    await expect(page.getByTestId('price-manual')).toHaveCount(0)
+    await expect(page.getByTestId('price-total')).toBeVisible()
+  })
+
+  test('acepta el mínimo exacto de la serie como dentro de rango (700 × 1900)', async ({
+    page,
+  }) => {
+    await page.goto(CONFIGURATOR_PATH)
+    await page.getByTestId('configurator-series').selectOption(CI_200)
+
+    await page.getByTestId('preview-width').fill('700')
+    await page.getByTestId('preview-height').fill('1900')
+
+    await expect(page.getByTestId('preview-measurement')).toHaveText('700 × 1900 mm')
+    await expect(page.getByTestId('preview-out-of-range')).toHaveCount(0)
+    await expect(page.getByTestId('width-below-minimum')).toHaveCount(0)
+    await expect(page.getByTestId('height-below-minimum')).toHaveCount(0)
+    await expect(preview(page)).toHaveAttribute('data-out-of-range', 'false')
+    await expect(page.getByTestId('price-total')).toBeVisible()
+  })
+
+  test('un milímetro por encima del máximo ya pasa a presupuesto manual', async ({ page }) => {
+    await page.goto(CONFIGURATOR_PATH)
+    await page.getByTestId('configurator-series').selectOption(CI_200)
+
+    // Solo el ancho se sale del rango: 1201 > 1200.
+    await page.getByTestId('preview-width').fill('1201')
+    await page.getByTestId('preview-height').fill('2400')
+
+    await expect(page.getByTestId('preview-out-of-range')).toContainText('supera el tamaño máximo')
+    await expect(preview(page)).toHaveAttribute('data-out-of-range', 'true')
+    await expect(page.getByTestId('price-manual')).toBeVisible()
+    await expect(page.getByTestId('price-total')).toHaveCount(0)
+
+    // Y solo el alto: 2401 > 2400.
+    await page.getByTestId('preview-width').fill('1200')
+    await page.getByTestId('preview-height').fill('2401')
+
+    await expect(page.getByTestId('preview-out-of-range')).toContainText('supera el tamaño máximo')
+    await expect(page.getByTestId('price-manual')).toBeVisible()
+    await expect(page.getByTestId('price-total')).toHaveCount(0)
+  })
+
+  test('un milímetro por debajo del mínimo es error de serie, no presupuesto manual', async ({
+    page,
+  }) => {
+    await page.goto(CONFIGURATOR_PATH)
+    await page.getByTestId('configurator-series').selectOption(CI_200)
+
+    await page.getByTestId('preview-width').fill('699')
+    await page.getByTestId('preview-height').fill('1900')
+
+    await expect(page.getByTestId('preview-out-of-range')).toContainText('no llega al mínimo')
+    await expect(page.getByTestId('width-below-minimum')).toBeVisible()
+    // D1: por debajo del mínimo no hay precio automático ni paso a presupuesto manual.
+    await expect(page.getByTestId('price-manual')).toHaveCount(0)
+    await expect(page.getByTestId('price-total')).toHaveCount(0)
+
+    await page.getByTestId('preview-width').fill('700')
+    await page.getByTestId('preview-height').fill('1899')
+
+    await expect(page.getByTestId('preview-out-of-range')).toContainText('no llega al mínimo')
+    await expect(page.getByTestId('height-below-minimum')).toBeVisible()
+    await expect(page.getByTestId('price-manual')).toHaveCount(0)
+  })
+})
