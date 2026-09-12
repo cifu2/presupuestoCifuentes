@@ -6,13 +6,48 @@ la puerta obligatoria en [definition-of-done.md](definition-of-done.md).
 
 ## Ejecución
 
-| Escenario                          | Comando                              |
-| ---------------------------------- | ------------------------------------ |
-| Toda la suite (escritorio y móvil) | `pnpm e2e`                           |
-| Un flujo concreto                  | `pnpm e2e -- --grep "tamaño máximo"` |
-| Un fichero                         | `pnpm e2e e2e/catalog-api.spec.ts`   |
-| Solo un proyecto                   | `pnpm e2e -- --project=movil`        |
-| Instalar Chromium                  | `pnpm e2e:install`                   |
+| Escenario                          | Comando                                             |
+| ---------------------------------- | --------------------------------------------------- |
+| Toda la suite (escritorio y móvil) | `pnpm e2e`                                          |
+| Un flujo concreto                  | `pnpm exec playwright test --grep "tamaño máximo"`  |
+| Un fichero                         | `pnpm exec playwright test e2e/catalog-api.spec.ts` |
+| Solo un proyecto                   | `pnpm exec playwright test --project=movil`         |
+| Instalar Chromium                  | `pnpm e2e:install`                                  |
+
+### `pnpm exec playwright test`, nunca `pnpm e2e -- <opción>`
+
+**`pnpm e2e -- --grep "…"` no filtra: ejecuta la suite completa.** `pnpm run <script> -- …` no
+reenvía las opciones tal cual: antepone un `--` **literal** delante de todas, así que Playwright lo lee
+como fin de opciones y lo que va detrás —`--grep`, `--project` y hasta `--list`— deja de ser una
+opción y pasa a ser un filtro posicional. Verificado en este repositorio (CIF-525) con una sonda de
+`argv` sobre un `package.json` desechable:
+
+```console
+$ pnpm run e2e -- --grep "una sola vez"      # script de sonda: imprime su argv
+argv=["--","--grep","una sola vez"]          # `pnpm` antepone un `--` literal
+$ pnpm exec node probe.mjs --grep "una sola vez"
+argv=["--grep","una sola vez"]               # `pnpm exec` sí respeta el argv
+```
+
+La propia suite lo delata en la línea que `pnpm` imprime antes de arrancar
+(`> playwright test -- --grep 'una sola vez' …`): ese `--` cierra las opciones de Playwright y el
+`--grep "una sola vez"` acaba siendo un filtro posicional, así que **se ejecuta la suite entera**, que
+es lo que ocurrió en el incidente de CIF-383: diez ficheros en vez del caso pedido.
+
+Para cualquier opción de Playwright —`--grep`, `--project`, `--trace`, un fichero suelto— usa
+`pnpm exec playwright test`, que invoca el binario directamente y le pasa el `argv` tal cual:
+
+```console
+$ pnpm exec playwright test --grep "una sola vez" --list
+Listing tests:
+  [chromium] › configurator.spec.ts:120:5 › en inglés el precio se pinta una sola vez y con la magnitud que devuelve la API
+  [movil] › configurator.spec.ts:120:5 › en inglés el precio se pinta una sola vez y con la magnitud que devuelve la API
+Total: 2 tests in 1 file
+```
+
+`pnpm e2e` a secas (sin opciones) sigue siendo la receta de la suite completa, y es lo que ejecuta el
+CI (`.github/workflows/ci.yml`). No se añade un script `package.json` nuevo a propósito: la trampa
+está en `pnpm run <script> -- <opción>`, y el camino sin trampa ya existe.
 
 La suite levanta **dos** servidores con la misma build de producción: el principal en `E2E_PORT`
 (3000) y el de administración en `E2E_ADMIN_PORT` (3001, ver
@@ -23,9 +58,36 @@ levanta en orden y espera a que el anterior esté listo.
 En local el E2E **no reutiliza** `pnpm dev`: sirve el bundle de producción para que el resultado sea
 el mismo que en CI. Si tienes el servidor de desarrollo ocupando el 3000, arranca el E2E en otro
 puerto —`E2E_PORT=3210 pnpm e2e`, que usa el 3210 y el 3211— o páralo antes. Contra un entorno
-desplegado: `E2E_BASE_URL=https://... pnpm e2e`, definiendo también `E2E_ADMIN_BASE_URL` (ver
-[Guarda del API del panel](#guarda-del-api-del-panel-dos-servidores); nunca contra producción con
-datos de cliente).
+desplegado: `E2E_BASE_URL=https://... pnpm exec playwright test`, definiendo también
+`E2E_ADMIN_BASE_URL` (ver [Guarda del API del panel](#guarda-del-api-del-panel-dos-servidores)), y
+**solo contra un entorno desechable**: la guarda de destino de abajo aborta la ejecución si el host es
+producción.
+
+## Guarda de destino: la suite no se ejecuta contra producción (CIF-525)
+
+La suite **escribe** (`POST /api/quotes`, `POST /api/manual-quote-requests`,
+`POST /api/quotes/:ref/delivery`, y los specs de administración se autoaprovisionan). Contra
+producción eso son datos reales de negocio, así que producción no se usa como banco de pruebas de
+E2E: [ADR-0025](adr/0025-validacion-via-envio-por-entorno.md) §5 y
+[ADR-0026](adr/0026-catalogo-de-produccion-y-validacion-desplegada.md) §7. La guarda
+(`e2e/support/production-guard.ts`) lo hace cumplir **cerrando en falso**: `playwright.config.ts` la
+evalúa al cargarse, de modo que la suite aborta con código distinto de cero **antes de levantar
+servidores y antes del primer test**.
+
+- Vigila `E2E_BASE_URL` y `E2E_ADMIN_BASE_URL` (el segundo también escribe, con credencial de
+  administración).
+- Hosts declarados como producción en `PRODUCTION_HOSTS`: el alias
+  `presupuesto-cifuentes.vercel.app` (proyecto de Vercel del repositorio) y `puertascifuentes.com`
+  (dominio del propietario, CIF-14). También aborta con el alias de la rama `main` de Vercel
+  (`presupuesto-cifuentes-git-main-…`), que sirve el despliegue de _Production_ aunque parezca un
+  preview. La comparación ignora esquema, puerto, `www.` y mayúsculas.
+- **No hay variable de escape.** Si un host deja de ser producción, se corrige la lista declarada, con
+  su test (`e2e/support/production-guard.test.ts`).
+- El E2E hermético de CI y local (**sin** `E2E_BASE_URL`) y el preview sembrado siguen igual: la
+  guarda es de destino, no cambia ningún spec.
+- Sigue en pie lo de [ADR-0026](adr/0026-catalogo-de-produccion-y-validacion-desplegada.md) §7: un
+  entorno desplegado **sin catálogo** no es un fallo de código, es una precondición que debe
+  informarse con mensaje (CIF-383).
 
 Proyectos: `chromium` (Desktop Chrome) y `movil` (Pixel 7). Todo flujo nuevo se cubre en ambos.
 
@@ -148,7 +210,7 @@ queda en `playwright-report/`. Cuando el job `e2e` falla, el CI sube **ambos dir
 artefacto. En local:
 
 ```bash
-pnpm e2e -- --trace on            # traza de todos los tests
+pnpm exec playwright test --trace on   # traza de todos los tests
 pnpm exec playwright show-report  # abrir el último informe
 pnpm exec playwright show-trace test-results/<carpeta>/trace.zip
 ```
@@ -159,7 +221,7 @@ Todo fallo se reporta en la tarea de Paperclip con estos apartados:
 
 - **Flujo y spec**: nombre del test y fichero.
 - **Entorno**: commit, proyecto (`chromium`/`movil`) y si ocurre en local o en CI.
-- **Pasos**: numerados y reproducibles (`pnpm e2e -- --grep "..."`).
+- **Pasos**: numerados y reproducibles (`pnpm exec playwright test --grep "..."`).
 - **Resultado esperado**: comportamiento observable esperado.
 - **Resultado obtenido**: mensaje de error real, sin recortar.
 - **Evidencia**: captura y, si aplica, traza o vídeo adjuntos a la tarea (sin datos personales).
@@ -170,5 +232,5 @@ Todo fallo se reporta en la tarea de Paperclip con estos apartados:
 
 Un test inestable se arregla: no se ignora, no se reintenta en bucle hasta que pasa y no se marca
 `skip`, `only` o `fixme` sin acuerdo del CTO. Si un test falla solo en CI, se reproduce primero en
-local con `--repeat-each=3` y la misma configuración (`CI=1 pnpm e2e`), y se revisa la traza antes de
-tocarlo.
+local con `--repeat-each=3` y la misma configuración
+(`CI=1 pnpm exec playwright test --repeat-each=3`), y se revisa la traza antes de tocarlo.
