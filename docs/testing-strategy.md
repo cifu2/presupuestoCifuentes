@@ -46,7 +46,9 @@ mapa de flujos a specs, los datos de prueba y la plantilla de informe de fallo e
   **dos** servidores (principal y de administración) con la misma build, porque la guarda del API
   del panel cambia de comportamiento según `ADMIN_API_TOKEN`
   ([e2e-playbook.md](e2e-playbook.md#guarda-del-api-del-panel-dos-servidores)).
-- Proyectos: `chromium` (escritorio) y `movil` (Pixel 7). Un flujo nuevo se prueba en ambos.
+- Proyectos: `chromium` (escritorio) y `movil` (Pixel 7). Un flujo nuevo se prueba en ambos. La
+  vista previa 2D se prueba además en `movil-corto` (393x727) y `movil-minimo` (360x640), los
+  perfiles móviles cortos de la nota N3 de CIF-167.
 - Localizadores preferentes: rol y texto accesible (`getByRole`, `getByLabel`) antes que CSS.
   Solo se añade `data-testid` cuando no hay alternativa semántica.
 - Cada test parte de datos conocidos: los _fixtures_ preparan y limpian su propio estado; no se

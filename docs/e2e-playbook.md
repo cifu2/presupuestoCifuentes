@@ -27,7 +27,10 @@ desplegado: `E2E_BASE_URL=https://... pnpm e2e`, definiendo también `E2E_ADMIN_
 [Guarda del API del panel](#guarda-del-api-del-panel-dos-servidores); nunca contra producción con
 datos de cliente).
 
-Proyectos: `chromium` (Desktop Chrome) y `movil` (Pixel 7). Todo flujo nuevo se cubre en ambos.
+Proyectos: `chromium` (Desktop Chrome), `movil` (Pixel 7) y, para la vista previa 2D, dos perfiles
+móviles cortos con la UI del navegador por encima de `movil-corto` (393x727) y `movil-minimo`
+(360x640). Todo flujo nuevo se cubre en `chromium` y `movil`; los perfiles cortos existen para
+fijar el criterio de «vista previa y primer control en el primer viewport» (D2/N3 de CIF-6).
 
 ## Mapa de flujos críticos → specs
 

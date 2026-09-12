@@ -187,25 +187,45 @@ test.describe('vista previa 2D del configurador', () => {
     expect(contrast.ratio, JSON.stringify(contrast)).toBeGreaterThanOrEqual(4.5)
   })
 
-  test('en el primer viewport conviven la vista previa y el primer control (D2 de CIF-165)', async ({
+  test('la vista previa llena la columna y el primer control cabe en el primer viewport (D2 de CIF-165, N3 de CIF-167)', async ({
     page,
-  }) => {
+  }, testInfo) => {
     await page.goto(CONFIGURATOR_PATH)
 
     const viewport = page.viewportSize()
+    const column = await page.locator('section[aria-labelledby="vista-previa"]').boundingBox()
+    const card = await page.getByTestId('preview-card').boundingBox()
     const previewBox = await preview(page).boundingBox()
     const firstControl = await page.getByTestId('preview-type').boundingBox()
 
     expect(viewport).not.toBeNull()
+    expect(column).not.toBeNull()
+    expect(card).not.toBeNull()
     expect(previewBox).not.toBeNull()
     expect(firstControl).not.toBeNull()
 
     const height = viewport?.height ?? 0
+    const evidence = JSON.stringify({
+      viewport,
+      columnWidth: column?.width,
+      card: card === null ? null : { top: card.y, bottom: card.y + card.height, width: card.width },
+      controlBottom: (firstControl?.y ?? 0) + (firstControl?.height ?? 0),
+    })
 
-    // La puerta se ve y el panel ya arrancó dentro del primer viewport: el bucle «toco → veo»
-    // existe también en móvil.
-    expect(previewBox?.y ?? height).toBeLessThan(height)
-    expect(firstControl?.y ?? height).toBeLessThan(height)
+    // Medición adjunta al informe: es la evidencia que revisa Diseño en cada perfil de móvil.
+    await testInfo.attach('primer-viewport.json', {
+      body: evidence,
+      contentType: 'application/json',
+    })
+
+    // N3: `aspect-[3/4]` transfería al ancho el alto recortado por el presupuesto de móvil, así que
+    // la tarjeta se quedaba en el 60 % de la columna. Ahora la llena y el SVG letterboxea dentro.
+    expect(card?.width ?? 0, evidence).toBeGreaterThanOrEqual((column?.width ?? 0) - 1)
+    // Criterio de D2 con holgura: la tarjeta entra entera y el primer control arranca dentro del
+    // primer viewport en todos los perfiles móviles proyectados (Pixel 7, 393x727 y 360x640).
+    expect(previewBox?.y ?? height, evidence).toBeLessThan(height)
+    expect((card?.y ?? height) + (card?.height ?? 0), evidence).toBeLessThanOrEqual(height)
+    expect((firstControl?.y ?? height) + (firstControl?.height ?? 0), evidence).toBeLessThan(height)
   })
 
   test('avisa cuando la medida supera el máximo de la serie (paso a presupuesto manual)', async ({
