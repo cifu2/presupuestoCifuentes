@@ -195,7 +195,6 @@ describe('guarda estática de `border-strong` decorativo (§2.1 rev 8, CIF-365)'
   const USOS_PERMITIDOS = new Map([
     ['ui/admin/panel-primitives.tsx', 1], // Button secundario
     ['ui/admin/panel-shell.tsx', 2], // chips ES|EN + IconButton del menú
-    ['ui/admin/series-detail.tsx', 1], // campos de formulario (MeasurementField)
     ['app/globals.css', 1], // declaración del token en el @theme
     ['infrastructure/pdf/quote-document-palette.ts', 1], // regla estructural del documento (papel), §2.1 rev 8
   ])

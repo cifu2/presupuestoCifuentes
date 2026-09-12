@@ -69,9 +69,9 @@ Hechos verificados el 2026-09-12:
     (`src/ui/admin/panel-icons.tsx`) en lugar de emoji de plataforma —el color entra por `currentColor`
     desde los tokens de `sistema-de-diseno` §2, nunca por un literal—; la CTA deshabilitada del vacío de
     series declara que llegará con la edición (`CatalogAdmin.newSeriesHint`) en vez de quedarse en un
-    botón muerto; y el menú móvil usa el mismo patrón que el `Modal`/`Sheet`: scrim con
-    `--color-scrim`, foco al primer enlace al abrir y vuelta al botón al cerrar con `Esc` o con el
-    scrim. No se abre ninguna superficie de escritura: la CTA sigue deshabilitada.
+    botón muerto; y el menú móvil abre con scrim `--color-scrim`, foco al primer enlace al abrir y
+    vuelta al botón al cerrar con `Esc` o con el scrim. No se abre ninguna superficie de escritura:
+    la CTA sigue deshabilitada.
 12. **Follow-ups del polish (CIF-311).** Los dos hallazgos de severidad baja que dejó la revisión CIF-300
     sobre el punto 11. (H1) La flecha `↗` de «Ver web» sale del catálogo de mensajes: la affordance la
     pinta `ExternalIcon`, un SVG decorativo del mismo juego, y la guarda estática de pictogramas pasa a
@@ -79,7 +79,10 @@ Hechos verificados el 2026-09-12:
     no se cuele. (H2) El menú móvil contiene el foco como el `Modal`/`Sheet`: `Tab` y `Shift+Tab` ciclan
     entre el botón que lo abre y sus seis enlaces —`src/ui/admin/focus-trap.ts`, función pura con test
     unitario— y el contenido que tapa el scrim queda `inert` mientras el menú está abierto. `Esc` y el
-    scrim siguen devolviendo el foco al botón.
+    scrim siguen devolviendo el foco al botón. **Rectificado en CIF-361 (D1):** el menú es un
+    _disclosure_ (`prototipos-y-flujos` §7), no un `Modal`; se retiran el ciclo de `Tab` y el módulo
+    `src/ui/admin/focus-trap.ts` —el `inert` ya mantenía el contenido tapado fuera del orden de
+    tabulación, y el ciclo dejaba el conmutador ES|EN visible y clicable pero inalcanzable con teclado.
 
 ## Consecuencias
 

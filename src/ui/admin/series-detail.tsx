@@ -41,27 +41,12 @@ function Field({ label, value }: { label: string; value: string }) {
   )
 }
 
-/** Vista de una medida: lectura en la fase 1; la edición llega en CIF-243. */
-function MeasurementField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-sm text-ink-muted" htmlFor={`measure-${label}`}>
-        {label}
-      </label>
-      <input
-        id={`measure-${label}`}
-        className="min-h-11 rounded-control border border-border-strong bg-surface px-3 text-brand-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500"
-        value={value}
-        readOnly
-      />
-    </div>
-  )
-}
-
 /**
  * Detalle de serie (`prototipos-y-flujos` §10): pestañas General / Medidas / Acabados / Tarifas /
- * ES|EN. Las pestañas son enlaces reales (`?tab=`), así que cada una es compartible y rastreable; el
- * nombre accesible del `tablist` sale de `CatalogAdmin.a11y.tabs` (M2 de CIF-101).
+ * ES|EN. Las pestañas son enlaces reales (`?tab=`), así que cada una es compartible y rastreable.
+ * Son navegación, no un patrón `tabs` (no hay flechas ni *roving tabindex*): el enlace activo se
+ * marca con `aria-current="page"` y el contenedor lleva `CatalogAdmin.a11y.tabs` como nombre
+ * accesible (M2 de CIF-101; D5 de CIF-361).
  */
 export function SeriesDetailView({
   detail,
@@ -75,6 +60,9 @@ export function SeriesDetailView({
   const t = useTranslations('CatalogAdmin')
   const locale = useLocale() as Locale
   const name = detail.names[locale] ?? detail.names[DEFAULT_LOCALE]
+  // Fase 1 (presentación): la escritura llega en CIF-243 y los botones lo dicen con `title` + pista
+  // visible en vez de quedarse muertos (D4 de CIF-361, mismo remedio que CIF-296).
+  const phaseOneHint = t('newSeriesHint')
 
   return (
     <div className="flex flex-col gap-6">
@@ -82,11 +70,7 @@ export function SeriesDetailView({
         <Badge tone={STATUS_TONES[detail.status]}>{t(statusLabelKey(detail.status))}</Badge>
       </PageHeader>
 
-      <div
-        role="tablist"
-        aria-label={t('a11y.tabs')}
-        className="flex flex-wrap gap-2 border-b border-border"
-      >
+      <nav aria-label={t('a11y.tabs')} className="flex flex-wrap gap-2 border-b border-border">
         {SERIES_TAB_ITEMS.map((item) => {
           const isActive = item.tab === tab
 
@@ -94,10 +78,7 @@ export function SeriesDetailView({
             <Link
               key={item.tab}
               href={`/admin/series/${detail.slug}?tab=${item.tab}`}
-              role="tab"
-              id={`tab-${item.tab}`}
-              aria-selected={isActive}
-              aria-controls={`panel-${item.tab}`}
+              aria-current={isActive ? 'page' : undefined}
               className={`inline-flex min-h-11 items-center rounded-t-control px-3 text-sm font-semibold ${
                 isActive ? 'bg-brand-100 text-brand-800' : 'text-brand-700 hover:bg-surface-sunken'
               } ${FOCUS}`}
@@ -106,14 +87,9 @@ export function SeriesDetailView({
             </Link>
           )
         })}
-      </div>
+      </nav>
 
-      <section
-        role="tabpanel"
-        id={`panel-${tab}`}
-        aria-labelledby={`tab-${tab}`}
-        className="rounded-card border border-border bg-surface p-4 sm:p-6"
-      >
+      <section className="rounded-card border border-border bg-surface p-4 sm:p-6">
         {tab === 'general' ? (
           <div className="flex flex-col gap-4">
             <Alert tone="info">{t('detail.draftNotice')}</Alert>
@@ -138,24 +114,24 @@ export function SeriesDetailView({
         {tab === 'measures' ? (
           <div className="flex flex-col gap-4">
             <HelpText>{t('measures.help')}</HelpText>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <MeasurementField
+            <dl className="grid gap-4 sm:grid-cols-2">
+              <Field
                 label={t('measures.minWidth')}
                 value={formatMillimetres(detail.limits.minWidthMm, locale)}
               />
-              <MeasurementField
+              <Field
                 label={t('measures.maxWidth')}
                 value={formatMillimetres(detail.limits.maxWidthMm, locale)}
               />
-              <MeasurementField
+              <Field
                 label={t('measures.minHeight')}
                 value={formatMillimetres(detail.limits.minHeightMm, locale)}
               />
-              <MeasurementField
+              <Field
                 label={t('measures.maxHeight')}
                 value={formatMillimetres(detail.limits.maxHeightMm, locale)}
               />
-            </div>
+            </dl>
           </div>
         ) : null}
 
@@ -196,13 +172,16 @@ export function SeriesDetailView({
         ) : null}
       </section>
 
-      <Card className="flex flex-wrap gap-3">
-        <button type="button" className={buttonClass('secondary')} disabled>
-          {t('saveDraft')}
-        </button>
-        <button type="button" className={buttonClass('primary')} disabled>
-          {t('publish')}
-        </button>
+      <Card className="flex flex-col gap-3">
+        <div className="flex flex-wrap gap-3">
+          <button type="button" className={buttonClass('secondary')} disabled title={phaseOneHint}>
+            {t('saveDraft')}
+          </button>
+          <button type="button" className={buttonClass('primary')} disabled title={phaseOneHint}>
+            {t('publish')}
+          </button>
+        </div>
+        <HelpText>{phaseOneHint}</HelpText>
       </Card>
     </div>
   )

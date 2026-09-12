@@ -29,6 +29,9 @@ export default async function AdminTariffsPage({ params, searchParams }: AdminTa
   setRequestLocale(locale)
 
   const t = await getTranslations('CatalogAdmin')
+  // La fase 1 es solo presentación: la escritura llega en CIF-243 y la CTA de la cabecera lo dice
+  // con `title`, como la de series, en vez de quedarse muerta (D3/D4 de CIF-361).
+  const newVersionHint = t('newSeriesHint')
   const reader = createAdminCatalogReader(locale)
   const { state, data } = await loadSection({
     requested: requestedState(await searchParams),
@@ -40,7 +43,7 @@ export default async function AdminTariffsPage({ params, searchParams }: AdminTa
     <PanelShell breadcrumbs={BREADCRUMBS}>
       <div className="flex flex-col gap-6">
         <PageHeader title={t('nav.tariffs')}>
-          <button type="button" className={buttonClass('primary')} disabled>
+          <button type="button" className={buttonClass('primary')} disabled title={newVersionHint}>
             {t('newTariffVersion')}
           </button>
         </PageHeader>
