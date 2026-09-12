@@ -63,6 +63,33 @@ En errores de validación se añade `issues: [{ "path": "widthMm", "message": "�
 
 ---
 
+## GET /api/health
+
+Sonda del monitor de uptime (ADR-0009 §5). Es la única ruta que no depende del catálogo: comprueba
+de verdad que la base responde (`SELECT 1` con un tope de 2 s) sin exponer nunca la cadena de
+conexión ni credenciales en la respuesta o en los logs.
+
+```json
+{
+  "status": "ok",
+  "service": "cifuentes-presupuestos",
+  "environment": "production",
+  "database": "ok",
+  "checkedAt": "2026-09-12T08:00:00.000Z"
+}
+```
+
+| `database`     | Condición                                                   | HTTP  | `status`   |
+| -------------- | ----------------------------------------------------------- | ----- | ---------- |
+| `ok`           | `DATABASE_URL` definida y `SELECT 1` responde               | `200` | `ok`       |
+| `unreachable`  | `DATABASE_URL` definida pero la consulta falla o supera 2 s | `503` | `degraded` |
+| `unconfigured` | sin `DATABASE_URL`, o `CATALOG_DEMO_MODE=true`              | `200` | `ok`       |
+
+`environment` sale de `VERCEL_ENV ?? NODE_ENV`. En modo demo la sonda no toca ninguna base y por
+diseño nunca responde `503` (ADR-0015 §5).
+
+---
+
 ## GET /api/catalog/series
 
 Series publicadas, ordenadas por `sortOrder`.

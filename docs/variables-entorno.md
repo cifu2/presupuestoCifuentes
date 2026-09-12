@@ -36,8 +36,10 @@ consume el bootstrap de Vercel.
 
 - El esquema de validación está en `src/config/env.ts` (Zod). `DATABASE_URL` y
   `NEXT_PUBLIC_SITE_URL` son opcionales en el esquema para que el esqueleto arranque sin base de
-  datos; en producción **deben** estar definidas y `/api/health` lo refleja
-  (`database: "configured"`).
+  datos; en producción **deben** estar definidas y `/api/health` lo comprueba de verdad
+  (ADR-0015 §5): `database: "ok"` si la base responde a `SELECT 1`, `unreachable` (HTTP 503) si
+  está definida pero no responde en 2 s, y `unconfigured` (HTTP 200) si falta la variable o
+  `CATALOG_DEMO_MODE=true`. El valor de la variable nunca aparece en la respuesta ni en los logs.
 - `/api/health` informa `environment` con `VERCEL_ENV ?? NODE_ENV`: en Vercel distingue `production`
   de `preview` (dentro de Vercel, `NODE_ENV` es `production` en ambos), y fuera de Vercel cae en
   `NODE_ENV`.
