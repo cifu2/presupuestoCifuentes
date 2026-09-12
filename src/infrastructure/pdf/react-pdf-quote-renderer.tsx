@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
   tableHeader: {
     flexDirection: 'row',
     borderBottomWidth: 0.75,
-    borderBottomColor: QUOTE_DOCUMENT_PALETTE.rule,
+    borderBottomColor: QUOTE_DOCUMENT_PALETTE.ruleStrong,
     paddingBottom: 4,
     fontFamily: 'Helvetica-Bold',
     lineHeight: 1.2,

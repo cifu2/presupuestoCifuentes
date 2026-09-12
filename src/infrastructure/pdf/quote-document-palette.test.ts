@@ -78,8 +78,8 @@ function contrastRatio(foreground: string, background: string): number {
 }
 
 describe('paleta del documento de presupuesto', () => {
-  it('declara los 7 roles de §4.1, sin sobrantes ni duplicados', () => {
-    expect(roles).toHaveLength(7)
+  it('declara los 8 roles de §4.1, sin sobrantes ni duplicados', () => {
+    expect(roles).toHaveLength(8)
     expect([...roles].sort()).toEqual(Object.keys(QUOTE_DOCUMENT_PALETTE_TOKENS).sort())
     expect(new Set(roles).size).toBe(roles.length)
   })
@@ -89,10 +89,6 @@ describe('paleta del documento de presupuesto', () => {
 
     expect(declared.get(token), `token ${token} declarado en el @theme`).toBeTruthy()
     expect(QUOTE_DOCUMENT_PALETTE[role]).toBe(declared.get(token))
-  })
-
-  it('no usa `--color-border-strong` en ningún rol (§2.1 rev 5: solo contorno de control)', () => {
-    expect(Object.values(QUOTE_DOCUMENT_PALETTE_TOKENS)).not.toContain('--color-border-strong')
   })
 
   it('no cuela `#000000` ni tokens de acento (D5)', () => {
@@ -113,6 +109,12 @@ describe('paleta del documento de presupuesto', () => {
     expect(
       contrastRatio(QUOTE_DOCUMENT_PALETTE.warningInk, QUOTE_DOCUMENT_PALETTE.warningBackground),
     ).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('la regla estructural de la cabecera da ≥3:1 sobre `surface` (§2.1 rev 8)', () => {
+    expect(
+      contrastRatio(QUOTE_DOCUMENT_PALETTE.ruleStrong, QUOTE_DOCUMENT_PALETTE.surface),
+    ).toBeGreaterThanOrEqual(3)
   })
 })
 

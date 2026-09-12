@@ -7,9 +7,11 @@
  * único fichero de `src/infrastructure/pdf/**` que puede contener un `#RRGGBB`
  * (`quote-document-palette.test.ts` lo comprueba contra el bloque `@theme` de `globals.css`).
  *
- * El token de contorno de control de §2.1 rev 5 **no entra**: está reservado a los controles de la
- * interfaz y el documento es papel, sin controles. Los separadores (cabecera de tabla, filas y pie)
- * usan `rule` (`--color-border`), decorativo y por tanto exento de WCAG 1.4.11.
+ * Declara los **8 roles de §4.1**. Seis son tinta, papel y avisos; `rule` es el separador decorativo
+ * (filas y pie) y `ruleStrong` es la **regla estructural de documento (§2.1 rev 8)**: la de 0,75 pt
+ * que cierra la cabecera de tabla, con ≥3:1 sobre `surface` (WCAG 2.1 1.4.11, contraste no textual
+ * medido en el test de deriva). §2.1 rev 8 sigue reservando el contorno de control a los controles
+ * de la interfaz, pero admite esta categoría para el papel, que no tiene controles.
  */
 
 /** Roles de color del documento, con el hex congelado de §2. */
@@ -20,8 +22,10 @@ export const QUOTE_DOCUMENT_PALETTE = {
   inkMuted: '#5b6773',
   /** Rótulos y título: título del documento, rótulos de sección y regla del total. */
   brand: '#22303f',
-  /** Regla interna: cabecera de tabla, separadores de fila y regla del pie. */
+  /** Regla interna: separadores de fila y regla del pie. */
   rule: '#e3e1dc',
+  /** Regla estructural de documento (§2.1 rev 8): cierra la cabecera de tabla. */
+  ruleStrong: '#857f75',
   /** Fondo: el papel. */
   surface: '#ffffff',
   /** Aviso provisional: tinta del texto y del borde. */
@@ -40,6 +44,7 @@ export const QUOTE_DOCUMENT_PALETTE_TOKENS: Readonly<Record<QuoteDocumentColorRo
   inkMuted: '--color-ink-muted',
   brand: '--color-brand-800',
   rule: '--color-border',
+  ruleStrong: '--color-border-strong',
   surface: '--color-surface',
   warningInk: '--color-warning-600',
   warningBackground: '--color-warning-100',
