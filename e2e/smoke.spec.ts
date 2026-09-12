@@ -15,7 +15,9 @@ test('el endpoint de salud responde ok y declara el estado de la base', async ({
   expect(body).toMatchObject({ status: 'ok', service: 'cifuentes-presupuestos' })
   // `environment` sale de VERCEL_ENV ?? NODE_ENV: en Vercel distingue preview de production.
   expect(['production', 'preview', 'development']).toContain(body.environment)
-  // El E2E sirve con CATALOG_DEMO_MODE=true: la sonda no usa base y nunca devuelve 503 (CIF-112).
-  expect(body.database).toBe('unconfigured')
+  // La suite hermética sirve en modo `prisma` contra un PostgreSQL efímero (ADR-0027 §5): la sonda
+  // está configurada y responde por la base. El caso `unconfigured` sigue cubierto en la puerta de
+  // `calidad` (`scripts/health-http-check.sh`, CIF-456).
+  expect(body.database).toBe('ok')
   expect(new Date(body.checkedAt).toString()).not.toBe('Invalid Date')
 })

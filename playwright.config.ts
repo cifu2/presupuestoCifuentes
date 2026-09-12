@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 
+import { e2eDatabaseUrl } from './e2e/support/database'
 import {
   E2E_ADMIN_BASE_URL,
   E2E_ADMIN_PANEL_PASSWORD,
@@ -18,6 +19,20 @@ import {
  */
 const externalEnvironment = process.env.E2E_BASE_URL !== undefined
 
+/**
+ * Modo `prisma` de la suite hermética (ADR-0027 §5): los dos servidores comparten un PostgreSQL
+ * efímero migrado y sembrado, así que la escritura del panel llega a la web pública y el flujo 3 es
+ * observable. En modo demostración el catálogo vive en memoria **por proceso** y cada `webServer`
+ * tendría el suyo (`src/composition/container.ts`, ADR-0013 §8, ADR-0026 §2).
+ *
+ * `e2eDatabaseUrl()` falla en alto si falta `DATABASE_URL` o si la base no parece desechable: sin
+ * base no hay modo `prisma` y la suite dejaría de ver el flujo 3 en silencio. Contra un entorno ya
+ * desplegado (`E2E_BASE_URL`) no se toca ninguna base: allí no se arranca ningún servidor.
+ */
+const databaseEnvironment = externalEnvironment
+  ? {}
+  : { DATABASE_URL: e2eDatabaseUrl(), CATALOG_DEMO_MODE: 'false' }
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -25,6 +40,9 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   ...(process.env.CI ? { workers: 1 } : {}),
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
+  // La siembra va dentro de `pnpm e2e` (y no en un paso de CI aparte) para que el comando sea el
+  // mismo en local y en CI y nadie pueda olvidarla. Los specs ven el catálogo ya sembrado.
+  ...(externalEnvironment ? {} : { globalSetup: './e2e/support/global-setup.ts' }),
   use: {
     baseURL: E2E_BASE_URL,
     trace: 'on-first-retry',
@@ -45,14 +63,13 @@ export default defineConfig({
   webServer: [
     {
       command: `pnpm build && pnpm start --port ${E2E_PORT}`,
-      // El E2E usa el catálogo de demostración en memoria: no depende de PostgreSQL (CIF-10/CIF-11).
       // `ADMIN_API_TOKEN` vacío (= sin configurar) fija el caso 503 aunque el entorno del
       // desarrollador tenga un token en `.env.local`.
       // También se vacían las credenciales de sesión del panel (CIF-241) para que la guarda de
       // `/[locale]/admin` se observe **sin** sesión aunque el entorno del desarrollador tenga
       // `.env.local`: el caso «no configurado» tiene que ser determinista.
       env: {
-        CATALOG_DEMO_MODE: 'true',
+        ...databaseEnvironment,
         ADMIN_API_TOKEN: '',
         ADMIN_SESSION_SECRET: '',
         ADMIN_PANEL_PASSWORD: '',
@@ -66,7 +83,7 @@ export default defineConfig({
       // El buzón interno es un valor de pruebas: el E2E comprueba que la entrega llega al cliente y
       // al aviso interno sin enviar correo real (adaptador de consola, ADR-0004 §4).
       env: {
-        CATALOG_DEMO_MODE: 'true',
+        ...databaseEnvironment,
         ADMIN_API_TOKEN: E2E_ADMIN_TOKEN,
         ADMIN_SESSION_SECRET: E2E_ADMIN_SESSION_SECRET,
         ADMIN_PANEL_PASSWORD: E2E_ADMIN_PANEL_PASSWORD,

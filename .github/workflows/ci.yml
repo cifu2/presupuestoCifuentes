@@ -126,6 +126,27 @@ jobs:
     name: e2e (puerta obligatoria)
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # La suite se ejecuta en modo `prisma` contra un PostgreSQL efímero (ADR-0027 §5): los dos
+    # `webServer` comparten catálogo, así que el flujo 3 (cambiar un precio en el panel y verlo en el
+    # configurador) es observable. La base solo lleva datos sintéticos: la propia suite siembra el
+    # catálogo de demostración (`e2e/support/global-setup.ts`) antes de los specs.
+    env:
+      DATABASE_URL: postgresql://cifuentes@127.0.0.1:5432/cifuentes_test
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: cifuentes
+          POSTGRES_DB: cifuentes_test
+          # Contenedor efímero del runner: escucha solo en localhost y no guarda ningún secreto.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cifuentes -d cifuentes_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -136,6 +157,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: cliente de Prisma
         run: pnpm db:generate
+      - name: migraciones en la base efímera del E2E
+        run: pnpm db:deploy
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm e2e
       - if: failure()

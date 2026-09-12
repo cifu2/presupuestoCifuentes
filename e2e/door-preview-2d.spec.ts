@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
+import { catalogoIds } from './support/catalogo'
+
 const CONFIGURATOR_PATH = '/es/configurador'
 
 const preview = (page: Page) => page.getByTestId('door-preview')
@@ -27,7 +29,10 @@ test.describe('vista previa 2D del configurador', () => {
 
   test('el nombre accesible del dibujo lleva el tipo, la medida, el acabado y el color traducidos (H2 de CIF-163)', async ({
     page,
+    request,
   }) => {
+    const ids = await catalogoIds(request)
+
     await page.goto(CONFIGURATOR_PATH)
 
     await expect(preview(page)).toHaveAttribute(
@@ -36,8 +41,8 @@ test.describe('vista previa 2D del configurador', () => {
     )
 
     // El color pertenece al acabado: primero se elige la chapa natural y después su roble.
-    await page.getByTestId('preview-finish').selectOption('finish-madera')
-    await page.getByTestId('preview-color').selectOption('color-roble')
+    await page.getByTestId('preview-finish').selectOption(ids.finishes.MADERA ?? '')
+    await page.getByTestId('preview-color').selectOption(ids.colors.ROBLE ?? '')
     await page.getByTestId('preview-type').selectOption('pivotante-2-hojas')
 
     await expect(preview(page)).toHaveAttribute(
@@ -53,7 +58,9 @@ test.describe('vista previa 2D del configurador', () => {
     )
   })
 
-  test('se actualiza con las medidas, el acabado y el color', async ({ page }) => {
+  test('se actualiza con las medidas, el acabado y el color', async ({ page, request }) => {
+    const ids = await catalogoIds(request)
+
     await page.goto(CONFIGURATOR_PATH)
 
     // 900 × 2.030 mm con margen M = 30 → viewBox "-30 -30 960 2090".
@@ -71,7 +78,7 @@ test.describe('vista previa 2D del configurador', () => {
     await expect(preview(page)).toHaveAttribute('viewBox', '-36 -36 1272 2472')
     await expect(page.getByTestId('preview-measurement')).toHaveText('1200 × 2400 mm')
 
-    await page.getByTestId('preview-finish').selectOption('finish-madera')
+    await page.getByTestId('preview-finish').selectOption(ids.finishes.MADERA ?? '')
     await expect(preview(page).locator('[data-shape-kind="leaf"]')).toHaveAttribute(
       'fill',
       '#B98A54',
