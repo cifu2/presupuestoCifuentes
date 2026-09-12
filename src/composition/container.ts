@@ -4,6 +4,13 @@ import type {
   ColorRepository,
   FinishRepository,
 } from '@/application/ports/catalog-item-repositories'
+import type {
+  AccessoryWriteRepository,
+  CatalogUsageReader,
+  ColorWriteRepository,
+  FinishWriteRepository,
+  SeriesWriteRepository,
+} from '@/application/ports/catalog-write-repositories'
 import type { Clock } from '@/application/ports/clock'
 import type { EmailSender } from '@/application/ports/email-sender'
 import type { HealthProbe } from '@/application/ports/health-probe'
@@ -29,9 +36,14 @@ import { ReactPdfQuoteRenderer } from '@/infrastructure/pdf/react-pdf-quote-rend
 import { createHealthProbe } from '@/infrastructure/persistence/prisma/health-probe'
 import {
   InMemoryAccessoryRepository,
+  InMemoryAccessoryWriteRepository,
+  InMemoryCatalogUsageReader,
   InMemoryColorRepository,
+  InMemoryColorWriteRepository,
   InMemoryFinishRepository,
+  InMemoryFinishWriteRepository,
   InMemorySeriesRepository,
+  InMemorySeriesWriteRepository,
   InMemoryTariffPricingRepository,
   InMemoryTariffVersionRepository,
 } from '@/infrastructure/persistence/in-memory/catalog-store'
@@ -47,12 +59,17 @@ import { getPrismaClient } from '@/infrastructure/persistence/prisma/client'
 import { PrismaQuoteDeliveryRepository } from '@/infrastructure/persistence/prisma/quote-delivery-repository'
 import {
   PrismaAccessoryRepository,
+  PrismaAccessoryWriteRepository,
+  PrismaCatalogUsageReader,
   PrismaColorRepository,
+  PrismaColorWriteRepository,
   PrismaFinishRepository,
+  PrismaFinishWriteRepository,
   PrismaManualQuoteRequestRepository,
   PrismaQuoteNumberSequence,
   PrismaQuoteRepository,
   PrismaSeriesRepository,
+  PrismaSeriesWriteRepository,
   PrismaTariffPricingRepository,
   PrismaTariffVersionRepository,
 } from '@/infrastructure/persistence/prisma/repositories'
@@ -82,6 +99,16 @@ export interface Container {
   readonly accessoryRepository: AccessoryRepository
   readonly tariffPricingRepository: TariffPricingRepository
   readonly tariffVersionRepository: TariffVersionRepository
+  /**
+   * Escritura del catálogo (CIF-126a, ADR-0027): *upsert* idempotente por `code` —o
+   * `(finishId, code)` en colores— y edición de la tabla de precios de un borrador.
+   */
+  readonly seriesWriteRepository: SeriesWriteRepository
+  readonly finishWriteRepository: FinishWriteRepository
+  readonly colorWriteRepository: ColorWriteRepository
+  readonly accessoryWriteRepository: AccessoryWriteRepository
+  /** Consultas de uso para las guardas de desactivación (tarifa viva, vínculos vivos). */
+  readonly catalogUsageReader: CatalogUsageReader
   /** Lectura de administración del panel (ADR-0023 §6): catálogo completo, cualquier estado. */
   readonly adminCatalogReader: AdminCatalogReadPort
   readonly quoteRepository: QuoteRepository
@@ -110,6 +137,11 @@ function createDemoContainer(): Container {
     accessoryRepository: new InMemoryAccessoryRepository(catalog),
     tariffPricingRepository: new InMemoryTariffPricingRepository(catalog),
     tariffVersionRepository: new InMemoryTariffVersionRepository(catalog),
+    seriesWriteRepository: new InMemorySeriesWriteRepository(catalog),
+    finishWriteRepository: new InMemoryFinishWriteRepository(catalog),
+    colorWriteRepository: new InMemoryColorWriteRepository(catalog),
+    accessoryWriteRepository: new InMemoryAccessoryWriteRepository(catalog),
+    catalogUsageReader: new InMemoryCatalogUsageReader(catalog),
     adminCatalogReader: new InMemoryAdminCatalogReader(catalog),
     quoteRepository: new InMemoryQuoteRepository(quotes),
     quoteDeliveryRepository: new InMemoryQuoteDeliveryRepository(),
@@ -136,6 +168,11 @@ function createPrismaContainer(connectionString: string): Container {
     accessoryRepository: new PrismaAccessoryRepository(prisma),
     tariffPricingRepository: new PrismaTariffPricingRepository(prisma),
     tariffVersionRepository: new PrismaTariffVersionRepository(prisma),
+    seriesWriteRepository: new PrismaSeriesWriteRepository(prisma),
+    finishWriteRepository: new PrismaFinishWriteRepository(prisma),
+    colorWriteRepository: new PrismaColorWriteRepository(prisma),
+    accessoryWriteRepository: new PrismaAccessoryWriteRepository(prisma),
+    catalogUsageReader: new PrismaCatalogUsageReader(prisma),
     adminCatalogReader: new PrismaAdminCatalogReader(prisma),
     quoteRepository: new PrismaQuoteRepository(prisma),
     quoteDeliveryRepository: new PrismaQuoteDeliveryRepository(prisma),

@@ -2,9 +2,14 @@
  * Caso de uso: publicar una versión de tarifa desde el panel (ADR-0003).
  *
  * Publicar es la única vía para que una tarifa dé precio automático. Antes de escribir, el caso de
- * uso carga las versiones de la serie y aplica la invariante de catálogo: dos versiones publicadas
- * de la misma serie no pueden solaparse. Si se solapan lanza `AmbiguousTariffError` (409 en el
- * borde) y **no** toca la base de datos (hallazgo N5 de CIF-78).
+ * uso aplica las dos invariantes de catálogo, en este orden:
+ *
+ * 1. dos versiones publicadas de la misma serie no pueden solaparse (`AmbiguousTariffError`, 409);
+ * 2. una versión sin tabla de precios no se publica (`EmptyPriceTableError`): la serie quedaría con
+ *    una tarifa vigente que no da precio, así que se queda en borrador y pasa a presupuesto manual
+ *    (ADR-0027 §4).
+ *
+ * Las dos saltan **antes** de escribir: la fila queda intacta (hallazgo N5 de CIF-78).
  */
 
 import {
@@ -12,7 +17,11 @@ import {
   type PricingStrategy,
   type TariffVersion,
 } from '@/domain/catalog/tariff-version'
-import { InvalidTariffVersionError, ResourceNotFoundError } from '@/domain/shared/errors'
+import {
+  EmptyPriceTableError,
+  InvalidTariffVersionError,
+  ResourceNotFoundError,
+} from '@/domain/shared/errors'
 
 import type { Clock } from '@/application/ports/clock'
 import type { TariffVersionRepository } from '@/application/ports/tariff-version-repository'
@@ -88,9 +97,17 @@ export async function publishTariffVersion(
       )
     : [...seriesVersions, candidate]
 
-  // Invariante ANTES de escribir: si el candidato se solapa con otra publicada, `AmbiguousTariffError`
-  // sale de aquí y la fila se queda como estaba.
+  // Invariantes ANTES de escribir: si el candidato se solapa con otra publicada, `AmbiguousTariffError`
+  // sale de aquí y la fila se queda como estaba; si no tiene tabla de precios, tampoco se publica.
   assertNoOverlappingPublishedTariffs(withCandidate)
+
+  const priceTable = await repository.findPriceTableByVersionId(candidate.id)
+
+  if (priceTable === null) {
+    throw new EmptyPriceTableError(
+      `La versión ${candidate.versionNumber} de la serie "${candidate.seriesId}" no tiene tabla de precios; cárgala antes de publicarla`,
+    )
+  }
 
   await repository.save(candidate)
 
