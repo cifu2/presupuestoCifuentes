@@ -8,7 +8,6 @@ import type { Locale } from '@/domain/catalog/locale'
 
 import { Link, usePathname } from '@/i18n/navigation'
 import { routing } from '@/i18n/routing'
-import { cycleElements, nextTrapTarget } from './focus-trap'
 import { CloseIcon, ExternalIcon, MenuIcon } from './panel-icons'
 import { NAV_ITEMS, localeSwitchHref, resolveActiveSection } from './panel-navigation'
 import { Badge } from './panel-primitives'
@@ -107,9 +106,11 @@ export function PanelShell({
   }
 
   /**
-   * El menú móvil se comporta como el modal (`sistema-de-diseno` §5): al abrir, el foco entra en el
-   * primer enlace y queda atrapado en el menú; `Esc` cierra y lo devuelve al botón que abrió
-   * (hallazgo 3 de CIF-277 → CIF-296; contención del foco, H2 de CIF-300 → CIF-311).
+   * El menú móvil es un *disclosure* (`prototipos-y-flujos` §7): al abrir, el foco entra en el
+   * primer enlace; `Esc` cierra y lo devuelve al botón que abrió. No atrapa el foco ni lleva
+   * `role="dialog"`: la cabecera queda por encima del scrim y su conmutador ES|EN sigue siendo
+   * alcanzable. El contenido que tapa el scrim es `inert`, que ya impide que el `Tab` lo alcance
+   * (hallazgo 3 de CIF-277 → CIF-296; D1 de CIF-361).
    */
   useEffect(() => {
     if (!isMenuOpen) {
@@ -122,26 +123,7 @@ export function PanelShell({
       if (event.key === 'Escape') {
         setIsMenuOpen(false)
         toggleRef.current?.focus()
-
-        return
       }
-
-      if (event.key !== 'Tab') {
-        return
-      }
-
-      const target = nextTrapTarget(
-        cycleElements(navRef.current, toggleRef.current),
-        document.activeElement,
-        event.shiftKey,
-      )
-
-      if (target === null) {
-        return
-      }
-
-      event.preventDefault()
-      target.focus()
     }
 
     document.addEventListener('keydown', onKeyDown)
@@ -224,7 +206,7 @@ export function PanelShell({
       ) : null}
 
       {/* Con el menú abierto, el contenido que tapa el scrim sale del orden de tabulación y del
-          árbol accesible (`inert`); el foco se queda en el menú (`sistema-de-diseno` §5). */}
+          árbol accesible (`inert`), sin necesidad de atrapar el foco (`prototipos-y-flujos` §7). */}
       <div className="mx-auto flex max-w-6xl gap-6 px-4 py-6" inert={isMenuOpen}>
         <aside className="hidden w-56 shrink-0 md:block" aria-label={t('a11y.sidebarSections')}>
           <nav className="flex flex-col gap-1">{sections}</nav>

@@ -405,6 +405,20 @@ export function findPictographs(source: string): string[] {
   ]
 }
 
+/**
+ * Formas geométricas y símbolos que se pintan como **texto** (`U+25A0–U+25FF` y el resto de
+ * `\p{So}`), como los `▲`/`▼` de la ordenación que sustituyó la D2 de CIF-361: `\p{Extended_Pictographic}`
+ * no los ve, y su forma, tamaño y peso dependen de la fuente de la plataforma. Se lee sobre las
+ * **fuentes del panel** y sin comentarios: la prosa que cita los glifos no los pinta.
+ */
+export function findTextGlyphs(source: string): string[] {
+  return [
+    ...new Set(
+      [...stripComments(source).matchAll(/[\p{So}\u25A0-\u25FF]/gu)].map((match) => match[0] ?? ''),
+    ),
+  ]
+}
+
 const COLOR_LITERALS = new RegExp(
   [
     '#[0-9a-fA-F]{3,8}\\b',
@@ -844,6 +858,14 @@ describe('guardas estáticas del panel', () => {
     expect(withPictographs).toEqual([])
   })
 
+  it('no pinta formas geométricas como texto: la ordenación es SVG (D2 de CIF-361)', () => {
+    const withTextGlyphs = files
+      .filter(({ content }) => findTextGlyphs(content).length > 0)
+      .map(({ path }) => path)
+
+    expect(withTextGlyphs).toEqual([])
+  })
+
   it('no escribe textos de interfaz sueltos en el JSX (solo el nombre de marca)', () => {
     const allowlist = new Set(['Cifuentes'])
     const offenders: string[] = []
@@ -979,6 +1001,15 @@ describe('control de mutación de las guardas de CIF-101', () => {
     expect(findPictographs(messagesEs)).toEqual([])
   })
 
+  it('D2: un `▲` reintroducido como texto en series-list.tsx haría fallar la guarda de formas', () => {
+    const seriesList = readFileSync(join(panelDirectory, 'series-list.tsx'), 'utf8')
+    const mutated = seriesList.replace('<SortAscIcon />', "{'▲'}")
+
+    expect(mutated).not.toBe(seriesList)
+    expect(findTextGlyphs(mutated)).toEqual(['▲'])
+    expect(findTextGlyphs(seriesList)).toEqual([])
+  })
+
   it('M1: un color literal en el backdrop de admin.css haría fallar la guarda de CSS', () => {
     const mutated = adminCss.replace(
       'background: var(--color-scrim);',
@@ -1015,13 +1046,16 @@ describe('control de mutación de las guardas de CIF-101', () => {
     expect(findLiteralTextAttributes(panelShell)).toEqual([])
   })
 
-  it('H2: renombrar el id de la pestaña sin tocar la referencia haría fallar la guarda de ids', () => {
-    const seriesDetail = readFileSync(join(panelDirectory, 'series-detail.tsx'), 'utf8')
-    const mutated = seriesDetail.replace('id={`tab-${item.tab}`}', 'id={`pestana-${item.tab}`}')
+  // El detalle de serie dejó de declarar ids de pestaña al pasar a navegación con `aria-current`
+  // (D5 de CIF-361): el control de mutación usa ahora el `aria-labelledby` del diálogo, que sigue
+  // siendo la pareja id/referencia viva del panel.
+  it('H2: renombrar el id del título del diálogo sin tocar la referencia haría fallar la guarda', () => {
+    const adminDialog = readFileSync(join(panelDirectory, 'admin-dialog.tsx'), 'utf8')
+    const mutated = adminDialog.replace('id={`${dialogId}-title`}', 'id={`${dialogId}-heading`}')
 
-    expect(mutated).not.toBe(seriesDetail)
-    expect(declaredIdPatterns(seriesDetail)).toContain('tab-*')
-    expect(findDanglingLabelReferences(mutated, declaredIdPatterns(mutated))).toEqual(['tab-*'])
+    expect(mutated).not.toBe(adminDialog)
+    expect(declaredIdPatterns(adminDialog)).toContain('*-title')
+    expect(findDanglingLabelReferences(mutated, declaredIdPatterns(mutated))).toEqual(['*-title'])
   })
 
   it('respeta las excepciones: @theme para los colores, la marca y los ids para los textos', () => {
@@ -1054,6 +1088,15 @@ describe('endurecimiento de las guardas (H1–H3 de CIF-302)', () => {
     expect(findColorLiterals('className="bg-transparent text-white border-black/50"')).toEqual([])
     expect(findColorLiterals('white-space: nowrap;')).toEqual([])
     expect(findColorLiterals('const rendered = 1')).toEqual([])
+  })
+
+  it('D2: distingue las formas geométricas pintadas como texto de la prosa que las cita', () => {
+    expect(findTextGlyphs('<span aria-hidden="true">▲</span>')).toEqual(['▲'])
+    expect(findTextGlyphs("{sort.direction === 'ascending' ? '▼' : ''}")).toEqual(['▼'])
+    // Los separadores decorativos del panel (`·`, `—`, `→`, `×`) no son formas geométricas `So`.
+    expect(findTextGlyphs('<span aria-hidden="true">·</span> — → ×')).toEqual([])
+    // La prosa que explica la regla no se pinta: no cuenta.
+    expect(findTextGlyphs('/** ▲ y ▼ los pinta la fuente. */')).toEqual([])
   })
 
   it('H1: el backdrop exige una única regla y lee la que gana la cascada', () => {
