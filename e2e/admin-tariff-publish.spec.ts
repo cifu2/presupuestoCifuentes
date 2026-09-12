@@ -11,13 +11,18 @@
  * entorno distintas: la suite levanta dos servidores (ver `playwright.config.ts`) y el bloque
  * autenticado cambia de `baseURL`.
  *
- * El caso que publica (200) **muta** el catálogo del servidor de administración, y los proyectos
- * `chromium` y `movil` corren en paralelo (`fullyParallel`): cada proyecto publica el borrador que
- * le corresponde (`PUBLISHABLE_DRAFTS`) para no compartir estado mutable. Sin `skip`.
+ * El caso que publica (200) **muta** el catálogo, y los proyectos `chromium` y `movil` corren en
+ * paralelo (`fullyParallel`): cada proyecto publica el borrador que le corresponde
+ * (`PUBLISHABLE_DRAFTS`) para no compartir estado mutable. Sin `skip`.
+ *
+ * La suite sirve los dos servidores contra un PostgreSQL efímero sembrado con el catálogo de
+ * demostración (ADR-0027 §5), así que los ids de serie son los que publica `E2E_CATALOG` y no los
+ * ids legibles del modo demostración.
  */
 
 import { expect, test, type TestInfo } from '@playwright/test'
 
+import { E2E_CATALOG } from './support/catalogo-e2e'
 import { E2E_ADMIN_BASE_URL, E2E_ADMIN_TOKEN } from './support/servers'
 
 /**
@@ -139,7 +144,7 @@ test.describe('con ADMIN_API_TOKEN, el endpoint de publicación', () => {
     expect(first.status()).toBe(200)
     expect(published).toMatchObject({
       id: PUBLISHED_CI_100_V1,
-      seriesId: 'series-ci-100',
+      seriesId: E2E_CATALOG.series.ci100,
       versionNumber: 1,
       status: 'published',
     })
@@ -166,7 +171,7 @@ test.describe('con ADMIN_API_TOKEN, el endpoint de publicación', () => {
     expect(first.status()).toBe(200)
     expect(published).toMatchObject({
       id: draft.id,
-      seriesId: 'series-ci-400',
+      seriesId: E2E_CATALOG.series.ci400,
       versionNumber: draft.versionNumber,
       status: 'published',
       strategy: 'per_square_metre',

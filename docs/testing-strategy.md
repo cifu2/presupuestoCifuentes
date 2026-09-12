@@ -50,6 +50,9 @@ mapa de flujos a specs, los datos de prueba y la plantilla de informe de fallo e
   **dos** servidores (principal y de administración) con la misma build, porque las guardas del panel
   cambian de comportamiento según `ADMIN_API_TOKEN` y la sesión de interfaz
   ([e2e-playbook.md](e2e-playbook.md#guardas-del-panel-dos-servidores)).
+- La suite hermética se ejecuta en modo `prisma` contra un PostgreSQL efímero migrado y sembrado por
+  la propia suite (ADR-0027 §5), para que la escritura del panel y la lectura del configurador
+  compartan estado ([e2e-playbook.md](e2e-playbook.md#base-de-datos-efímera-la-suite-corre-en-modo-prisma)).
 - Proyectos: `chromium` (escritorio) y `movil` (Pixel 7). Un flujo nuevo se prueba en ambos.
 - Localizadores preferentes: rol y texto accesible (`getByRole`, `getByLabel`) antes que CSS.
   Solo se añade `data-testid` cuando no hay alternativa semántica.
@@ -72,7 +75,9 @@ mapa de flujos a specs, los datos de prueba y la plantilla de informe de fallo e
   formato dejaba en `skipped` lint, tipos, unitarios, guardas de scripts y barrido de secretos, así
   que un espacio en blanco ocultaba el resto de la señal del job y obligaba a otro ciclo de CI. La
   guarda de `src/config/ci-workflow.test.ts` fija ese orden.
-- `e2e`: instalación de Chromium → build → `pnpm e2e`; ante un fallo sube `playwright-report/` y
+- `e2e`: instalación de Chromium → `pnpm db:deploy` sobre un servicio `postgres:17` efímero
+  (`DATABASE_URL` a nivel de job) → `pnpm e2e` (modo `prisma`, con la siembra del catálogo sintético y
+  la build de producción dentro de la propia suite); ante un fallo sube `playwright-report/` y
   `test-results/` (informe, capturas, trazas y vídeo del reintento).
 
 Ambos son _checks_ requeridos en `main` (los configura DevOps en CIF-11). Un test inestable se
@@ -83,8 +88,10 @@ arregla; no se ignora ni se reintenta en bucle hasta que pasa.
 El job `calidad` levanta un servicio `postgres:17` efímero (autenticación `trust`, base
 `cifuentes_test`), publica `TEST_DATABASE_URL` y aplica las migraciones con
 `DATABASE_URL="$TEST_DATABASE_URL" pnpm db:deploy` antes de `pnpm test:coverage` (CIF-10/CIF-19).
-Los E2E de API y de UI siguen usando el catálogo de demostración en memoria, para que la puerta no
-dependa de datos reales.
+Los E2E de API y de UI usan el mismo PostgreSQL efímero en modo `prisma`, sembrado por la propia
+suite con el catálogo de demostración: la puerta no depende de datos reales y la escritura del panel
+comparte estado con el configurador (ADR-0027 §5). Esa base es de un solo uso: no se reutiliza la de
+preview ni, por supuesto, la de producción.
 
 Los tests de integración (`src/infrastructure/**/*.test.ts`) se declaran con
 `describe.runIf(TEST_DATABASE_URL)`: **si la variable falta, se saltan en silencio**, así que el job

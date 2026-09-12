@@ -5,11 +5,15 @@
  * vivo → presupuesto o solicitud manual— más los casos borde que pide la tarea: medida fuera del
  * máximo de la serie, serie sin tarifa vigente, medidas imposibles y borrador recuperable.
  *
- * Se ejecuta contra el catálogo de demostración en memoria (`CATALOG_DEMO_MODE=true`): sin base de
- * datos y sin datos reales de clientes ni credenciales (docs/e2e-playbook.md).
+ * El catálogo sale de la API (no de literales del spec) y los ids de acabado, color y accesorio se
+ * resuelven con `catalogoIds`, así que el spec vale igual en modo `prisma` —la suite hermética corre
+ * contra un PostgreSQL efímero sembrado, ADR-0027 §5— y en modo demostración. Sin datos reales de
+ * clientes ni credenciales (docs/e2e-playbook.md).
  */
 
 import { expect, test, type Page } from '@playwright/test'
+
+import { catalogoIds } from './support/catalogo'
 
 const CONFIGURATOR_PATH = '/es/configurador'
 
@@ -36,7 +40,9 @@ test('la portada enlaza con el configurador', async ({ page }) => {
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Configurador')
 })
 
-test('el configurador se alimenta del catálogo publicado', async ({ page }) => {
+test('el configurador se alimenta del catálogo publicado', async ({ page, request }) => {
+  const ids = await catalogoIds(request)
+
   await page.goto(CONFIGURATOR_PATH)
 
   const series = page.getByTestId('configurator-series')
@@ -47,10 +53,10 @@ test('el configurador se alimenta del catálogo publicado', async ({ page }) => 
 
   // Acabados, colores y accesorios salen de la API de catálogo, no del código de la vista.
   await expect(page.getByTestId('preview-finish').locator('option')).toHaveCount(2)
-  await expect(page.getByTestId('preview-finish')).toHaveValue('finish-lacado')
+  await expect(page.getByTestId('preview-finish')).toHaveValue(ids.finishes.LACADO ?? '')
   await expect(page.getByTestId('preview-color').locator('option')).toHaveCount(3)
-  await expect(page.getByTestId('accessory-accessory-manilla')).toBeVisible()
-  await expect(page.getByTestId('accessory-accessory-cierrapuertas')).toBeVisible()
+  await expect(page.getByTestId(`accessory-${ids.accessories['MANILLA-A']}`)).toBeVisible()
+  await expect(page.getByTestId(`accessory-${ids.accessories.CIERRAPUERTAS}`)).toBeVisible()
 
   // Al cambiar de serie, la ficha y los límites son los de la serie nueva.
   await series.selectOption('ci-400')
@@ -63,15 +69,16 @@ test('el cliente obtiene presupuesto con precio en vivo en menos de lo que tarda
   page,
   request,
 }) => {
+  const ids = await catalogoIds(request)
   const startedAt = Date.now()
 
   await page.goto(CONFIGURATOR_PATH)
 
   await page.getByTestId('preview-width').fill('900')
   await page.getByTestId('preview-height').fill('2030')
-  await page.getByTestId('preview-finish').selectOption('finish-lacado')
-  await page.getByTestId('preview-color').selectOption('color-ral-7016')
-  await page.getByTestId('accessory-accessory-manilla').check()
+  await page.getByTestId('preview-finish').selectOption(ids.finishes.LACADO ?? '')
+  await page.getByTestId('preview-color').selectOption(ids.colors['RAL-7016'] ?? '')
+  await page.getByTestId(`accessory-${ids.accessories['MANILLA-A']}`).check()
   await page.getByTestId('extra-installation').check()
   await page.getByTestId('configurator-discount').fill('PROMO10')
 
@@ -81,9 +88,9 @@ test('el cliente obtiene presupuesto con precio en vivo en menos de lo que tarda
       seriesSlug: 'ci-100',
       widthMm: 900,
       heightMm: 2030,
-      finishId: 'finish-lacado',
-      colorId: 'color-ral-7016',
-      accessoryIds: ['accessory-manilla'],
+      finishId: ids.finishes.LACADO,
+      colorId: ids.colors['RAL-7016'],
+      accessoryIds: [ids.accessories['MANILLA-A']],
       extras: ['installation'],
       discountCode: 'PROMO10',
       locale: 'es',
@@ -240,12 +247,14 @@ test('el formulario de contacto no envía datos incompletos', async ({ page }) =
   await expect(page.getByTestId('quote-issued')).toHaveCount(0)
 })
 
-test('el borrador se recupera al volver a la página', async ({ page }) => {
+test('el borrador se recupera al volver a la página', async ({ page, request }) => {
+  const ids = await catalogoIds(request)
+
   await page.goto(CONFIGURATOR_PATH)
 
   await page.getByTestId('preview-width').fill('950')
   await page.getByTestId('preview-planking').selectOption('tablones-36')
-  await page.getByTestId('accessory-accessory-manilla').check()
+  await page.getByTestId(`accessory-${ids.accessories['MANILLA-A']}`).check()
 
   await expect(page.getByTestId('price-total')).toBeVisible()
 
@@ -254,13 +263,13 @@ test('el borrador se recupera al volver a la página', async ({ page }) => {
   await expect(page.getByTestId('draft-restored')).toBeVisible()
   await expect(page.getByTestId('preview-width')).toHaveValue('950')
   await expect(page.getByTestId('preview-planking')).toHaveValue('tablones-36')
-  await expect(page.getByTestId('accessory-accessory-manilla')).toBeChecked()
+  await expect(page.getByTestId(`accessory-${ids.accessories['MANILLA-A']}`)).toBeChecked()
 
   await page.getByTestId('discard-draft').click()
 
   await expect(page.getByTestId('draft-restored')).toHaveCount(0)
   await expect(page.getByTestId('preview-width')).toHaveValue('900')
-  await expect(page.getByTestId('accessory-accessory-manilla')).not.toBeChecked()
+  await expect(page.getByTestId(`accessory-${ids.accessories['MANILLA-A']}`)).not.toBeChecked()
 })
 
 test('el configurador está traducido en los dos idiomas y declara su canónica', async ({

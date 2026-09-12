@@ -20,6 +20,10 @@ La suite levanta **dos** servidores con la misma build de producción: el princi
 (`pnpm build`) y el segundo arranca (`pnpm start`) sobre esa misma build, porque Playwright los
 levanta en orden y espera a que el anterior esté listo.
 
+Los dos sirven en modo `prisma` contra un PostgreSQL efímero que hay que migrar antes
+(`pnpm db:deploy`); la suite siembra el catálogo sintético y falla en alto si `DATABASE_URL` falta
+([Base de datos efímera](#base-de-datos-efímera-la-suite-corre-en-modo-prisma)).
+
 En local el E2E **no reutiliza** `pnpm dev`: sirve el bundle de producción para que el resultado sea
 el mismo que en CI. Si tienes el servidor de desarrollo ocupando el 3000, arranca el E2E en otro
 puerto —`E2E_PORT=3210 pnpm e2e`, que usa el 3210 y el 3211— o páralo antes. Contra un entorno
@@ -28,6 +32,44 @@ desplegado: `E2E_BASE_URL=https://... pnpm e2e`, definiendo también `E2E_ADMIN_
 datos de cliente).
 
 Proyectos: `chromium` (Desktop Chrome) y `movil` (Pixel 7). Todo flujo nuevo se cubre en ambos.
+
+## Base de datos efímera (la suite corre en modo `prisma`)
+
+La suite **no** usa el catálogo de demostración en memoria: los dos servidores comparten un PostgreSQL
+efímero migrado y sembrado, para que la escritura del panel y la lectura del configurador sean el
+mismo estado (flujo 3, ADR-0027 §5). En modo demostración el catálogo vive en memoria **por proceso**
+y la escritura de un servidor no llega al otro (`src/composition/container.ts`, ADR-0013 §8).
+
+La siembra la hace la propia suite al arrancar (`e2e/support/global-setup.ts`), con el catálogo de
+demostración de `src/infrastructure/demo/demo-catalog.ts` y datos **inventados**: ningún dato del
+propietario ni de clientes (ADR-0014 §1). El job `e2e` del CI levanta su propio servicio
+`postgres:17` (`cifuentes_test`) y aplica las migraciones antes de `pnpm e2e` (ver
+[Base de datos en CI](#base-de-datos-en-ci)).
+
+En local, con Docker:
+
+```bash
+docker run --rm -d --name cifuentes-e2e-pg -p 5433:5432 \
+  -e POSTGRES_USER=postgres -e POSTGRES_DB=cifuentes_test \
+  -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17
+
+export DATABASE_URL=postgresql://postgres@127.0.0.1:5433/cifuentes_test
+pnpm db:deploy   # migra el esquema: la suite siembra, pero no migra
+pnpm e2e         # siembra el catálogo sintético y ejecuta la suite
+```
+
+Con un PostgreSQL local ya en marcha basta con una base desechable (`createdb cifuentes_test`) y
+exportar `DATABASE_URL`. La cadena **no** vive en el repositorio y nunca apunta a producción ni a
+datos del propietario; `e2e/support/database.ts` aborta si el nombre de la base no lleva `test` o
+`e2e`, o si menciona `prod`, porque el E2E emite presupuestos y publica tarifas de verdad contra lo
+que tenga delante. Sin `DATABASE_URL` la suite falla al arrancar, con instrucciones, en vez de correr
+en un modo donde el flujo 3 no se puede observar.
+
+Los ids del catálogo sembrado son deterministas y están en `e2e/support/catalogo-e2e.ts`
+(`E2E_CATALOG`): los specs que publican o editan precios los leen de ahí, y cada proyecto de
+Playwright usa una entidad distinta para no compartir estado mutable. Los specs del configurador
+resuelven los ids de acabado, color y accesorio con `catalogoIds` (`e2e/support/catalogo.ts`), así que
+no fijan literales de ningún modo.
 
 ## Mapa de flujos críticos → specs
 
@@ -50,14 +92,14 @@ fusionar. Los flujos pendientes se añaden en el mismo PR que trae la funcionali
 ## Datos de prueba
 
 - Cada test prepara y limpia su propio estado; nunca depende del orden de ejecución.
-- E2E de API y de UI: catálogo de demostración en memoria (`CATALOG_DEMO_MODE`), sin base de datos.
-- El catálogo de demostración siembra dos **borradores** de tarifa para el E2E de publicación: uno
-  con vigencia futura (publicarlo no cambia el precio vigente de su serie) y otro que solapa con la
-  tarifa publicada de la suya. No tienen tabla de precios, así que publicarlos no altera ningún
-  precio del configurador ni depende del orden de ejecución de los tests.
-- E2E con base de datos: hoy **ningún** E2E la usa. Si alguno la necesitara, hay que añadirle al job
-  `e2e` el mismo servicio `postgres:17` (`cifuentes_test`) y el paso
-  `DATABASE_URL="$TEST_DATABASE_URL" pnpm db:deploy` que ya tiene el job `calidad` (ver más abajo).
+- E2E de API y de UI: catálogo de demostración sembrado en el PostgreSQL efímero
+  ([Base de datos efímera](#base-de-datos-efímera-la-suite-corre-en-modo-prisma)); nada de datos
+  reales.
+- El catálogo sintético siembra dos **borradores** de tarifa para el E2E de publicación: uno con
+  vigencia futura (publicarlo no cambia el precio vigente de su serie) y otro que solapa con la
+  tarifa publicada de la suya. Los dos publicables llevan una tabla de precios mínima —desde
+  ADR-0027 §4 una versión sin tabla no se publica— y sus vigencias no cambian ningún precio del
+  configurador, así que el orden de ejecución no altera el resultado.
 - **Nada de datos reales de clientes, credenciales ni secretos** en specs, capturas o informes. Los
   contactos de prueba usan siempre el dominio reservado (`@example.com`).
 - Medidas, precios y acabados de prueba salen de las factorías del dominio, no de literales sueltos.
@@ -80,6 +122,8 @@ Por eso la suite levanta dos servidores con la misma build:
 | principal      | `E2E_PORT` (3000)       | todas vacías → guardas deshabilitadas | el resto de la suite, `503` del API y acceso deshabilitado                |
 | administración | `E2E_ADMIN_PORT` (3001) | token y sesión de pruebas             | `401`, `200` al publicar, `409 AMBIGUOUS_TARIFF` y acceso del propietario |
 
+- Los dos servidores comparten la misma base efímera (ADR-0027 §5): es lo que hace observable el
+  flujo 3, porque en modo demostración cada proceso tendría su catálogo en memoria.
 - Puertos y credenciales se centralizan en `e2e/support/servers.ts`; el spec cambia de servidor con
   `test.use({ baseURL: E2E_ADMIN_BASE_URL })`. Se ajustan con `E2E_ADMIN_PORT`,
   `E2E_ADMIN_BASE_URL`, `E2E_ADMIN_TOKEN`, `E2E_ADMIN_SESSION_SECRET` y `E2E_ADMIN_PANEL_PASSWORD`.
@@ -140,6 +184,12 @@ que el CI debe mantenerla. En local, para reproducirlo:
 DATABASE_URL=postgresql://postgres@localhost:5432/cifuentes_test pnpm db:deploy
 TEST_DATABASE_URL=postgresql://postgres@localhost:5432/cifuentes_test pnpm test
 ```
+
+El job `e2e` levanta su propio servicio `postgres:17` (misma imagen, misma base `cifuentes_test`,
+autenticación `trust` y solo en localhost) y publica `DATABASE_URL` a nivel de job, porque la suite
+sirve los dos servidores en modo `prisma`. Antes de `pnpm e2e` aplica las migraciones con
+`pnpm db:deploy`; la siembra del catálogo sintético la hace la propia suite, así que no hay ningún
+paso de CI que se pueda olvidar ni desincronizar (ADR-0027 §5).
 
 ## Evidencia ante un fallo
 
