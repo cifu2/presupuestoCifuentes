@@ -336,3 +336,5 @@ La resolución del lockfile depende de dos ajustes que deben contar la misma pol
 - [ADR-0007 — Despliegue en Vercel con el código en GitHub](adr/0007-despliegue-vercel-github.md)
 - [ADR-0006 — Calidad: tests, cobertura y puerta de E2E en CI](adr/0006-calidad-y-ci.md)
 - [ADR-0019 — Mitigación de la cuota diaria de despliegues del plan gratuito de Vercel](adr/0019-cuota-despliegues-vercel.md)
+
+<!-- verificacion CIF-155: un push a docs/** no debe crear despliegue -->
