@@ -92,15 +92,17 @@ test.describe('shell del panel: lista de series', () => {
     const table = page.getByRole('table')
 
     await expect(table).toBeVisible()
-    await expect(table).toContainText('Serie A')
+    // La lectura es la real (CIF-242): el catálogo de demostración con el que abre el E2E, no los
+    // fixtures de la fase 1. El catálogo de demostración solo tiene series publicadas, así que los
+    // badges de borrador y archivado se cubren en `panel-render.test.tsx`; aquí se comprueba el
+    // estado publicado, el aviso de traducción que falta (CI-300 no tiene descripción) y el enlace.
+    await expect(table).toContainText('Serie CI-100')
     await expect(table).toContainText('Publicada')
-    await expect(table).toContainText('Borrador')
-    await expect(table).toContainText('Archivada')
     await expect(table).toContainText('Falta traducción')
-    await expect(table).toContainText('2400 × 2100 mm')
-    await expect(page.getByRole('link', { name: 'Editar Serie A' })).toHaveAttribute(
+    await expect(table).toContainText('1000 × 2200 mm')
+    await expect(page.getByRole('link', { name: 'Editar Serie CI-100' })).toHaveAttribute(
       'href',
-      '/es/admin/series/serie-a',
+      '/es/admin/series/ci-100',
     )
   })
 
@@ -140,6 +142,9 @@ test.describe('shell del panel: navegación entre secciones', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Tarifas' })).toBeVisible()
     await expect(page.getByRole('main')).toContainText('Catálogo')
     await expect(page.getByRole('table')).toContainText('Vigente')
+    // El catálogo de demostración tiene borradores de tarifa (CI-400), así que el badge de borrador
+    // se comprueba contra la lectura real, no contra fixtures.
+    await expect(page.getByRole('table')).toContainText('Borrador')
   })
 
   test('las secciones sin datos reales del catálogo son ejemplos declarados', async ({ page }) => {
@@ -302,7 +307,7 @@ test.describe('shell del panel: i18n y nombres accesibles (M2)', () => {
   })
 
   test('el tablist del detalle usa las claves a11y.tabs en los dos idiomas', async ({ page }) => {
-    await page.goto('/es/admin/series/serie-a?tab=tariffs')
+    await page.goto('/es/admin/series/ci-100?tab=tariffs')
 
     await expect(page.getByRole('tablist', { name: 'Secciones de la serie' })).toBeVisible()
     await expect(page.getByRole('tab', { name: 'Tarifas' })).toHaveAttribute(
@@ -310,7 +315,7 @@ test.describe('shell del panel: i18n y nombres accesibles (M2)', () => {
       'true',
     )
 
-    await page.goto('/en/admin/series/serie-a?tab=tariffs')
+    await page.goto('/en/admin/series/ci-100?tab=tariffs')
 
     await expect(page.getByRole('tablist', { name: 'Series sections' })).toBeVisible()
   })
@@ -326,7 +331,7 @@ test.describe('shell del panel: diálogo centrado y pestaña al cambiar de idiom
     const dialog = page.locator('dialog[open]')
 
     await expect(dialog).toBeVisible()
-    await expect(dialog).toContainText('Serie A · v3')
+    await expect(dialog).toContainText('Serie CI-100 · v1')
 
     const viewport = page.viewportSize()
     const box = await dialog.boundingBox()
@@ -351,7 +356,7 @@ test.describe('shell del panel: diálogo centrado y pestaña al cambiar de idiom
   })
 
   test('conserva la pestaña del detalle al cambiar de idioma', async ({ page }) => {
-    await page.goto('/es/admin/series/serie-a?tab=measures')
+    await page.goto('/es/admin/series/ci-100?tab=measures')
 
     await expect(page.getByRole('tab', { name: 'Medidas' })).toHaveAttribute(
       'aria-selected',
@@ -364,7 +369,7 @@ test.describe('shell del panel: diálogo centrado y pestaña al cambiar de idiom
       .getByRole('link', { name: 'en', exact: true })
       .click()
 
-    await expect(page).toHaveURL(/\/en\/admin\/series\/serie-a\?tab=measures$/)
+    await expect(page).toHaveURL(/\/en\/admin\/series\/ci-100\?tab=measures$/)
     await expect(page.getByRole('tab', { name: 'Sizes' })).toHaveAttribute('aria-selected', 'true')
   })
 })
@@ -461,7 +466,7 @@ test.describe('shell del panel: scrim y táctil (M1 de CIF-101)', () => {
     const dialog = page.locator('dialog[open]')
 
     await expect(dialog).toBeVisible()
-    await expect(dialog).toContainText('Serie A · v3')
+    await expect(dialog).toContainText('Serie CI-100 · v1')
 
     // El color se mide computado: ningún componente escribe el literal, sale de `--color-scrim`.
     const backdropColor = await dialog.evaluate(
