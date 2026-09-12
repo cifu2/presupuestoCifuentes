@@ -44,12 +44,11 @@
     "accessories": "Accesorios",
     "noAccessories": "Sin accesorios",
     "unitPrice": "Precio unitario",
+    "quantity": "Cantidad",
     "subtotal": "Subtotal",
     "taxRate": "IVA ({rate})",
     "total": "Total",
     "frozenPriceNotice": "Precio congelado en el momento de emitir el presupuesto.",
-    "manualQuoteNotice": "Esta configuración supera el tamaño máximo de la serie y pasa a presupuesto manual.",
-    "contactPrompt": "Te llamamos en menos de 24 horas laborables.",
     "email": {
       "subject": "Tu presupuesto de Puertas Cifuentes ({reference})",
       "greeting": "Hola {customerName},",
@@ -82,6 +81,7 @@
       "conditions.en": "las condiciones en inglés"
     },
     "concept": "Concepto",
+    "breakdown": "Desglose",
     "amount": "Importe",
     "extrasTitle": "Extras"
   },
