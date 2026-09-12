@@ -32,22 +32,24 @@ test.describe('vista previa 2D del configurador', () => {
 
     await expect(preview(page)).toHaveAttribute(
       'aria-label',
-      'Vista previa: Abatible 1 hoja, 900 × 2030 mm, Lacado, RAL 7016 gris',
+      'Vista previa: Abatible 1 hoja, 900 × 2030 mm, Lacado, Blanco puro',
     )
 
-    await page.getByTestId('preview-color').selectOption('roble')
+    // El color pertenece al acabado: primero se elige la chapa natural y después su roble.
+    await page.getByTestId('preview-finish').selectOption('finish-madera')
+    await page.getByTestId('preview-color').selectOption('color-roble')
     await page.getByTestId('preview-type').selectOption('pivotante-2-hojas')
 
     await expect(preview(page)).toHaveAttribute(
       'aria-label',
-      'Vista previa: Pivotante de 2 hojas, 900 × 2030 mm, Lacado, Roble rústico',
+      'Vista previa: Pivotante de 2 hojas, 900 × 2030 mm, Chapa natural, Roble',
     )
 
     await page.goto('/en/configurador')
 
     await expect(preview(page)).toHaveAttribute(
       'aria-label',
-      'Preview: Single-leaf hinged door, 900 × 2030 mm, Lacquered, RAL 7016 grey',
+      'Preview: Single-leaf hinged door, 900 × 2030 mm, Lacquered, Pure white',
     )
   })
 
@@ -56,9 +58,10 @@ test.describe('vista previa 2D del configurador', () => {
 
     // 900 × 2.030 mm con margen M = 30 → viewBox "-30 -30 960 2090".
     await expect(preview(page)).toHaveAttribute('viewBox', '-30 -30 960 2090')
+    // El color por defecto es el primero publicado del acabado elegido (RAL 9010).
     await expect(preview(page).locator('[data-shape-kind="leaf"]')).toHaveAttribute(
       'fill',
-      '#383E42',
+      '#F1EDE1',
     )
 
     await page.getByTestId('preview-width').fill('1200')
@@ -68,13 +71,14 @@ test.describe('vista previa 2D del configurador', () => {
     await expect(preview(page)).toHaveAttribute('viewBox', '-36 -36 1272 2472')
     await expect(page.getByTestId('preview-measurement')).toHaveText('1200 × 2400 mm')
 
-    await page.getByTestId('preview-color').selectOption('roble')
+    await page.getByTestId('preview-finish').selectOption('finish-madera')
     await expect(preview(page).locator('[data-shape-kind="leaf"]')).toHaveAttribute(
       'fill',
       '#B98A54',
     )
 
-    await page.getByTestId('preview-finish').selectOption('sin-acabado')
+    // Sin color elegido la hoja se pinta con el relleno neutro del modelo.
+    await page.getByTestId('preview-color').selectOption('')
     await expect(preview(page).locator('[data-shape-kind="leaf"]')).toHaveAttribute(
       'fill',
       '#D9D9D9',
@@ -194,7 +198,8 @@ test.describe('vista previa 2D del configurador', () => {
 
     const viewport = page.viewportSize()
     const previewBox = await preview(page).boundingBox()
-    const firstControl = await page.getByTestId('preview-type').boundingBox()
+    // El primer control del panel es el selector de serie (CIF-7); en CIF-6 era el tipo de puerta.
+    const firstControl = await page.getByTestId('configurator-series').boundingBox()
 
     expect(viewport).not.toBeNull()
     expect(previewBox).not.toBeNull()
