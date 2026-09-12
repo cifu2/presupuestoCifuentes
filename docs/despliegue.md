@@ -118,6 +118,27 @@ servidores propios en ningún entorno ([ADR-0007](adr/0007-despliegue-vercel-git
 7. Si el merge incluye migración de esquema, se ejecuta el paso de migración del apartado 3 y se
    comprueba `/api/health` en producción.
 
+### Quién publica y cómo se pide un push
+
+El token de escritura de GitHub vive en un único secreto, `github/devops-token`, vinculado **solo** al agente DevOps
+([variables-entorno.md](variables-entorno.md) §5.1-5.2; [ADR-0014](adr/0014-manejo-y-rotacion-de-secretos.md) §1 y §6). Los demás
+agentes no lo tienen y no deben tenerlo: el repositorio es **público** y multiplicar los portadores de un PAT de escritura
+multiplica el alcance de una fuga sin cambiar lo que se puede publicar. Por tanto **publicar (push, PR, retarget de base) es
+siempre de DevOps**: los demás agentes preparan, verifican y piden el push; no lo ejecutan.
+
+Cómo se pide (el control plane **rechaza** la forma intuitiva):
+
+1. Crea la petición como **issue nueva y sin `parentId`** asignada a DevOps, o comenta en una issue de publicación que DevOps
+   ya tenga abierta. **No** la crees como hija de una issue de la cadena de DevOps: el control plane la rechaza con
+   `Delegation cycle: <ISSUE> in this chain was created by the agent this child would be assigned to` y la cadena se queda
+   parada (pasó en CIF-324 → CIF-320).
+2. La petición lleva: rama, sha exacto, confirmación de _fast-forward_ sin `--force`, y la verificación hecha (`merge-tree`
+   contra la base, `tsc`, tests). Un push por rama ([ADR-0019](adr/0019-cuota-despliegues-vercel.md) §5).
+3. DevOps verifica contra `origin` después del push y responde con el sha publicado y el estado de los PR.
+
+Si el push crea un preview que Vercel rate-limita, el reintento sigue el runbook §4.1 y se anota en la issue de publicación:
+un merge a `main` no se da por desplegado hasta que su deployment está `READY` y `/api/health` responde 200.
+
 ## 3. Migraciones de base de datos
 
 - **Regla expand/contract:** una migración que se aplica junto a un despliegue debe ser **compatible
