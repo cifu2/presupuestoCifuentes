@@ -1,10 +1,64 @@
 @import 'tailwindcss';
 
 @theme {
-  --color-brand-900: #17202a;
-  --color-brand-700: #2c3e50;
-  --color-brand-500: #4a6785;
-  --color-accent-500: #b8860b;
+  /* Marca (azul acero Cifuentes) */
+  --color-brand-900: #17202a; /* texto principal */
+  --color-brand-800: #22303f; /* botón primario / cabeceras */
+  --color-brand-700: #2c3e50; /* texto secundario fuerte, bordes activos */
+  --color-brand-600: #3b5670;
+  --color-brand-500: #4a6785; /* texto secundario sobre fondo claro */
+  --color-brand-400: #6b8baa; /* iconos decorativos */
+  --color-brand-300: #a8bccf; /* bordes de foco suave / estados deshabilitados */
+  --color-brand-100: #e4eaf0; /* fondos de estado seleccionado */
+
+  /* Acento (latón) — nunca para texto sobre fondo claro por debajo de 4.5:1 */
+  --color-accent-700: #7a5a08; /* CTA acento y texto: blanco 6.38:1 */
+  --color-accent-600: #9a7409; /* solo decorativo o ≥18.66px bold: blanco 4.31:1, NO para CTA 16px */
+  --color-accent-500: #b8860b; /* decorativo, anillo de foco, líneas */
+  --color-accent-100: #f7eed2; /* fondo de aviso de presupuesto manual */
+
+  /* Neutros y superficies */
+  --color-surface: #ffffff;
+  --color-surface-muted: #f7f7f5; /* fondo de página (actual) */
+  --color-surface-sunken: #efeee9;
+  --color-border: #e3e1dc;
+  --color-border-strong: #c9c6bf;
+  --color-ink-muted: #5b6773; /* texto secundario, 5.39:1 sobre surface-muted */
+  --color-ink-inverse: #ffffff;
+  /* backdrop de Modal/Sheet = brand-900 al 45 % (M1/CIF-102) */
+  --color-scrim: rgb(23 32 42 / 0.45);
+
+  /* Semánticos */
+  --color-success-600: #1f7a4d;
+  --color-success-100: #eaf6ef;
+  --color-warning-600: #8a5a00;
+  --color-warning-100: #fdf3e3;
+  --color-danger-600: #b3261e;
+  --color-danger-700: #8c1d18;
+  --color-danger-100: #fdecea;
+  --color-info-600: #1b5e8c;
+  --color-info-100: #eaf2f9;
+
+  /* Radios, sombras, movimiento.
+     M10: `--radius-sm/md/lg` y `--shadow-sm/md/lg` son *defaults de Tailwind v4*, así que
+     redefinirlos cambia `rounded-*`/`shadow-*` en TODA la app (la home usa `rounded-lg`). Se
+     conservan porque la home se verifica visualmente en el PR que los aplique, y los componentes
+     nuevos usan nombres propios para no depender de esa decisión. */
+  --radius-control: 6px; /* botones y campos */
+  --radius-card: 16px; /* tarjetas y bloques */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px rgb(23 32 42 / 0.06);
+  --shadow-md: 0 4px 12px rgb(23 32 42 / 0.08);
+  --shadow-lg: 0 12px 32px rgb(23 32 42 / 0.12);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  /* M1: Tailwind v4 lee el namespace de `duration-*` de --transition-duration-*, no de --duration-*.
+     Con --duration-* los tokens existen pero no generan ninguna utilidad `duration-*`. */
+  --transition-duration-fast: 120ms;
+  --transition-duration-base: 180ms;
+  --transition-duration-slow: 280ms;
 }
 
 body {
