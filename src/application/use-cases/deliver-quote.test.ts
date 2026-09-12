@@ -204,6 +204,61 @@ function makeHarness(options: HarnessOptions = {}) {
   }
 }
 
+type RetryFailureKind = 'pdf' | 'email'
+
+/**
+ * Prepara dos versiones del mismo presupuesto, cada una con una entrega fallida, y reintenta las dos
+ * sin `version` forzando en cada grupo el motivo indicado. Devuelve el resultado combinado y el arnés
+ * para inspeccionar los dobles de frontera (CIF-233).
+ */
+async function retryTwoVersionsWithFailures(
+  failures: readonly [RetryFailureKind, RetryFailureKind],
+) {
+  const harness = makeHarness({ internalRecipients: [] })
+  const customers = [
+    { name: 'Cliente v1', email: 'v1@example.com' },
+    { name: 'Cliente v2', email: 'v2@example.com' },
+  ]
+
+  // Primera pasada: el email de cada versión falla, así que ambas quedan pendientes de reintento.
+  for (const [index, customer] of customers.entries()) {
+    harness.failEmails.add(customer.email)
+    await deliverQuote(harness.deps, {
+      reference: 'PC-2026-000001',
+      customer,
+      version: index + 1,
+    })
+    harness.failEmails.clear()
+  }
+
+  const pdfFailures = new Set(
+    failures.flatMap((failure, index) => (failure === 'pdf' ? [index + 1] : [])),
+  )
+
+  for (const [index, failure] of failures.entries()) {
+    if (failure === 'email') {
+      harness.failEmails.add(customers[index]!.email)
+    }
+  }
+
+  const working: DeliverQuoteDeps = {
+    ...harness.deps,
+    quotePdfRenderer: {
+      render: async (document) => {
+        if (pdfFailures.has(document.version)) {
+          throw new Error(`plantilla v${document.version} rota`)
+        }
+
+        return new Uint8Array([0x25, document.version])
+      },
+    },
+  }
+
+  const retried = await retryQuoteDeliveries(working, { reference: 'PC-2026-000001' })
+
+  return { harness, retried }
+}
+
 describe('deliverQuote', () => {
   it('persiste la entrega pendiente antes de renderizar el PDF y de enviar el email', async () => {
     const harness = makeHarness()
@@ -477,5 +532,85 @@ describe('deliverQuote', () => {
         [v2.email, 2],
       ],
     )
+  })
+
+  it('desempata el reintento multi-versión por el motivo de la versión más antigua (CIF-233)', async () => {
+    const { retried } = await retryTwoVersionsWithFailures(['pdf', 'email'])
+
+    expect(retried.status).toBe('incomplete')
+    expect(retried.version).toBe(1)
+    // Con dos grupos `incomplete` el motivo es el de la versión más antigua (la 1): no hay jerarquía
+    // entre `pdf_render_failed` y `email_send_failed`. Contrato congelado aquí (CIF-233).
+    expect(retried.reason).toBe('pdf_render_failed')
+    expect(retried.deliveries.map((delivery) => [delivery.version, delivery.status])).toEqual([
+      [1, 'failed'],
+      [2, 'failed'],
+    ])
+  })
+
+  it('el desempate no depende del motivo: el email de la más antigua gana al pdf de la más nueva (CIF-233)', async () => {
+    const { retried } = await retryTwoVersionsWithFailures(['email', 'pdf'])
+
+    expect(retried.status).toBe('incomplete')
+    expect(retried.version).toBe(1)
+    // Si mandara el motivo más severo en vez de la versión más antigua, aquí saldría
+    // `pdf_render_failed`; el contrato dice que manda el grupo de la versión 1.
+    expect(retried.reason).toBe('email_send_failed')
+  })
+
+  it('el reintento con `version` explícita acota render y entregas a esa versión (CIF-233)', async () => {
+    const harness = makeHarness({ internalRecipients: [] })
+    const v1 = { name: 'Cliente v1', email: 'v1@example.com' }
+    const v2 = { name: 'Cliente v2', email: 'v2@example.com' }
+
+    harness.failEmails.add(v1.email)
+    await deliverQuote(harness.deps, { reference: 'PC-2026-000001', customer: v1, version: 1 })
+    harness.failEmails.clear()
+    harness.failEmails.add(v2.email)
+    await deliverQuote(harness.deps, { reference: 'PC-2026-000001', customer: v2, version: 2 })
+    harness.failEmails.clear()
+
+    const retried = await retryQuoteDeliveries(harness.deps, {
+      reference: 'PC-2026-000001',
+      version: 2,
+    })
+
+    // Equivalente al camino anterior a CIF-187: un solo grupo, un solo render y sin tocar la v1.
+    expect(retried.status).toBe('delivered')
+    expect(retried.version).toBe(2)
+    expect(harness.renders()).toBe(3)
+    expect(harness.documents.at(-1)?.customer).toEqual({ name: v2.name, email: v2.email })
+    expect(retried.deliveries.map((delivery) => [delivery.version, delivery.status])).toEqual([
+      [2, 'sent'],
+    ])
+
+    const stored = await harness.deps.quoteDeliveryRepository.listByQuoteId(harness.quote.id)
+
+    expect(stored.map((delivery) => [delivery.version, delivery.status])).toEqual([
+      [1, 'failed'],
+      [2, 'sent'],
+    ])
+  })
+
+  it('el reintento con `version` explícita sin pendientes no renderiza y conserva esa versión (CIF-233)', async () => {
+    const harness = makeHarness({ internalRecipients: [] })
+
+    harness.failEmails.add(CUSTOMER.email)
+    await deliverQuote(harness.deps, {
+      reference: 'PC-2026-000001',
+      customer: CUSTOMER,
+      version: 1,
+    })
+    harness.failEmails.clear()
+
+    const retried = await retryQuoteDeliveries(harness.deps, {
+      reference: 'PC-2026-000001',
+      version: 9,
+    })
+
+    expect(retried.status).toBe('nothing_to_retry')
+    expect(retried.version).toBe(9)
+    expect(retried.pdfBytes).toBe(0)
+    expect(harness.renders()).toBe(1)
   })
 })

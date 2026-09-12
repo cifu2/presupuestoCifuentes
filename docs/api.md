@@ -341,7 +341,9 @@ Sin `version` se reintentan las versiones que tengan entregas sin enviar. Cada v
 propio documento, así que el reintento agrupa por versión y renderiza **un PDF por versión**: cada
 destinatario recibe el de la suya y el documento de una versión nunca se adjunta a los
 destinatarios de otra (CIF-187). En ese caso el `version` de la respuesta es el de la versión más
-antigua reintentada y cada entrada de `deliveries` lleva la suya.
+antigua reintentada y cada entrada de `deliveries` lleva la suya. Si varias versiones quedan
+`incomplete` con motivos distintos, `reason` es el de la versión más antigua reintentada
+(`version` de la respuesta): no hay jerarquía entre `pdf_render_failed` y `email_send_failed`.
 
 - `200` `{ "status": "delivered", … }` si el reintento salió bien.
 - `200` `{ "status": "nothing_to_retry", … }` si no quedaba nada por enviar (no renderiza el PDF).
