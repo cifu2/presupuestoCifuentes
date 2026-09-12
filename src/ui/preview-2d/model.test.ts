@@ -23,6 +23,8 @@ import {
  */
 
 const ALL_TYPES: readonly DoorType[] = [...TIPOS_2D_MVP, ...TIPOS_2D_REFERENCIA]
+/** Relleno que apunta a un patrón del `<defs>`; el tono deja `paint.pattern` a `null` (H3-b de CIF-267). */
+const URL_REF = /url\(#([^)]+)\)/g
 const W = 825
 const H = 2030
 
@@ -633,8 +635,10 @@ describe('modelo 2D · pintura de los patrones (B2/§4, hallazgo 7 de CIF-240)',
     for (const overrides of configs) {
       const geometry = geometryOf(overrides)
       const kinds = geometry.patternSpecs.map((spec) => spec.kind)
+      const declared = new Set(geometry.patternSpecs.map((spec) => spec.id))
       const positions = kinds.map((kind) => PATTERN_SPEC_ORDER.indexOf(kind))
       const label = JSON.stringify(overrides)
+      const painted = new Set<string>()
 
       if (new Set(kinds).size !== kinds.length) {
         failures.push(`${label}: patternSpecs repite kinds (${kinds.join(', ')})`)
@@ -650,6 +654,24 @@ describe('modelo 2D · pintura de los patrones (B2/§4, hallazgo 7 de CIF-240)',
       for (const shape of geometry.shapes) {
         if (shape.paint.pattern !== null && !kinds.includes(shape.paint.pattern)) {
           failures.push(`${label}: la forma ${shape.kind} usa ${shape.paint.pattern} sin <defs>`)
+        }
+
+        /* H3-b de CIF-267: el relleno real de los tonos (`glass`, `metal`, `wall`) viaja en
+           `paint.fill` como `url(#…)` y deja `paint.pattern` a `null`; hay que mirarlo también. */
+        for (const [, id = ''] of shape.paint.fill.matchAll(URL_REF)) {
+          painted.add(id)
+
+          if (!declared.has(id)) {
+            failures.push(`${label}: la forma ${shape.kind} pinta ${shape.paint.fill} sin <defs>`)
+          }
+        }
+      }
+
+      for (const id of declared) {
+        if (!painted.has(id)) {
+          failures.push(
+            `${label}: el patrón ${id} se declara en <defs> pero ninguna forma lo pinta`,
+          )
         }
       }
     }
