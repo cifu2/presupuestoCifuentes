@@ -85,6 +85,18 @@ export function resolveActiveSection(pathname: string): PanelSection {
   return item?.section ?? 'series'
 }
 
+/**
+ * Enlace del conmutador de idioma conservando la query de la pantalla (`?tab=`, `?state=`): el
+ * `usePathname` de next-intl no la lleva, así que sin esto cambiar de idioma desde el detalle de una
+ * serie volvía a la pestaña General (H3 de CIF-281). La ruta entra sin prefijo de idioma, que ya lo
+ * pone el `Link` de next-intl.
+ */
+export function localeSwitchHref(pathname: string, searchParams: string): string {
+  const query = searchParams.replace(/^\?/, '')
+
+  return query === '' ? pathname : `${pathname}?${query}`
+}
+
 const SORT_ACCESSORS: Record<SeriesSortKey, (series: SeriesSummary) => string | number> = {
   status: (series) => series.status,
   name: (series) => series.name,

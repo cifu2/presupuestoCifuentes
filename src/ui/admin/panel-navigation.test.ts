@@ -12,6 +12,7 @@ import {
   formatMillimetres,
   formatVersionNumber,
   isSeriesTab,
+  localeSwitchHref,
   resolveActiveSection,
   resolvePanelState,
   sortSeries,
@@ -97,6 +98,17 @@ describe('navegación del panel', () => {
     expect(isSeriesTab('measures')).toBe(true)
     expect(isSeriesTab('inventada')).toBe(false)
     expect(SERIES_TAB_ITEMS).toHaveLength(5)
+  })
+
+  it('conserva la query de la pantalla al cambiar de idioma (H3 de CIF-281)', () => {
+    expect(localeSwitchHref('/admin/series/serie-a', 'tab=measures')).toBe(
+      '/admin/series/serie-a?tab=measures',
+    )
+    expect(localeSwitchHref('/admin/series/serie-a', '?tab=measures&state=ready')).toBe(
+      '/admin/series/serie-a?tab=measures&state=ready',
+    )
+    expect(localeSwitchHref('/admin/tarifas', '')).toBe('/admin/tarifas')
+    expect(localeSwitchHref('/admin', '')).toBe('/admin')
   })
 
   it('formatea medidas, versiones y días según el idioma', () => {

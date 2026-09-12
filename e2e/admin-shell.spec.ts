@@ -219,6 +219,58 @@ test.describe('shell del panel: i18n y nombres accesibles (M2)', () => {
   })
 })
 
+test.describe('shell del panel: diálogo centrado y pestaña al cambiar de idioma (H2/H3 de CIF-281)', () => {
+  test('centra el diálogo en escritorio y lo deja como hoja inferior en móvil', async ({
+    page,
+  }) => {
+    await page.goto('/es/admin/tarifas')
+    await page.getByRole('button', { name: 'Ver', exact: true }).first().click()
+
+    const dialog = page.locator('dialog[open]')
+
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText('Serie A · v3')
+
+    const viewport = page.viewportSize()
+    const box = await dialog.boundingBox()
+
+    expect(viewport).not.toBeNull()
+    expect(box).not.toBeNull()
+
+    if (isMobile(page)) {
+      // Hoja inferior (`sistema-de-diseno` §5): pegada al borde de abajo y a todo el ancho.
+      expect(Math.abs(box!.y + box!.height - viewport!.height)).toBeLessThanOrEqual(1)
+      expect(box!.x).toBeLessThanOrEqual(1)
+      expect(Math.abs(box!.x + box!.width - viewport!.width)).toBeLessThanOrEqual(1)
+    } else {
+      // El preflight de Tailwind v4 (`* { margin: 0 }`) no puede volver a anular el `margin: auto`
+      // con el que el navegador centra `dialog:modal` (medido en Chromium 1280×720).
+      const centerX = box!.x + box!.width / 2
+      const centerY = box!.y + box!.height / 2
+
+      expect(Math.abs(centerX - viewport!.width / 2)).toBeLessThanOrEqual(2)
+      expect(Math.abs(centerY - viewport!.height / 2)).toBeLessThanOrEqual(2)
+    }
+  })
+
+  test('conserva la pestaña del detalle al cambiar de idioma', async ({ page }) => {
+    await page.goto('/es/admin/series/serie-a?tab=measures')
+
+    await expect(page.getByRole('tab', { name: 'Medidas' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+
+    // `usePathname` no lleva la query: sin el arreglo el conmutador dejaba la pestaña en General.
+    await page
+      .getByRole('navigation', { name: 'Idioma' })
+      .getByRole('link', { name: 'en', exact: true })
+      .click()
+
+    await expect(page).toHaveURL(/\/en\/admin\/series\/serie-a\?tab=measures$/)
+    await expect(page.getByRole('tab', { name: 'Sizes' })).toHaveAttribute('aria-selected', 'true')
+  })
+})
 /**
  * Pantallas de datos del panel: las dos que leen catálogo (ADR-0023 §3) y, por tanto, las dos que
  * tienen que honrar `?state=` (DoD §6). Cada una con su propio vacío: series estrena catálogo y

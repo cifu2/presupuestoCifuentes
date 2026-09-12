@@ -1,19 +1,61 @@
 'use client'
 
 import { useLocale, useTranslations } from 'next-intl'
+import { useSearchParams } from 'next/navigation'
 import { useState, type ReactNode } from 'react'
 
 import type { Locale } from '@/domain/catalog/locale'
 
 import { Link, usePathname } from '@/i18n/navigation'
 import { routing } from '@/i18n/routing'
-import { NAV_ITEMS, resolveActiveSection } from './panel-navigation'
+import { NAV_ITEMS, localeSwitchHref, resolveActiveSection } from './panel-navigation'
 import { Badge } from './panel-primitives'
 
 const FOCUS =
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500'
 
 export type Breadcrumb = { readonly key: string; readonly href: string | null }
+
+/**
+ * Selector de idioma del topbar. Conserva la query de la pantalla (H3 de CIF-281): la ruta la pone el
+ * `Link` de next-intl y la query, `localeSwitchHref`.
+ */
+function LocaleSwitch({ pathname, searchParams }: { pathname: string; searchParams: string }) {
+  const t = useTranslations('CatalogAdmin')
+  const activeLocale = useLocale() as Locale
+  const href = localeSwitchHref(pathname, searchParams)
+
+  return (
+    <nav aria-label={t('a11y.locale')} className="flex items-center gap-1">
+      {routing.locales.map((locale) => (
+        <Link
+          key={locale}
+          href={href}
+          locale={locale}
+          lang={locale}
+          aria-current={locale === activeLocale ? 'true' : undefined}
+          className={`inline-flex min-h-11 items-center rounded-full border px-3 text-sm font-semibold uppercase ${FOCUS} ${
+            locale === activeLocale
+              ? 'border-brand-800 bg-brand-800 text-ink-inverse'
+              : 'border-border-strong text-brand-700 hover:bg-surface-sunken'
+          }`}
+        >
+          {locale}
+        </Link>
+      ))}
+    </nav>
+  )
+}
+
+/**
+ * La query de la URL vive en el cliente. Las rutas del panel son `force-dynamic` (ADR-0023 §5), así
+ * que `useSearchParams` no suspende y no hace falta un límite de `Suspense` a su alrededor.
+ */
+function LocaleSwitchFromUrl({ pathname }: { pathname: string }) {
+  const searchParams = useSearchParams()
+
+  return <LocaleSwitch pathname={pathname} searchParams={searchParams.toString()} />
+}
 
 function NavigationLink({
   href,
@@ -52,7 +94,6 @@ export function PanelShell({
   children: ReactNode
 }) {
   const t = useTranslations('CatalogAdmin')
-  const activeLocale = useLocale() as Locale
   const pathname = usePathname()
   const activeSection = resolveActiveSection(pathname)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -98,24 +139,7 @@ export function PanelShell({
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <nav aria-label={t('a11y.locale')} className="flex items-center gap-1">
-              {routing.locales.map((locale) => (
-                <Link
-                  key={locale}
-                  href={pathname}
-                  locale={locale}
-                  lang={locale}
-                  aria-current={locale === activeLocale ? 'true' : undefined}
-                  className={`inline-flex min-h-11 items-center rounded-full border px-3 text-sm font-semibold uppercase ${FOCUS} ${
-                    locale === activeLocale
-                      ? 'border-brand-800 bg-brand-800 text-ink-inverse'
-                      : 'border-border-strong text-brand-700 hover:bg-surface-sunken'
-                  }`}
-                >
-                  {locale}
-                </Link>
-              ))}
-            </nav>
+            <LocaleSwitchFromUrl pathname={pathname} />
             <Badge tone="info">{t('session.owner')}</Badge>
           </div>
         </div>

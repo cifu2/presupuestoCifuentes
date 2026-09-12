@@ -23,6 +23,10 @@ dialog::backdrop {
 }
 
 .admin-dialog {
+  /* El preflight de Tailwind v4 (`* { margin: 0 }`) anula el `margin: auto` con el que la hoja del
+     navegador centra `dialog:modal`: sin esta línea el modal queda pegado a la esquina superior
+     izquierda (H2 de CIF-281). El bloque de móvil de abajo lo devuelve a hoja inferior. */
+  margin: auto;
   border: 0;
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-lg);
