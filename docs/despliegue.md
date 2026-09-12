@@ -102,7 +102,9 @@ servidores propios en ningún entorno ([ADR-0007](adr/0007-despliegue-vercel-git
   curl -fsS https://<dominio-produccion>/api/health
   ```
 
-  Debe devolver `{"status":"ok", ...}` con `database: "configured"` en producción.
+  Debe devolver `{"status":"ok", ...}` con `database: "ok"` en producción. Un `database` distinto de
+  `ok` (`unreachable` o `unmigrated`, ambos HTTP 503) detiene el release: primero se aplican las
+  migraciones contra la base de producción (apartado 3) y se repite la comprobación (ADR-0015 §5).
 
 - **Ventana de vigilancia:** los 15 minutos siguientes al release se revisan los despliegues de
   Vercel, el endpoint de salud y los avisos de Neon (ver [operacion.md](operacion.md)). Si algo falla,

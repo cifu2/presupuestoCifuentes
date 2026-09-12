@@ -6,11 +6,15 @@ import { env, resolveEnvironment } from '@/config/env'
 
 export const dynamic = 'force-dynamic'
 
-/** Código HTTP de la sonda: 503 cuando la base está configurada pero no responde. */
-export const UNREACHABLE_STATUS = 503
+/**
+ * Código HTTP de la sonda: 503 cuando la base está configurada pero no está sana, ya sea porque no
+ * responde (`unreachable`) o porque responde sin esquema migrado (`unmigrated`).
+ */
+export const DEGRADED_STATUS = 503
 
 export async function GET(): Promise<NextResponse> {
   const { status, database, checkedAt } = await getSystemStatus(createContainer())
+  const degraded = database === 'unreachable' || database === 'unmigrated'
 
   return NextResponse.json(
     {
@@ -20,6 +24,6 @@ export async function GET(): Promise<NextResponse> {
       database,
       checkedAt,
     },
-    { status: database === 'unreachable' ? UNREACHABLE_STATUS : 200 },
+    { status: degraded ? DEGRADED_STATUS : 200 },
   )
 }

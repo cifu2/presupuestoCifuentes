@@ -1,8 +1,8 @@
 /**
  * Test del borde HTTP de la sonda de salud (ADR-0015 §5).
  *
- * El contenedor se sustituye por un doble para cubrir los tres estados sin base de datos real:
- * `ok` (200), `unreachable` (503) y `unconfigured` (200, modo demo).
+ * El contenedor se sustituye por un doble para cubrir los cuatro estados sin base de datos real:
+ * `ok` (200), `unreachable` (503), `unmigrated` (503) y `unconfigured` (200, modo demo).
  */
 
 import { describe, expect, it, vi } from 'vitest'
@@ -13,7 +13,7 @@ const { createContainer } = vi.hoisted(() => ({ createContainer: vi.fn() }))
 
 vi.mock('@/composition/container', () => ({ createContainer }))
 
-const { GET, UNREACHABLE_STATUS } = await import('./route')
+const { GET, DEGRADED_STATUS } = await import('./route')
 
 const CHECKED_AT = '2026-09-11T10:00:00.000Z'
 
@@ -49,8 +49,18 @@ describe('GET /api/health', () => {
     const response = await GET()
     const body = await response.json()
 
-    expect(response.status).toBe(UNREACHABLE_STATUS)
+    expect(response.status).toBe(DEGRADED_STATUS)
     expect(body).toMatchObject({ status: 'degraded', database: 'unreachable' })
+  })
+
+  it('responde 503 con database unmigrated cuando la base responde sin esquema', async () => {
+    createContainer.mockReturnValue(containerWith(probeReturning('unmigrated')))
+
+    const response = await GET()
+    const body = await response.json()
+
+    expect(response.status).toBe(DEGRADED_STATUS)
+    expect(body).toMatchObject({ status: 'degraded', database: 'unmigrated' })
   })
 
   it('responde 200 con database unconfigured en modo demo', async () => {
@@ -73,7 +83,7 @@ describe('GET /api/health', () => {
     const response = await GET()
     const rawBody = await response.text()
 
-    expect(response.status).toBe(UNREACHABLE_STATUS)
+    expect(response.status).toBe(DEGRADED_STATUS)
     expect(rawBody).not.toContain('postgres')
     expect(rawBody).not.toContain('detalle-del-driver-no-debe-salir')
   })

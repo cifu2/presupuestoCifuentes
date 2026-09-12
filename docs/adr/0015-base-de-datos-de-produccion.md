@@ -49,7 +49,19 @@ Hechos comprobados (CIF-109 y CIF-110):
    variables siguen inyectándose en los tres entornos.
 5. **La salud de producción incluye la base de datos.** `/api/health` (la sonda del monitor de
    ADR-0009 §5) debe fallar cuando la aplicación no puede consultar la base, no solo cuando falta la
-   variable. La implementación es de Backend y lleva test.
+   variable. La implementación es de Backend y lleva test. Aclaración posterior (CIF-144, ratificada
+   por el CTO en CIF-146):
+   - La sonda comprueba la **presencia del esquema migrado**, no solo que la conexión responda:
+     resuelve `_prisma_migrations` y `door_series` con el mismo `search_path` que usan los
+     repositorios, en una única consulta de solo lectura y sin leer datos de negocio.
+   - Una base alcanzable pero sin esquema o sin historial de migraciones devuelve
+     `database: "unmigrated"` con HTTP `503` y `status: "degraded"`. Es la puerta que faltaba en el
+     incidente del 2026-09-11 (hechos 1-2): el monitor habría seguido verde con `/api/catalog/*`
+     devolviendo 500. `ok` y `unconfigured` (sin base o modo demo) siguen devolviendo `200`.
+   - La sonda verifica **presencia**, no la deriva migración a migración: esa la comprueba la puerta
+     de release con `prisma migrate status` y `prisma migrate deploy` (§6). Detectar desde la propia
+     base una migración fallida o a medias queda como endurecimiento posterior no bloqueante
+     (CIF-147).
 6. **`prisma migrate deploy` sigue siendo un paso explícito de release** contra la base de
    producción, incluida `20260911150000_constraint_solape_tarifas_publicadas` con
    `CREATE EXTENSION IF NOT EXISTS btree_gist`.
