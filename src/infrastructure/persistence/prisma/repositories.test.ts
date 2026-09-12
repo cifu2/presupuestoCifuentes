@@ -1247,16 +1247,18 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
 
         const archivada = series.find((item) => item.id === ADMIN_IDS.seriesArchived)
 
-        expect(archivada?.missingLocales).toEqual(['en'])
+        expect(archivada?.missingLocales).toEqual(['es', 'en'])
 
         const draft = versions.find((item) => item.id === ADMIN_IDS.tariffDraft)
 
         expect(draft?.effectiveFrom).toBeNull()
 
-        // La serie archivada solo tiene nombre en español y le falta la descripción en los dos.
+        // Cuenta todo el catálogo, no solo las series de este bloque: la archivada (nombre solo en
+        // español, sin descripción) y las dos series del seed base (una sin descripción y la de la
+        // carrera de tarifas, sin textos) están pendientes en los dos idiomas.
         expect(languages).toEqual([
-          { code: 'es', isActive: true, missingSeries: 1 },
-          { code: 'en', isActive: true, missingSeries: 1 },
+          { code: 'es', isActive: true, missingSeries: 3 },
+          { code: 'en', isActive: true, missingSeries: 3 },
         ])
       })
     })
