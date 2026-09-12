@@ -104,6 +104,44 @@ describe('shell del panel: lista de series', () => {
   })
 })
 
+describe('shell del panel: iconos SVG del sistema de diseño (CIF-296)', () => {
+  // El emoji lo pinta la plataforma y queda fuera del lenguaje de tokens: la guarda exige que los
+  // iconos del panel sean SVG decorativos con el texto accesible intacto.
+  const PICTOGRAPHS = /\p{Extended_Pictographic}/u
+
+  it('pinta el vacío de series con SVG decorativo y la pista de la CTA de la fase 1', async () => {
+    const spanish = render('es', <SeriesList state="empty" series={[]} />)
+    const english = render('en', <SeriesList state="empty" series={[]} />)
+
+    expect(spanish).toContain('<svg')
+    expect(spanish).toContain('aria-hidden="true"')
+    expect(spanish).toContain('focusable="false"')
+    expect(spanish).toContain('Todavía no hay series.')
+    expect(spanish).toContain('Crea la primera serie para publicarla en el configurador.')
+    expect(spanish).toContain('Disponible al activar la edición.')
+    expect(spanish).toContain('title="Disponible al activar la edición."')
+    expect(english).toContain('Available once editing is enabled.')
+    expect(PICTOGRAPHS.test(spanish)).toBe(false)
+    expect(PICTOGRAPHS.test(english)).toBe(false)
+  })
+
+  it('usa SVG en el candado de sin permiso y en el aviso de tarifas, sin emoji', async () => {
+    const forbidden = render('es', <SeriesList state="forbidden" series={[]} />)
+    const tariffs = render(
+      'es',
+      <TariffVersions state="ready" versions={await reader.listTariffVersions()} />,
+    )
+
+    expect(forbidden).toContain('<svg')
+    expect(forbidden).toContain('No tienes acceso a esta sección.')
+    expect(forbidden).toContain('Pide acceso al propietario de la cuenta.')
+    expect(tariffs).toContain('<svg')
+    expect(tariffs).toContain('El precio queda congelado al emitir el presupuesto')
+    expect(PICTOGRAPHS.test(forbidden)).toBe(false)
+    expect(PICTOGRAPHS.test(tariffs)).toBe(false)
+  })
+})
+
 describe('shell del panel: detalle de serie', () => {
   it('nombra el tablist por clave traducida (M2 de CIF-101)', async () => {
     const detail = await reader.getSeries('serie-a')

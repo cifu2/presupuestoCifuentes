@@ -806,16 +806,28 @@ describe('guardas estáticas del panel', () => {
     expect(backdropBackground(adminCss?.content ?? '')).toBe('var(--color-scrim)')
   })
 
+  it('no usa glifos de plataforma: los iconos del panel son SVG del sistema de diseño', () => {
+    const withPictographs = files
+      .filter(({ content }) => /\p{Extended_Pictographic}/u.test(content))
+      .map(({ path }) => path)
+
+    expect(withPictographs).toEqual([])
+  })
+
   it('no escribe textos de interfaz sueltos en el JSX (solo el nombre de marca)', () => {
     const allowlist = new Set(['Cifuentes'])
     const offenders: string[] = []
 
     for (const { path, content } of files.filter((file) => file.path.endsWith('.tsx'))) {
       const withoutComments = stripComments(content)
+      // Los genéricos de TypeScript en llamadas a hooks (`useRef<HTMLButtonElement>(null)`) parecen
+      // una etiqueta JSX y harían pasar por texto lo que hay entre dos declaraciones seguidas: se
+      // quitan antes de buscar nodos de texto.
+      const withoutTypeArguments = withoutComments.replace(/\b(use[A-Z]\w*)<[^<>()]*>\(/g, '$1(')
 
       // El texto tiene que ir precedido por una etiqueta JSX real (`<span …>`), no por un `=>` ni
       // por el `>` de un genérico de TypeScript.
-      for (const match of withoutComments.matchAll(
+      for (const match of withoutTypeArguments.matchAll(
         /<[A-Za-z][^<>]*>([^<>{}]*[A-Za-zÀ-ÿ]{2,}[^<>{}]*)</g,
       )) {
         const text = (match[1] ?? '').trim()

@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl'
 
+import { LockIcon } from './panel-icons'
 import { Alert, buttonClass, Card, EmptyState, TableSkeleton } from './panel-primitives'
 
 /**
@@ -49,7 +50,11 @@ export function PanelForbidden() {
 
   return (
     <div role="alert">
-      <EmptyState icon="🔒" title={t('sectionForbidden')} help={t('forbidden.help')} />
+      <EmptyState
+        icon={<LockIcon className="size-8" />}
+        title={t('sectionForbidden')}
+        help={t('forbidden.help')}
+      />
     </div>
   )
 }
