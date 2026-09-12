@@ -175,7 +175,7 @@ export function SeriesDetailView({
           </div>
         ) : null}
 
-        {tab === 'tariffs' ? <TariffVersions versions={tariffVersions} /> : null}
+        {tab === 'tariffs' ? <TariffVersions state="ready" versions={tariffVersions} /> : null}
 
         {tab === 'translations' ? (
           <div className="flex flex-col gap-4">

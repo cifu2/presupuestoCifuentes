@@ -44,9 +44,7 @@ export default async function AdminTariffsPage({ params, searchParams }: AdminTa
             {t('newTariffVersion')}
           </button>
         </PageHeader>
-        {state === 'ready' || state === 'empty' ? (
-          <TariffVersions versions={data ?? []} captionKey="tariffs.allCaption" />
-        ) : null}
+        <TariffVersions state={state} versions={data ?? []} captionKey="tariffs.allCaption" />
       </div>
     </PanelShell>
   )

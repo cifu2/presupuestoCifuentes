@@ -7,7 +7,8 @@ import { E2E_ADMIN_BASE_URL, E2E_ADMIN_PANEL_PASSWORD } from './support/servers'
  * contra la build de producción con el catálogo de demostración, que es la configuración que abre
  * el panel en el E2E (guarda de ADR-0023 §5). Cubre el DoD §9 —estados, navegación, migas,
  * responsive y i18n— y los nombres accesibles traducidos del hallazgo M2 de CIF-55/CIF-101, sin
- * datos de negocio reales.
+ * datos de negocio reales. Los cuatro estados se fuerzan **en las dos pantallas de datos**
+ * (`/admin` y `/admin/tarifas`), que es el hueco que dejó pasar el fallo de la sección Tarifas.
  *
  * El shell vive detrás de la guarda de sesión del panel (CIF-241, ADR-0024), así que corre contra
  * el **servidor de administración** y cada test obtiene antes su cookie firmada con la credencial
@@ -218,35 +219,137 @@ test.describe('shell del panel: i18n y nombres accesibles (M2)', () => {
   })
 })
 
+/**
+ * Pantallas de datos del panel: las dos que leen catálogo (ADR-0023 §3) y, por tanto, las dos que
+ * tienen que honrar `?state=` (DoD §6). Cada una con su propio vacío: series estrena catálogo y
+ * tarifas responde «Sin tarifas para esta serie.».
+ */
+const DATA_SCREENS = [
+  {
+    name: 'series',
+    path: '/admin',
+    title: 'Series',
+    emptyText: 'Todavía no hay series.',
+    emptyHelp: 'Crea la primera serie para publicarla en el configurador.',
+    emptyCta: '+ Nueva serie',
+  },
+  {
+    name: 'tarifas',
+    path: '/admin/tarifas',
+    title: 'Tarifas',
+    emptyText: 'Sin tarifas para esta serie.',
+    emptyHelp: null,
+    emptyCta: '+ Nueva versión',
+  },
+] as const
+
 test.describe('shell del panel: estados del DoD §6', () => {
-  test('muestra el estado vacío con su llamada a la acción', async ({ page }) => {
-    await page.goto('/es/admin?state=empty')
+  for (const screen of DATA_SCREENS) {
+    test(`${screen.name}: el vacío usa el mensaje propio de la pantalla`, async ({ page }) => {
+      await page.goto(`/es${screen.path}?state=empty`)
 
-    await expect(page.getByRole('main')).toContainText('Todavía no hay series.')
-    await expect(page.getByRole('main')).toContainText(
-      'Crea la primera serie para publicarla en el configurador.',
+      const main = page.getByRole('main')
+
+      await expect(page.getByRole('heading', { level: 1, name: screen.title })).toBeVisible()
+      await expect(main).toContainText(screen.emptyText)
+      // En series la llamada a la acción está en la cabecera y en el propio vacío: basta con la primera.
+      await expect(page.getByRole('button', { name: screen.emptyCta }).first()).toBeVisible()
+
+      if (screen.emptyHelp !== null) {
+        await expect(main).toContainText(screen.emptyHelp)
+      }
+
+      // El estado manda sobre el contenido: el catálogo de demostración tiene datos y no se pinta.
+      await expect(page.getByRole('table')).toHaveCount(0)
+    })
+
+    test(`${screen.name}: la carga anuncia el esqueleto sin tabla`, async ({ page }) => {
+      await page.goto(`/es${screen.path}?state=loading`)
+
+      const main = page.getByRole('main')
+
+      await expect(main.getByRole('status')).toBeVisible()
+      await expect(main).toContainText('Cargando…')
+      await expect(page.getByRole('table')).toHaveCount(0)
+    })
+
+    test(`${screen.name}: el error trae mensaje traducido y reintento en los dos idiomas`, async ({
+      page,
+    }) => {
+      await page.goto(`/es${screen.path}?state=error`)
+
+      await expect(page.getByRole('main').getByRole('alert')).toContainText(
+        'No hemos podido cargar los datos.',
+      )
+      await expect(page.getByRole('button', { name: 'Reintentar' })).toBeVisible()
+      await expect(page.getByRole('table')).toHaveCount(0)
+
+      await page.goto(`/en${screen.path}?state=error`)
+
+      await expect(page.getByRole('main').getByRole('alert')).toContainText(
+        "We couldn't load the data.",
+      )
+      await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible()
+    })
+
+    test(`${screen.name}: sin permiso explica la falta de acceso`, async ({ page }) => {
+      await page.goto(`/es${screen.path}?state=forbidden`)
+
+      const main = page.getByRole('main')
+
+      await expect(main).toContainText('No tienes acceso a esta sección.')
+      await expect(main).toContainText('Pide acceso al propietario de la cuenta.')
+      await expect(page.getByRole('table')).toHaveCount(0)
+    })
+  }
+})
+
+test.describe('shell del panel: scrim y táctil (M1 de CIF-101)', () => {
+  test('el backdrop del diálogo usa el token de scrim y se cierra con Escape', async ({ page }) => {
+    await page.goto('/es/admin/tarifas')
+    await page.getByRole('button', { name: 'Ver', exact: true }).first().click()
+
+    const dialog = page.locator('dialog[open]')
+
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText('Serie A · v3')
+
+    // El color se mide computado: ningún componente escribe el literal, sale de `--color-scrim`.
+    const backdropColor = await dialog.evaluate(
+      (node) => getComputedStyle(node, '::backdrop').backgroundColor,
     )
-    await expect(page.getByRole('table')).toHaveCount(0)
+
+    expect(backdropColor).toBe('rgba(23, 32, 42, 0.45)')
+
+    await page.keyboard.press('Escape')
+    await expect(page.locator('dialog[open]')).toHaveCount(0)
   })
 
-  test('anuncia la carga con role=status', async ({ page }) => {
-    await page.goto('/es/admin?state=loading')
+  test('mantiene los objetivos táctiles en 44 px y el foco visible con teclado', async ({
+    page,
+  }) => {
+    await page.goto('/es/admin')
 
-    await expect(page.getByRole('status')).toBeVisible()
-    await expect(page.getByRole('main')).toContainText('Cargando…')
-  })
+    // El foco se comprueba tabulando: `:focus-visible` solo se activa con una interacción real (un
+    // `focus()` programático tras un clic no lo activa y el anillo no se pinta).
+    await page.keyboard.press('Tab')
 
-  test('pinta el error con reintento y el caso sin permiso', async ({ page }) => {
-    await page.goto('/es/admin?state=error')
+    const focused = page.locator(':focus')
 
-    const main = page.getByRole('main')
+    await expect(focused).toHaveCSS('outline-style', 'solid')
+    await expect(focused).toHaveCSS('outline-width', '2px')
 
-    await expect(main.getByRole('alert')).toContainText('No hemos podido cargar los datos.')
-    await expect(page.getByRole('button', { name: 'Reintentar' })).toBeVisible()
+    // El enlace de salto solo ocupa la esquina mientras tiene el foco: el siguiente tabulador lo
+    // devuelve fuera de la pantalla y deja el menú clicable.
+    await page.keyboard.press('Tab')
 
-    await page.goto('/es/admin?state=forbidden')
+    if (isMobile(page)) {
+      await page.getByRole('button', { name: 'Abrir menú' }).click()
+    }
 
-    await expect(main).toContainText('No tienes acceso a esta sección.')
-    await expect(main).toContainText('Pide acceso al propietario de la cuenta.')
+    const firstSectionLink = page.getByRole('link', { name: 'Series', exact: true }).first()
+    const box = await firstSectionLink.boundingBox()
+
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44)
   })
 })

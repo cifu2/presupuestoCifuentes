@@ -8,7 +8,8 @@ import type { Locale } from '@/domain/catalog/locale'
 import { AdminDialog } from './admin-dialog'
 import { formatDay, formatVersionNumber, statusLabelKey } from './panel-navigation'
 import { Alert, Badge, buttonClass, Card, type BadgeTone } from './panel-primitives'
-import type { TariffVersionSummary } from './view-models'
+import { PanelError, PanelForbidden, PanelLoading } from './panel-states'
+import type { AdminPanelState, TariffVersionSummary } from './view-models'
 
 const STATUS_TONES: Readonly<Record<TariffVersionSummary['status'], BadgeTone>> = {
   draft: 'neutral',
@@ -20,11 +21,17 @@ const STATUS_TONES: Readonly<Record<TariffVersionSummary['status'], BadgeTone>> 
  * Versiones de tarifa (`prototipos-y-flujos` §10): solo una está vigente por serie y el precio de
  * un presupuesto emitido queda congelado (ADR-0003). El botón `Ver` abre el `Modal`/`Sheet` con el
  * scrim tokenizado (M1 de CIF-101). En la fase 1 no hay escritura: la publicación llega en CIF-243.
+ *
+ * Honra los cuatro estados por pantalla del DoD §6, como la lista de series y los idiomas: mientras
+ * el estado no sea `ready`/`empty` el contenido no se pinta, y `empty` usa el vacío propio de
+ * tarifas («Sin tarifas para esta serie.») aunque el lector haya devuelto versiones.
  */
 export function TariffVersions({
+  state,
   versions,
   captionKey = 'tariffs.caption',
 }: {
+  state: AdminPanelState
   versions: readonly TariffVersionSummary[]
   captionKey?: 'tariffs.caption' | 'tariffs.allCaption'
 }) {
@@ -34,13 +41,25 @@ export function TariffVersions({
 
   const openVersion = versions.find((version) => version.id === openVersionId) ?? null
 
+  if (state === 'loading' || state === 'error' || state === 'forbidden') {
+    return (
+      <div className="flex flex-col gap-4">
+        {state === 'loading' ? <PanelLoading /> : null}
+        {state === 'error' ? <PanelError /> : null}
+        {state === 'forbidden' ? <PanelForbidden /> : null}
+      </div>
+    )
+  }
+
+  const isEmpty = state === 'empty' || versions.length === 0
+
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-ink-muted">{t(captionKey)}</p>
       <Alert tone="warning">
         <span aria-hidden="true">⚠</span> {t('tariffs.frozen')}
       </Alert>
-      {versions.length === 0 ? (
+      {isEmpty ? (
         <p className="text-sm text-ink-muted">{t('tariffsEmpty')}</p>
       ) : (
         <Card className="overflow-x-auto">

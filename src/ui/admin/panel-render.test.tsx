@@ -147,11 +147,11 @@ describe('shell del panel: tarifas e idiomas', () => {
 
     const spanish = render(
       'es',
-      <TariffVersions versions={versions} captionKey="tariffs.allCaption" />,
+      <TariffVersions state="ready" versions={versions} captionKey="tariffs.allCaption" />,
     )
     const english = render(
       'en',
-      <TariffVersions versions={versions} captionKey="tariffs.allCaption" />,
+      <TariffVersions state="ready" versions={versions} captionKey="tariffs.allCaption" />,
     )
 
     expect(spanish).toContain('v3')
@@ -162,6 +162,34 @@ describe('shell del panel: tarifas e idiomas', () => {
     expect(spanish).toContain('aria-labelledby="tariff-dialog-title"')
     expect(english).toContain('Current')
     expect(english).toContain('Effective from')
+  })
+
+  it('cubre los estados vacío, carga, error y sin permiso de tarifas', async () => {
+    const versions = await reader.listTariffVersions()
+
+    const empty = render(
+      'es',
+      <TariffVersions state="empty" versions={versions} captionKey="tariffs.allCaption" />,
+    )
+    const englishEmpty = render(
+      'en',
+      <TariffVersions state="empty" versions={versions} captionKey="tariffs.allCaption" />,
+    )
+    const loading = render('es', <TariffVersions state="loading" versions={versions} />)
+    const error = render('es', <TariffVersions state="error" versions={versions} />)
+    const forbidden = render('es', <TariffVersions state="forbidden" versions={versions} />)
+
+    // El estado manda sobre el contenido: `empty` no pinta la tabla aunque el lector devuelva versiones.
+    expect(empty).toContain('Sin tarifas para esta serie.')
+    expect(empty).not.toContain('admin-table')
+    expect(englishEmpty).toContain('No price lists for this series.')
+    expect(loading).toContain('role="status"')
+    expect(loading).not.toContain('admin-table')
+    expect(error).toContain('No hemos podido cargar los datos.')
+    expect(error).toContain('Reintentar')
+    expect(error).not.toContain('admin-table')
+    expect(forbidden).toContain('No tienes acceso a esta sección.')
+    expect(forbidden).toContain('Pide acceso al propietario de la cuenta.')
   })
 
   it('resume los idiomas del catálogo y lo que falta por traducir', async () => {
