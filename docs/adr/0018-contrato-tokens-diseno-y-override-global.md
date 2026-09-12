@@ -9,9 +9,10 @@
 ## Contexto
 
 `sistema-de-diseno` §2 (documento de CIF-5) define **42 tokens** de diseño. El `@theme` de
-`src/app/globals.css` solo declaraba 5 (`--color-brand-900/700/500`, `--color-accent-500` y el
-`--color-scrim` de M1/CIF-102). El **PR #33 (CIF-117)** aplica los 42, pero el contrato y el veredicto
-sobre su efecto global (M10) se decidieron **fuera del repositorio**: el README de ADR marca como
+`src/app/globals.css` solo declaraba **4** (`--color-brand-900/700/500` y `--color-accent-500`); el
+**PR #33 (CIF-117)** incorpora además `--color-scrim` (M1/CIF-102) como parte de los 42 y aplica el
+contrato completo, pero ese contrato y el veredicto sobre su efecto global (M10) se decidieron **fuera
+del repositorio**: el README de ADR marca como
 ADR-obligatoria "cualquier decisión que otro agente pueda cuestionar dentro de tres meses", y sin ADR ni
 test ejecutable el bloque `@theme` se puede "corregir" a ciegas.
 
@@ -74,10 +75,10 @@ radio de las tarjetas de la home.
    | `--transition-duration-base` | `180ms`                            |
    | `--transition-duration-slow` | `280ms`                            |
 
-   `src/app/design-tokens.test.ts` es la **fuente de verdad ejecutable** de esta tabla: comprueba que el
-   bloque declara exactamente esos tokens, con esos valores, sin duplicados ni sobrantes. La tabla y el
-   `@theme` se amplían o corrigen **en el mismo PR**; los comentarios de uso y contraste viven junto a
-   cada token en `globals.css`.
+   `src/app/design-tokens.test.ts` —que se incorpora con el PR #33— es la **fuente de verdad ejecutable**
+   de esta tabla: comprueba que el bloque declara exactamente esos tokens, con esos valores, sin
+   duplicados ni sobrantes. La tabla y el `@theme` se amplían o corrigen **en el mismo PR**; los
+   comentarios de uso y contraste viven junto a cada token en `globals.css`.
 
 2. Se **redefinen globalmente** los defaults de Tailwind v4 `--radius-sm/md/lg` y `--shadow-sm/md/lg` con
    los valores de §2 (`6px`/`10px`/`16px` y las sombras `rgb(23 32 42 / …)` de la tabla). Consecuencia
@@ -101,8 +102,9 @@ radio de las tarjetas de la home.
    `globals.css` y `design-tokens.test.ts`. Cambiar el **contrato** (nombres, namespaces de Tailwind,
    override global de defaults) exige un **ADR nuevo que supersede a este**; este ADR no se edita.
 
-6. Sin cambios de color, tipografía ni layout. Los 5 tokens previos conservan su valor y el token del
-   scrim conserva su comentario de trazabilidad `M1/CIF-102`.
+6. Sin cambios de color, tipografía ni layout. Los **4** tokens previos (`--color-brand-900/700/500` y
+   `--color-accent-500`) conservan su valor; `--color-scrim` entra con los 42 y conserva su comentario de
+   trazabilidad `M1/CIF-102`.
 
 ## Consecuencias
 
