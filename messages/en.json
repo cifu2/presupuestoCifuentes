@@ -54,12 +54,35 @@
       "greeting": "Hello {customerName},",
       "intro": "Please find your quote attached as a PDF.",
       "closing": "Thank you for trusting Puertas Cifuentes.",
-      "signature": "The Puertas Cifuentes team"
+      "signature": "The Puertas Cifuentes team",
+      "internalSubject": "New quote issued ({reference})",
+      "internalIntro": "Quote {reference} has been issued and the PDF has been sent to the customer."
     },
     "pdf": {
       "footer": "Puertas Cifuentes · Made-to-measure quotes",
       "pageNumber": "Page {page} of {total}"
-    }
+    },
+    "issuer": "Issued by",
+    "conditions": "Conditions",
+    "pendingConfigurationNotice": "Provisional document: {fields} still to be confirmed.",
+    "extras": {
+      "installation": "Installation",
+      "shipping": "Delivery",
+      "urgency": "Priority"
+    },
+    "pendingFields": {
+      "issuer.name": "the registered name",
+      "issuer.taxId": "the tax ID",
+      "issuer.address": "the registered address",
+      "issuer.email": "the contact email",
+      "issuer.phone": "the phone number",
+      "issuer.website": "the website",
+      "conditions.es": "the Spanish conditions",
+      "conditions.en": "the English conditions"
+    },
+    "concept": "Item",
+    "amount": "Amount",
+    "extrasTitle": "Extras"
   },
   "CatalogAdmin": {
     "title": "Catalogue",
@@ -98,7 +121,9 @@
     "INVALID_QUOTE": "The quote has invalid data.",
     "INVALID_QUOTE_TRANSITION": "That status change is not allowed for this quote.",
     "INVALID_QUOTE_REFERENCE": "The quote reference has an invalid format.",
-    "NOT_FOUND": "We could not find what you are looking for."
+    "NOT_FOUND": "We could not find what you are looking for.",
+    "INVALID_QUOTE_DELIVERY": "The quote delivery is not valid",
+    "INVALID_QUOTE_DELIVERY_TRANSITION": "The quote delivery cannot change state"
   },
   "ManualQuoteReasons": {
     "size_above_series_max": "The measurement {width}×{height} mm exceeds the maximum size of the \"{series}\" series ({maxWidth}×{maxHeight} mm)",

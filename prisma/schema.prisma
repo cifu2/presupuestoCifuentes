@@ -132,6 +132,23 @@ enum AccessoryCategory {
   @@map("accessory_category")
 }
 
+/// Estado de la entrega de un presupuesto a un destinatario (ADR-0004 §5-6).
+enum QuoteDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+
+  @@map("quote_delivery_status")
+}
+
+/// A quién va la entrega: al cliente o al aviso interno (buzón del comercial).
+enum QuoteDeliveryAudience {
+  CUSTOMER
+  INTERNAL
+
+  @@map("quote_delivery_audience")
+}
+
 /// Serie de puertas: modelo, rango de medidas (con el máximo que pasa a presupuesto manual) y
 /// compatibilidades con acabados y accesorios.
 model DoorSeries {
@@ -407,7 +424,8 @@ model Quote {
   createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  lines QuoteLine[]
+  lines      QuoteLine[]
+  deliveries QuoteDelivery[]
 
   @@index([seriesId, createdAt])
   @@index([status, createdAt])
@@ -439,4 +457,32 @@ model QuoteReferenceCounter {
   lastValue BigInt @default(0) @map("last_value")
 
   @@map("quote_reference_counter")
+}
+
+/// Entrega de un presupuesto a un destinatario (ADR-0004 §5-6).
+///
+/// El estado se persiste antes de renderizar el PDF y de enviar el email: un fallo deja el
+/// presupuesto envío pendiente y se puede reintentar. `idempotency_key`
+/// (`quote_id + versión + destinatario`) es única, así que reintentar no duplica correos.
+model QuoteDelivery {
+  id                String                @id @db.Uuid
+  quoteId           String                @map("quote_id") @db.Uuid
+  quote             Quote                 @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  /// Versión del documento: permite reenviar una revisión nueva sin pisar el envío anterior.
+  version           Int                   @default(1)
+  audience          QuoteDeliveryAudience
+  recipient         String                @db.VarChar(320)
+  customerName      String?               @map("customer_name") @db.VarChar(200)
+  idempotencyKey    String                @unique @map("idempotency_key") @db.VarChar(400)
+  status            QuoteDeliveryStatus   @default(PENDING)
+  attempts          Int                   @default(0)
+  providerMessageId String?               @map("provider_message_id") @db.VarChar(200)
+  lastError         String?               @map("last_error") @db.VarChar(500)
+  sentAt            DateTime?             @map("sent_at") @db.Timestamptz(3)
+  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([quoteId, version])
+  @@index([status, updatedAt])
+  @@map("quote_delivery")
 }

@@ -6,6 +6,7 @@ import {
   E2E_ADMIN_TOKEN,
   E2E_BASE_URL,
   E2E_PORT,
+  E2E_SALES_MAILBOX,
 } from './e2e/support/servers'
 
 /**
@@ -52,7 +53,13 @@ export default defineConfig({
     },
     {
       command: `pnpm start --port ${E2E_ADMIN_PORT}`,
-      env: { CATALOG_DEMO_MODE: 'true', ADMIN_API_TOKEN: E2E_ADMIN_TOKEN },
+      // El buzón interno es un valor de pruebas: el E2E comprueba que la entrega llega al cliente y
+      // al aviso interno sin enviar correo real (adaptador de consola, ADR-0004 §4).
+      env: {
+        CATALOG_DEMO_MODE: 'true',
+        ADMIN_API_TOKEN: E2E_ADMIN_TOKEN,
+        QUOTE_INTERNAL_RECIPIENTS: E2E_SALES_MAILBOX,
+      },
       url: E2E_ADMIN_BASE_URL,
       reuseExistingServer: externalEnvironment,
       timeout: 240_000,

@@ -23,6 +23,8 @@ export type DomainErrorCode =
   | 'INVALID_QUOTE'
   | 'INVALID_QUOTE_TRANSITION'
   | 'INVALID_QUOTE_REFERENCE'
+  | 'INVALID_QUOTE_DELIVERY'
+  | 'INVALID_QUOTE_DELIVERY_TRANSITION'
   | 'NOT_FOUND'
 
 export class DomainError extends Error {
@@ -144,6 +146,20 @@ export class InvalidQuoteReferenceError extends DomainError {
 export class ResourceNotFoundError extends DomainError {
   constructor(message: string) {
     super('NOT_FOUND', message)
+  }
+}
+
+/** Entrega de presupuesto (PDF/email) con datos o estado inválidos. */
+export class InvalidQuoteDeliveryError extends DomainError {
+  constructor(message: string) {
+    super('INVALID_QUOTE_DELIVERY', message)
+  }
+}
+
+/** Transición de estado no permitida en una entrega (p. ej. reenviar una ya enviada). */
+export class InvalidQuoteDeliveryTransitionError extends DomainError {
+  constructor(message: string) {
+    super('INVALID_QUOTE_DELIVERY_TRANSITION', message)
   }
 }
 

@@ -54,12 +54,35 @@
       "greeting": "Hola {customerName},",
       "intro": "Adjuntamos tu presupuesto en PDF.",
       "closing": "Gracias por confiar en Puertas Cifuentes.",
-      "signature": "Equipo de Puertas Cifuentes"
+      "signature": "Equipo de Puertas Cifuentes",
+      "internalSubject": "Nuevo presupuesto emitido ({reference})",
+      "internalIntro": "Se ha emitido el presupuesto {reference} y se ha enviado el PDF al cliente."
     },
     "pdf": {
       "footer": "Puertas Cifuentes · Presupuestos a medida",
       "pageNumber": "Página {page} de {total}"
-    }
+    },
+    "issuer": "Emisor",
+    "conditions": "Condiciones",
+    "pendingConfigurationNotice": "Documento provisional: falta por confirmar {fields}.",
+    "extras": {
+      "installation": "Instalación",
+      "shipping": "Portes",
+      "urgency": "Urgencia"
+    },
+    "pendingFields": {
+      "issuer.name": "el nombre fiscal",
+      "issuer.taxId": "el NIF",
+      "issuer.address": "la dirección fiscal",
+      "issuer.email": "el email de contacto",
+      "issuer.phone": "el teléfono",
+      "issuer.website": "la web",
+      "conditions.es": "las condiciones en español",
+      "conditions.en": "las condiciones en inglés"
+    },
+    "concept": "Concepto",
+    "amount": "Importe",
+    "extrasTitle": "Extras"
   },
   "CatalogAdmin": {
     "title": "Catálogo",
@@ -98,7 +121,9 @@
     "INVALID_QUOTE": "El presupuesto tiene datos que no son válidos.",
     "INVALID_QUOTE_TRANSITION": "Ese cambio de estado no está permitido en este presupuesto.",
     "INVALID_QUOTE_REFERENCE": "La referencia del presupuesto no tiene un formato válido.",
-    "NOT_FOUND": "No hemos encontrado lo que buscas."
+    "NOT_FOUND": "No hemos encontrado lo que buscas.",
+    "INVALID_QUOTE_DELIVERY": "La entrega del presupuesto no es válida",
+    "INVALID_QUOTE_DELIVERY_TRANSITION": "La entrega del presupuesto no puede cambiar de estado"
   },
   "ManualQuoteReasons": {
     "size_above_series_max": "La medida {width}×{height} mm supera el máximo de la serie \"{series}\" ({maxWidth}×{maxHeight} mm)",

@@ -27,6 +27,8 @@ const STATUS_BY_CODE: Record<DomainErrorCode, number> = {
   INVALID_QUOTE: 400,
   INVALID_QUOTE_TRANSITION: 409,
   INVALID_QUOTE_REFERENCE: 400,
+  INVALID_QUOTE_DELIVERY: 400,
+  INVALID_QUOTE_DELIVERY_TRANSITION: 409,
   NOT_FOUND: 404,
 }
 
@@ -75,20 +77,54 @@ export async function readJsonBody<T>(
   request: Request,
   schema: ZodType<T>,
 ): Promise<{ ok: true; data: T } | { ok: false; response: NextResponse }> {
+  const payload = await parseJsonBody(request)
+
+  if (!payload.ok) {
+    return payload
+  }
+
+  return validateBody(payload.data, schema)
+}
+
+/**
+ * Como `readJsonBody`, pero un cuerpo vacío equivale a `{}`: para acciones sin parámetros
+ * (reintentar una entrega) un POST sin cuerpo es una petición válida, no un error de formato.
+ */
+export async function readOptionalJsonBody<T>(
+  request: Request,
+  schema: ZodType<T>,
+): Promise<{ ok: true; data: T } | { ok: false; response: NextResponse }> {
+  const raw = await request.text()
+
+  if (raw.trim().length === 0) {
+    return validateBody({}, schema)
+  }
+
   let payload: unknown
 
   try {
-    payload = await request.json()
+    payload = JSON.parse(raw)
   } catch {
-    return {
-      ok: false,
-      response: jsonResponse(
-        { error: { code: 'INVALID_JSON', message: 'El cuerpo debe ser JSON válido' } },
-        400,
-      ),
-    }
+    return invalidJsonResponse()
   }
 
+  return validateBody(payload, schema)
+}
+
+async function parseJsonBody(
+  request: Request,
+): Promise<{ ok: true; data: unknown } | { ok: false; response: NextResponse }> {
+  try {
+    return { ok: true, data: await request.json() }
+  } catch {
+    return invalidJsonResponse()
+  }
+}
+
+function validateBody<T>(
+  payload: unknown,
+  schema: ZodType<T>,
+): { ok: true; data: T } | { ok: false; response: NextResponse } {
   const result = schema.safeParse(payload)
 
   if (!result.success) {
@@ -96,4 +132,14 @@ export async function readJsonBody<T>(
   }
 
   return { ok: true, data: result.data }
+}
+
+function invalidJsonResponse(): { ok: false; response: NextResponse } {
+  return {
+    ok: false,
+    response: jsonResponse(
+      { error: { code: 'INVALID_JSON', message: 'El cuerpo debe ser JSON válido' } },
+      400,
+    ),
+  }
 }

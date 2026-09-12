@@ -24,30 +24,32 @@ En errores de validación se añade `issues: [{ "path": "widthMm", "message": "�
 
 ### Códigos de error
 
-| `code`                            | HTTP | Cuándo                                                   |
-| --------------------------------- | ---- | -------------------------------------------------------- |
-| `VALIDATION_ERROR`                | 400  | El cuerpo o el `locale` no cumple el contrato (Zod)      |
-| `INVALID_JSON`                    | 400  | El cuerpo no es JSON                                     |
-| `INVALID_VALUE`                   | 400  | Regla del dominio incumplida (configuración incoherente) |
-| `INVALID_MEASUREMENT`             | 400  | Medida fuera de 1–10000 mm                               |
-| `INVALID_SIZE_RANGE`              | 400  | Rango de medidas incoherente                             |
-| `INVALID_CATALOG_VALUE`           | 400  | Código, slug o dato de catálogo con formato inválido     |
-| `INVALID_CATALOG_TEXT`            | 400  | Texto de catálogo sin el idioma por defecto              |
-| `UNSUPPORTED_LOCALE`              | 400  | Idioma guardado no soportado                             |
-| `INVALID_VALIDITY_PERIOD`         | 400  | Vigencia de tarifa incoherente                           |
-| `INVALID_TARIFF`                  | 400  | Tabla de precios incoherente (bandas solapadas, etc.)    |
-| `INVALID_MANUAL_QUOTE_REQUEST`    | 400  | Solicitud manual incompleta                              |
-| `INVALID_QUOTE`                   | 400  | Presupuesto con desglose incoherente                     |
-| `INVALID_QUOTE_REFERENCE`         | 400  | Referencia con formato distinto de `PC-AAAA-NNNNNN`      |
-| `NOT_FOUND`                       | 404  | Serie, presupuesto o tarifa inexistente                  |
-| `AMBIGUOUS_TARIFF`                | 409  | Más de una tarifa vigente para la misma serie            |
-| `INVALID_CATALOG_TRANSITION`      | 409  | Transición de estado no permitida en el catálogo         |
-| `INVALID_SERIES_TRANSITION`       | 409  | Transición de estado no permitida en una serie           |
-| `INVALID_MANUAL_QUOTE_TRANSITION` | 409  | Transición no permitida en una solicitud manual          |
-| `INVALID_QUOTE_TRANSITION`        | 409  | Transición de estado no permitida en un presupuesto      |
-| `INTERNAL_ERROR`                  | 500  | Error inesperado (nunca se devuelve el detalle)          |
-| `ADMIN_API_DISABLED`              | 503  | El API del panel no tiene `ADMIN_API_TOKEN` configurado  |
-| `UNAUTHORIZED`                    | 401  | Credenciales de administración ausentes o inválidas      |
+| `code`                              | HTTP | Cuándo                                                   |
+| ----------------------------------- | ---- | -------------------------------------------------------- |
+| `VALIDATION_ERROR`                  | 400  | El cuerpo o el `locale` no cumple el contrato (Zod)      |
+| `INVALID_JSON`                      | 400  | El cuerpo no es JSON                                     |
+| `INVALID_VALUE`                     | 400  | Regla del dominio incumplida (configuración incoherente) |
+| `INVALID_MEASUREMENT`               | 400  | Medida fuera de 1–10000 mm                               |
+| `INVALID_SIZE_RANGE`                | 400  | Rango de medidas incoherente                             |
+| `INVALID_CATALOG_VALUE`             | 400  | Código, slug o dato de catálogo con formato inválido     |
+| `INVALID_CATALOG_TEXT`              | 400  | Texto de catálogo sin el idioma por defecto              |
+| `UNSUPPORTED_LOCALE`                | 400  | Idioma guardado no soportado                             |
+| `INVALID_VALIDITY_PERIOD`           | 400  | Vigencia de tarifa incoherente                           |
+| `INVALID_TARIFF`                    | 400  | Tabla de precios incoherente (bandas solapadas, etc.)    |
+| `INVALID_MANUAL_QUOTE_REQUEST`      | 400  | Solicitud manual incompleta                              |
+| `INVALID_QUOTE`                     | 400  | Presupuesto con desglose incoherente                     |
+| `INVALID_QUOTE_REFERENCE`           | 400  | Referencia con formato distinto de `PC-AAAA-NNNNNN`      |
+| `NOT_FOUND`                         | 404  | Serie, presupuesto o tarifa inexistente                  |
+| `AMBIGUOUS_TARIFF`                  | 409  | Más de una tarifa vigente para la misma serie            |
+| `INVALID_CATALOG_TRANSITION`        | 409  | Transición de estado no permitida en el catálogo         |
+| `INVALID_SERIES_TRANSITION`         | 409  | Transición de estado no permitida en una serie           |
+| `INVALID_MANUAL_QUOTE_TRANSITION`   | 409  | Transición no permitida en una solicitud manual          |
+| `INVALID_QUOTE_TRANSITION`          | 409  | Transición de estado no permitida en un presupuesto      |
+| `INVALID_QUOTE_DELIVERY`            | 400  | Entrega sin destinatarios válidos o dato inválido        |
+| `INVALID_QUOTE_DELIVERY_TRANSITION` | 409  | La entrega ya se envió y no se puede reintentar          |
+| `INTERNAL_ERROR`                    | 500  | Error inesperado (nunca se devuelve el detalle)          |
+| `ADMIN_API_DISABLED`                | 503  | El API del panel no tiene `ADMIN_API_TOKEN` configurado  |
+| `UNAUTHORIZED`                      | 401  | Credenciales de administración ausentes o inválidas      |
 
 ## Modos de ejecución
 
@@ -277,6 +279,63 @@ nunca se acepta el que envíe el cliente.
 
 Presupuesto emitido por su referencia (`PC-2026-000001`). Los textos se devuelven en el idioma
 **guardado** en el presupuesto. `404 NOT_FOUND` si no existe.
+
+## GET /api/quotes/:reference/pdf
+
+Descarga inmediata del presupuesto en PDF (ADR-0004 §1). Solo lectura: no envía correo ni cambia el
+estado del presupuesto.
+
+- `200` con `Content-Type: application/pdf` y `Content-Disposition: inline; filename="…pdf"`.
+- `404 NOT_FOUND` si la referencia no existe.
+- El idioma del documento es el **guardado en el presupuesto** (ADR-0005).
+- Si faltan datos del propietario (CIF-14), el PDF los marca con `[pendiente de configurar]` y
+  añade un aviso en la cabecera.
+
+```bash
+curl -s http://localhost:3000/api/quotes/PC-2026-000001/pdf -o presupuesto.pdf
+```
+
+## POST /api/quotes/:reference/delivery
+
+Entrega el presupuesto: renderiza el PDF y envía el email al cliente y al buzón interno configurado
+(`QUOTE_INTERNAL_RECIPIENTS`). El orden es el de ADR-0004 §5: primero queda registrada la entrega
+como _pendiente de envío_, después se genera el PDF y después se envía. Un fallo **no pierde** el
+presupuesto.
+
+| Campo      | Tipo           | Obligatorio | Descripción                                                  |
+| ---------- | -------------- | ----------- | ------------------------------------------------------------ |
+| `customer` | objeto \| null | no (`null`) | `{ name, email }` del cliente; añade el destinatario cliente |
+| `version`  | entero 1–1000  | no (`1`)    | Versión del documento; entra en la clave de idempotencia     |
+
+- `200` `{ "status": "delivered", "deliveries": [ … ] }` si se envió a todos los destinatarios.
+  `status: "already_delivered"` cuando ya se había enviado a todos (no se reenvía nada).
+- `502` `{ "status": "incomplete", "reason": "pdf_render_failed" | "email_send_failed", … }` si algo
+  falló; el detalle por destinatario va en `deliveries` (`status`: `pending` | `sent` | `failed`,
+  con `attempts` y `lastError`). El presupuesto sigue emitido y se reintenta.
+- `400` `INVALID_QUOTE_DELIVERY` si no hay ningún destinatario (ni cliente ni buzón interno).
+- `404 NOT_FOUND` si la referencia no existe.
+
+La clave de idempotencia es `quoteId + versión + destinatario`: dos llamadas con el mismo
+destinatario y versión no duplican correos (ADR-0004 §6).
+
+**Acceso.** Igual que el resto del API del panel: `Authorization: Bearer <ADMIN_API_TOKEN>`. Sin la
+variable responde `503` `ADMIN_API_DISABLED` y con credenciales incorrectas `401`. Enviar correo es
+una acción con coste y superficie de abuso, así que queda detrás de la guarda provisional
+(CIF-9/CIF-14) hasta que el propietario decida quién la lanza.
+
+## POST /api/quotes/:reference/delivery/retry
+
+Reintenta las entregas pendientes o fallidas del presupuesto. Las ya enviadas **no** se reenvían.
+Cuerpo opcional `{ "version": 1 }` para acotar el reintento a una versión del documento.
+
+- `200` `{ "status": "delivered", … }` si el reintento salió bien.
+- `200` `{ "status": "nothing_to_retry", … }` si no quedaba nada por enviar (no renderiza el PDF).
+- `502` `{ "status": "incomplete", … }` si vuelve a fallar.
+
+```bash
+curl -s -X POST http://localhost:3000/api/quotes/PC-2026-000001/delivery/retry \
+  -H "Authorization: Bearer $ADMIN_API_TOKEN" | jq
+```
 
 ## POST /api/manual-quote-requests
 

@@ -4,17 +4,25 @@ import type {
   FinishRepository,
 } from '@/application/ports/catalog-item-repositories'
 import type { Clock } from '@/application/ports/clock'
+import type { EmailSender } from '@/application/ports/email-sender'
 import type { IdGenerator } from '@/application/ports/id-generator'
 import type { ManualQuoteRequestRepository } from '@/application/ports/manual-quote-request-repository'
+import type { QuoteDeliveryRepository } from '@/application/ports/quote-delivery-repository'
+import type { QuoteDocumentSettings } from '@/application/ports/quote-document-settings'
+import type { QuotePdfRenderer } from '@/application/ports/quote-pdf-renderer'
 import type { QuoteNumberSequence } from '@/application/ports/quote-number-sequence'
 import type { QuoteRepository } from '@/application/ports/quote-repository'
 import type { SeriesRepository } from '@/application/ports/series-repository'
 import type { TariffPricingRepository } from '@/application/ports/tariff-pricing-repository'
 import type { TariffVersionRepository } from '@/application/ports/tariff-version-repository'
 import { env } from '@/config/env'
+import { resolveQuoteDocumentSettings } from '@/config/quote-document'
 import { SystemClock } from '@/infrastructure/clock/system-clock'
 import { createDemoCatalogStore } from '@/infrastructure/demo/demo-catalog'
+import { ConsoleEmailSender } from '@/infrastructure/email/console-email-sender'
+import { ResendEmailSender } from '@/infrastructure/email/resend-email-sender'
 import { CryptoIdGenerator } from '@/infrastructure/id/crypto-id-generator'
+import { ReactPdfQuoteRenderer } from '@/infrastructure/pdf/react-pdf-quote-renderer'
 import {
   InMemoryAccessoryRepository,
   InMemoryColorRepository,
@@ -23,6 +31,7 @@ import {
   InMemoryTariffPricingRepository,
   InMemoryTariffVersionRepository,
 } from '@/infrastructure/persistence/in-memory/catalog-store'
+import { InMemoryQuoteDeliveryRepository } from '@/infrastructure/persistence/in-memory/quote-delivery-store'
 import {
   InMemoryManualQuoteRequestRepository,
   InMemoryQuoteNumberSequence,
@@ -30,6 +39,7 @@ import {
   InMemoryQuoteStore,
 } from '@/infrastructure/persistence/in-memory/quote-store'
 import { getPrismaClient } from '@/infrastructure/persistence/prisma/client'
+import { PrismaQuoteDeliveryRepository } from '@/infrastructure/persistence/prisma/quote-delivery-repository'
 import {
   PrismaAccessoryRepository,
   PrismaColorRepository,
@@ -63,9 +73,14 @@ export interface Container {
   readonly tariffPricingRepository: TariffPricingRepository
   readonly tariffVersionRepository: TariffVersionRepository
   readonly quoteRepository: QuoteRepository
+  readonly quoteDeliveryRepository: QuoteDeliveryRepository
   readonly manualQuoteRequestRepository: ManualQuoteRequestRepository
   readonly quoteNumberSequence: QuoteNumberSequence
   readonly quoteValidityDays: number
+  readonly quotePdfRenderer: QuotePdfRenderer
+  readonly emailSender: EmailSender
+  /** Datos fiscales, condiciones y destinatarios internos pendientes del propietario (CIF-14). */
+  readonly quoteDocumentSettings: QuoteDocumentSettings
 }
 
 function createDemoContainer(): Container {
@@ -83,9 +98,13 @@ function createDemoContainer(): Container {
     tariffPricingRepository: new InMemoryTariffPricingRepository(catalog),
     tariffVersionRepository: new InMemoryTariffVersionRepository(catalog),
     quoteRepository: new InMemoryQuoteRepository(quotes),
+    quoteDeliveryRepository: new InMemoryQuoteDeliveryRepository(),
     manualQuoteRequestRepository: new InMemoryManualQuoteRequestRepository(quotes),
     quoteNumberSequence: new InMemoryQuoteNumberSequence(quotes),
     quoteValidityDays: env.QUOTE_VALIDITY_DAYS,
+    quotePdfRenderer: new ReactPdfQuoteRenderer(),
+    emailSender: createEmailSender(),
+    quoteDocumentSettings: resolveQuoteDocumentSettings(),
   }
 }
 
@@ -103,10 +122,37 @@ function createPrismaContainer(connectionString: string): Container {
     tariffPricingRepository: new PrismaTariffPricingRepository(prisma),
     tariffVersionRepository: new PrismaTariffVersionRepository(prisma),
     quoteRepository: new PrismaQuoteRepository(prisma),
+    quoteDeliveryRepository: new PrismaQuoteDeliveryRepository(prisma),
     manualQuoteRequestRepository: new PrismaManualQuoteRequestRepository(prisma),
     quoteNumberSequence: new PrismaQuoteNumberSequence(prisma),
     quoteValidityDays: env.QUOTE_VALIDITY_DAYS,
+    quotePdfRenderer: new ReactPdfQuoteRenderer(),
+    emailSender: createEmailSender(),
+    quoteDocumentSettings: resolveQuoteDocumentSettings(),
   }
+}
+
+/**
+ * Envío de email según lo que haya configurado el propietario (ADR-0004 §4).
+ *
+ * Sin remitente verificado o sin clave, se usa el adaptador de consola: nunca se intenta un envío
+ * real con la configuración a medias (CIF-14). Se avisa en el log —sin datos personales— para que
+ * un despliegue en producción sin remitente no pase desapercibido.
+ */
+function createEmailSender(): EmailSender {
+  const { RESEND_FROM: from, RESEND_API_KEY: apiKey } = env
+
+  if (from !== undefined && apiKey !== undefined) {
+    return new ResendEmailSender(apiKey, from)
+  }
+
+  if (env.NODE_ENV === 'production') {
+    console.warn(
+      '[email] sin RESEND_FROM y RESEND_API_KEY: los presupuestos no se enviarán por email (adaptador de consola)',
+    )
+  }
+
+  return new ConsoleEmailSender()
 }
 
 let cached: Container | null = null

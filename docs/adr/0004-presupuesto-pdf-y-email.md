@@ -1,7 +1,8 @@
 # ADR-0004 — Presupuesto en PDF y por email
 
 - **Fecha:** 2026-09-11
-- **Estado:** Aceptado (remitente y destinatarios pendientes de confirmar, CIF-13)
+- **Estado:** Aceptado e implementado (CIF-173); remitente, buzón y datos fiscales pendientes de
+  confirmar por el propietario (CIF-13, hoy CIF-14)
 - **Decide:** CTO
 - **Ámbito:** generación de documentos y envío de correo
 
@@ -38,12 +39,44 @@ si falla la generación o el envío. El plan deja abierto "¿PDF, email o ambos?
 - Si el propietario quiere firma digital o pago, se aborda en la fase siguiente; el tipo
   `QuoteDocument` está preparado para añadirlo.
 
-## Pendiente de negocio (CIF-13)
+## Implementación (CIF-173)
+
+La entrega está construida y probada; **solo faltan valores del propietario, y esos son
+configuración**. Lo que la implementación fija:
+
+1. **La entrega es una fila con estado** (`quote_delivery`): presupuesto, versión del documento,
+   destinatario, audiencia (cliente o interno), estado (`pending`/`sent`/`failed`), intentos,
+   identificador del proveedor y motivo del último fallo. Se escribe **antes** de renderizar: si algo
+   falla, el presupuesto queda con un envío pendiente visible y no se pierde.
+2. **La versión del documento empieza en 1** y entra en la clave de idempotencia
+   (`quoteId + versión + destinatario`, única en la base). Reenviar el mismo documento al mismo
+   destinatario es el mismo registro; una entrega ya enviada nunca se reenvía.
+3. **Los valores del propietario son entorno, no código**: `RESEND_FROM` (remitente verificado),
+   `QUOTE_INTERNAL_RECIPIENTS` (buzón del comercial y copias), `QUOTE_ISSUER_*` (datos fiscales) y
+   `QUOTE_CONDITIONS_ES` / `QUOTE_CONDITIONS_EN` (condiciones, una por línea). Sin remitente
+   configurado se usa el **adaptador de consola**: no se envía correo real. Mientras falte un dato,
+   el PDF imprime `[pendiente de configurar]` y un aviso en la cabecera.
+4. **Las condiciones son por idioma** con reserva al idioma por defecto: si falta la traducción se
+   imprime la del idioma por defecto y el aviso de pendiente lo dice.
+5. **La descarga del PDF es pública y de solo lectura** (`GET /api/quotes/:reference/pdf`); **la
+   entrega por email va detrás de la guarda provisional del API del panel** (`ADMIN_API_TOKEN`,
+   CIF-9/CIF-14), porque enviar correo tiene coste y superficie de abuso. Cuando el propietario
+   decida quién puede lanzarla, se cambia la guarda sin tocar los casos de uso.
+6. **Los datos del cliente viajan con la entrega**, no se guardan en el presupuesto: el configurador
+   los envía en la petición de entrega y la entrega los conserva para el reintento.
+7. **Reintento sin duplicar** (`POST /api/quotes/:reference/delivery/retry`): reintenta solo las
+   entregas pendientes o fallidas de la versión pedida; si no queda ninguna, no renderiza nada.
+
+## Pendiente de negocio (CIF-13, hoy CIF-14)
 
 - Dominio remitente verificado (registros DNS en el proveedor del dominio) y buzón de aviso al
   comercial.
 - ¿Quién recibe el email: el cliente, el comercial o ambos? ¿Con copia al propietario?
 - Datos fiscales y condiciones que deben aparecer en el PDF.
+
+Mientras no haya respuesta, rigen los valores por defecto de la implementación: adaptador de consola
+si no hay `RESEND_FROM`, destinatarios = cliente que pide el presupuesto + `QUOTE_INTERNAL_RECIPIENTS`,
+y datos fiscales con marcador explícito más aviso en el PDF.
 
 ## Alternativas consideradas
 
