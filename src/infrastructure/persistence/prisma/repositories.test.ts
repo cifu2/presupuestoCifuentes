@@ -1406,6 +1406,10 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
         tariff: 'c1f126a0-0000-4000-8000-000000000007',
         tariffBorrador: 'c1f126a0-0000-4000-8000-000000000008',
         band: 'c1f126a0-0000-4000-8000-000000000009',
+        // Banda y modificador de la tarifa publicada que se clona: `tariff_size_band.id` y
+        // `tariff_modifier.id` son PK globales, así que el clon no puede reutilizarlos (CIF-526).
+        bandSource: 'c1f126a0-0000-4000-8000-000000000010',
+        modifierSource: 'c1f126a0-0000-4000-8000-000000000011',
       } as const
 
       const seriesWriteRepository = new PrismaSeriesWriteRepository(prisma)
@@ -1598,12 +1602,40 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
             seriesId: WRITE_IDS.series,
             versionNumber: 1,
             status: 'PUBLISHED',
-            strategy: 'PER_SQUARE_METRE',
+            strategy: 'SIZE_BANDS',
             validFrom: new Date('2026-01-01T00:00:00.000Z'),
             taxRatePercent: '21',
             currency: 'EUR',
             publishedAt: new Date('2026-01-01T00:00:00.000Z'),
-            priceTable: { create: { perSquareMetreCents: 40_000n } },
+            priceTable: {
+              create: {
+                bands: {
+                  create: [
+                    {
+                      id: WRITE_IDS.bandSource,
+                      minWidthMm: 600,
+                      maxWidthMm: 1000,
+                      minHeightMm: 1800,
+                      maxHeightMm: 2200,
+                      priceCents: 40_000n,
+                      sortOrder: 0,
+                    },
+                  ],
+                },
+                modifiers: {
+                  create: [
+                    {
+                      id: WRITE_IDS.modifierSource,
+                      code: 'INSTALACION',
+                      kind: 'FIXED',
+                      target: 'INSTALLATION',
+                      amountCents: 18_000n,
+                      sortOrder: 0,
+                    },
+                  ],
+                },
+              },
+            },
           },
         })
         await prisma.tariffVersion.create({
@@ -1912,9 +1944,38 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
         expect(row?.publishedAt).toBeNull()
         expect(row?.notes).toBe('precios 2027')
         expect(row?.validFrom.toISOString()).toBe('2026-09-11T00:00:00.000Z')
-        // La tabla de la v1 viaja copiada a la versión nueva.
-        expect(row?.priceTable?.perSquareMetreCents).toBe(40_000n)
-        expect(draft.priceTable?.perSquareMetre?.amount).toBe('400.00')
+        expect(row?.strategy).toBe('SIZE_BANDS')
+        expect(row?.priceTable?.perSquareMetreCents).toBeNull()
+
+        // La tabla de la v1 viaja copiada con los mismos números y ids nuevos (CIF-526): las PK de
+        // bandas y modificadores son globales, así que reutilizar un id rompería la escritura.
+        const source = await tariffVersionRepository.findPriceTableByVersionId(WRITE_IDS.tariff)
+        const cloned = await tariffVersionRepository.findPriceTableByVersionId(draft.id)
+        const numbers = (table: typeof source) =>
+          table?.bands.map((band) => ({
+            minWidthMm: band.minWidthMm,
+            maxWidthMm: band.maxWidthMm,
+            minHeightMm: band.minHeightMm,
+            maxHeightMm: band.maxHeightMm,
+            price: band.price.toString(),
+          }))
+
+        expect(source?.bands.map((band) => band.id)).toEqual([WRITE_IDS.bandSource])
+        expect(cloned?.bands).toHaveLength(1)
+        expect(cloned?.bands.map((band) => band.id)).not.toEqual(
+          source?.bands.map((band) => band.id),
+        )
+        expect(numbers(cloned)).toEqual(numbers(source))
+        expect(cloned?.modifiers.map((modifier) => modifier.id)).not.toEqual(
+          source?.modifiers.map((modifier) => modifier.id),
+        )
+        expect(
+          cloned?.modifiers.map((modifier) => [modifier.code, modifier.amount?.toString()]),
+        ).toEqual(source?.modifiers.map((modifier) => [modifier.code, modifier.amount?.toString()]))
+        expect(cloned?.modifiers.map((modifier) => modifier.id)).not.toContain(
+          WRITE_IDS.modifierSource,
+        )
+        expect(draft.priceTable?.bands[0]?.price.amount).toBe('400.00')
       })
 
       it('el alta de una versión con un número ya usado choca con ConflictError, no 500', async () => {

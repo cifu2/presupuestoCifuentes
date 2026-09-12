@@ -7,7 +7,9 @@
  * no da precio hasta publicarse (ADR-0003). Sin este caso de uso, el panel solo podía responder
  * `409 TARIFF_NOT_EDITABLE`.
  *
- * Los ids del catálogo de demostración son UUID canónicos porque el borde los valida como tales. Cada
+ * Los ids del catálogo de demostración son legibles (`series-ci-100`): el contrato acepta `seriesId`
+ * como string de hasta 100 caracteres, igual que el id que devuelve la lectura de administración del
+ * panel. Solo `cloneFromVersionId` es un UUID canónico, porque el borde sí lo valida como tal. Cada
  * proyecto de Playwright usa una serie distinta (corren en paralelo y el endpoint muta el catálogo
  * del servidor): `chromium` estrena CI-100 y `movil`, CI-300.
  */

@@ -467,14 +467,20 @@ configurador: la versión nace en `draft`, sin `publishedAt`, y no da precio has
   El `versionNumber` es el siguiente libre de la serie y `priceTable` es la tabla clonada (con ids
   nuevos), lista para editar; `null` si no se clonó o el origen no tenía.
 - `400` `VALIDATION_ERROR` si el cuerpo no cumple el contrato (`seriesId` vacío, `cloneFromVersionId`
-  que no es UUID o fechas que no son `YYYY-MM-DD`).
-- `400` `INVALID_TARIFF` si no se clona y falta `strategy` o `taxRatePercent`, si la versión origen es
-  de otra serie o si una fecha no es ISO 8601.
+  que no es UUID o fechas que no son `YYYY-MM-DD`). Una fecha mal formada se queda aquí, en el borde:
+  al caso de uso no le llega nunca, así que ese caso no responde `INVALID_TARIFF`.
+- `400` `INVALID_VALIDITY_PERIOD` si `validUntil` no es posterior a `validFrom` (la vigencia es
+  semiabierta, `[validFrom, validUntil)`: el mismo día tampoco vale).
+- `400` `INVALID_TARIFF` si no se clona y falta `strategy` o `taxRatePercent`, o si la versión origen
+  es de otra serie.
 - `404` `NOT_FOUND` si la serie o la versión origen no existen. Un `seriesId` con formato imposible
   (en producción un id que no es UUID) no revienta la columna `@db.Uuid`: el adaptador Prisma lo trata
   como inexistente.
-- `409` `CONFLICT` solo si tres altas concurrentes se pelean por el mismo número de versión (el caso
-  de uso reintenta con el número recalculado antes de responder).
+- `409` `CONFLICT` solo si el número sigue ocupado tras agotar los `VERSION_NUMBER_ATTEMPTS` (3)
+  intentos: en cada choque el caso de uso recalcula el número libre y vuelve a intentarlo, así que
+  **pocas altas simultáneas convergen** y no hay umbral de tres. Medido contra PostgreSQL real (CIF-522):
+  dos altas simultáneas pasan, con los números 2 y 3; tres simultáneas pasan las tres; con doce
+  simultáneas, 8 recibieron `409`. El reintento absorbe la concurrencia normal, no una ráfaga.
 - `401`/`503` como el resto del API del panel (ver más abajo).
 
 La edición de los números del borrador (`updateTariffPrice`) todavía no tiene ruta HTTP: la añade el
