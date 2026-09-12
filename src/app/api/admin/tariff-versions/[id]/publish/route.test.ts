@@ -1,6 +1,9 @@
 /**
- * Test del borde HTTP del panel: publicar una tarifa que se solapa con otra publicada de la misma
- * serie responde 409 y **no** escribe la fila (hallazgo N5 de CIF-78).
+ * Test del borde HTTP del panel: las dos invariantes de publicación responden 409 y **no** escriben la
+ * fila (hallazgo N5 de CIF-78) — el solape con otra publicada de la misma serie (`AMBIGUOUS_TARIFF`) y
+ * la versión sin tabla de precios (`EMPTY_PRICE_TABLE`, ADR-0027 §5). El orden también importa: el
+ * solape se comprueba antes que la tabla vacía, y el caso de solape de este fichero no siembra tabla a
+ * propósito.
  *
  * Los ids son UUID reales porque el `:id` se valida en el borde (hallazgo N2 de CIF-85).
  */
@@ -132,6 +135,27 @@ describe('POST /api/admin/tariff-versions/[id]/publish', () => {
     expect(store.saves).toEqual([])
     expect(
       (store.versions as TariffVersion[]).find((version) => version.id === CI_100_V2)?.status,
+    ).toBe('draft')
+  })
+
+  it('responde 409 EMPTY_PRICE_TABLE y no escribe si el borrador no tiene tabla de precios', async () => {
+    seed([
+      makeTariffVersion({
+        id: CI_400_V1,
+        seriesId: 'series-ci-400',
+        status: 'draft',
+        publishedAt: null,
+      }),
+    ])
+
+    const response = await publish(CI_400_V1)
+    const body = await response.json()
+
+    expect(response.status).toBe(409)
+    expect(body.error.code).toBe('EMPTY_PRICE_TABLE')
+    expect(store.saves).toEqual([])
+    expect(
+      (store.versions as TariffVersion[]).find((version) => version.id === CI_400_V1)?.status,
     ).toBe('draft')
   })
 
