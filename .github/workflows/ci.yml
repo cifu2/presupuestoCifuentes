@@ -55,13 +55,17 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: cliente de Prisma
         run: pnpm db:generate
-      - name: Sintaxis de los scripts de operación
+      # La enumeración es el conjunto versionado completo (`git ls-files`), no un glob de shell: así
+      # entran también los scripts de `docs/runbooks/`, que se instalan en el host —la guarda de disco
+      # corre como root y borra ficheros— y cualquier `*.sh` futuro, sin volver a tocar este fichero
+      # (CIF-601). Un glob literal (`docs/runbooks/*.sh`) fallaría mientras ese directorio no exista.
+      - name: Sintaxis de los scripts de operación (todo `*.sh` versionado)
         run: |
-          for script in scripts/*.sh; do
+          while IFS= read -r -d '' script; do
             bash -n "$script"
-          done
-      - name: shellcheck de los scripts de operación
-        run: shellcheck scripts/*.sh
+          done < <(git ls-files -z '*.sh')
+      - name: shellcheck de los scripts de operación (todo `*.sh` versionado)
+        run: git ls-files -z '*.sh' | xargs -0 -r shellcheck
       - name: Barrido de secretos (contrato de redacción, ADR-0014)
         run: ./scripts/secret-scan.sh
       - name: Test del contrato de redacción del barrido

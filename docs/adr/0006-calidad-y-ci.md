@@ -31,6 +31,26 @@ ejecutable y automática, no una convención oral.
    del PR y, en última instancia, el CTO).
 7. **Prettier** con configuración fija y `format:check` en CI: el formato no se discute en revisión.
 
+## Ampliación (CIF-601): la puerta de sintaxis y `shellcheck` cubre todos los `*.sh` versionados
+
+El punto 4 enumeraba la puerta de shell sobre `scripts/*.sh`. Eso dejaba fuera
+`docs/runbooks/disco-guard.sh`: la copia canónica de la guarda de disco del host, que se instala en
+`/usr/local/sbin/` y se ejecuta **como root** (borra cachés y artefactos regenerables). El hueco lo
+destapó QA en CIF-591 (H5) y DevOps lo elevó en CIF-597; el CTO decide en **CIF-601**.
+
+**Decisión:** los dos pasos de shell del job `calidad` enumeran el **conjunto versionado completo**
+(`git ls-files '*.sh'`), no un glob de directorio. Se usa `git ls-files` en vez de
+`docs/runbooks/*.sh` porque (a) un glob literal falla mientras el directorio no exista y (b) cubre
+cualquier runbook futuro sin volver a tocar `ci.yml`. Una guarda en `src/config/ci-workflow.test.ts`
+falla si alguien vuelve a estrechar la enumeración a `scripts/*.sh`.
+
+Se descarta mover la copia canónica a `scripts/` (partiría el trío script + `.service` + `.timer` y
+solo arreglaría esa instancia) y dejarlo como estaba (deja toda una clase de scripts que corren en el
+host fuera de la puerta, contra el principio de este ADR: la puerta es automática, no una convención).
+Coste explícito: una rama `ci/**` = 1 preview + 1 despliegue de producción al fusionar
+([ADR-0019](0019-cuota-despliegues-vercel.md) §5), aceptado porque la edición de ese script ya estaba
+planificada (ADR-0029 punto 3 → CIF-598) y hasta ahora solo tenía comprobación manual.
+
 ## Consecuencias
 
 - El ciclo de feedback de un PR son ~5-10 minutos: suficiente para no bloquear el trabajo en
