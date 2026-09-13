@@ -34,7 +34,10 @@ import type {
   TariffPricing,
   TariffPricingRepository,
 } from '@/application/ports/tariff-pricing-repository'
-import type { TariffVersionRepository } from '@/application/ports/tariff-version-repository'
+import type {
+  TariffPublishTransition,
+  TariffVersionRepository,
+} from '@/application/ports/tariff-version-repository'
 
 export interface CatalogStoreSnapshot {
   readonly series: readonly DoorSeries[]
@@ -375,6 +378,19 @@ export class InMemoryTariffVersionRepository implements TariffVersionRepository 
 
   async save(version: TariffVersion): Promise<void> {
     this.store.upsertTariffVersion(version)
+  }
+
+  /**
+   * En memoria las dos filas se escriben una detrás de otra y no hay fallo posible a mitad (no hay
+   * E/S que pueda romper): la garantía atómica real la da la transacción del adaptador Prisma, que
+   * es donde `repositories.test.ts` la comprueba.
+   */
+  async savePublishTransition(transition: TariffPublishTransition): Promise<void> {
+    if (transition.predecessor !== null) {
+      this.store.upsertTariffVersion(transition.predecessor)
+    }
+
+    this.store.upsertTariffVersion(transition.successor)
   }
 
   async findPriceTableByVersionId(tariffVersionId: string): Promise<PriceTable | null> {

@@ -21,7 +21,10 @@ import {
 } from '@/domain/shared/errors'
 import { Money } from '@/domain/shared/money'
 
-import type { TariffVersionRepository } from '@/application/ports/tariff-version-repository'
+import type {
+  TariffPublishTransition,
+  TariffVersionRepository,
+} from '@/application/ports/tariff-version-repository'
 import { makeTestWorld, TEST_SERIES_ID, TEST_TARIFF_ID } from '@/infrastructure/testing/fixtures'
 
 import { createTariffVersionDraft, VERSION_NUMBER_ATTEMPTS } from './create-tariff-version-draft'
@@ -326,6 +329,10 @@ describe('createTariffVersionDraft', () => {
         return this.repository.save(version)
       }
 
+      savePublishTransition(transition: TariffPublishTransition): Promise<void> {
+        return this.repository.savePublishTransition(transition)
+      }
+
       findPriceTableByVersionId(tariffVersionId: string): Promise<PriceTable | null> {
         return this.repository.findPriceTableByVersionId(tariffVersionId)
       }
@@ -381,6 +388,10 @@ describe('createTariffVersionDraft', () => {
         return this.repository.save(version)
       }
 
+      savePublishTransition(transition: TariffPublishTransition): Promise<void> {
+        return this.repository.savePublishTransition(transition)
+      }
+
       findPriceTableByVersionId(tariffVersionId: string): Promise<PriceTable | null> {
         return this.repository.findPriceTableByVersionId(tariffVersionId)
       }
@@ -428,6 +439,10 @@ describe('createTariffVersionDraft', () => {
 
       save(version: TariffVersion): Promise<void> {
         return this.repository.save(version)
+      }
+
+      savePublishTransition(transition: TariffPublishTransition): Promise<void> {
+        return this.repository.savePublishTransition(transition)
       }
 
       findPriceTableByVersionId(tariffVersionId: string): Promise<PriceTable | null> {

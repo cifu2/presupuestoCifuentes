@@ -42,7 +42,10 @@ import type {
   TariffPricing,
   TariffPricingRepository,
 } from '@/application/ports/tariff-pricing-repository'
-import type { TariffVersionRepository } from '@/application/ports/tariff-version-repository'
+import type {
+  TariffPublishTransition,
+  TariffVersionRepository,
+} from '@/application/ports/tariff-version-repository'
 import {
   catalogStatusToDb,
   groupCatalogTexts,
@@ -78,6 +81,36 @@ const PUBLISHED_TARIFF_OVERLAP_CONSTRAINT = 'tariff_version_published_no_overlap
 
 /** Profundidad máxima del recorrido del error; Prisma anida el del driver 2-3 niveles. */
 const MAX_ERROR_DEPTH = 8
+
+/** Columnas mutables de una versión de tarifa; la identidad y `createdAt` no se tocan al editar. */
+function mutableTariffVersionFields(version: TariffVersion) {
+  return {
+    status: catalogStatusToDb(version.status),
+    strategy: pricingStrategyToDb(version.strategy),
+    validFrom: version.validity.validFrom,
+    validUntil: version.validity.validUntil,
+    taxRatePercent: version.taxRatePercent,
+    currency: version.currency,
+    notes: version.notes,
+    publishedAt: version.publishedAt,
+    updatedAt: version.updatedAt,
+  }
+}
+
+/** `upsert` de una versión completa: alta con su identidad y actualización de lo mutable. */
+function tariffVersionUpsert(version: TariffVersion) {
+  return {
+    where: { id: version.id },
+    create: {
+      id: version.id,
+      seriesId: version.seriesId,
+      versionNumber: version.versionNumber,
+      createdAt: version.createdAt,
+      ...mutableTariffVersionFields(version),
+    },
+    update: mutableTariffVersionFields(version),
+  }
+}
 
 /**
  * ¿El error viene de publicar dos versiones de tarifa solapadas de la misma serie?
@@ -465,25 +498,6 @@ export class PrismaTariffPricingRepository implements TariffPricingRepository {
   }
 }
 
-/**
- * Columnas mutables de una versión de tarifa, compartidas por el *upsert* (`save`) y el alta
- * (`create`). El `id`, la serie, el número de versión y `createdAt` son inmutables: los pone cada
- * operación, no este mapeo.
- */
-function toTariffVersionColumns(version: TariffVersion) {
-  return {
-    status: catalogStatusToDb(version.status),
-    strategy: pricingStrategyToDb(version.strategy),
-    validFrom: version.validity.validFrom,
-    validUntil: version.validity.validUntil,
-    taxRatePercent: version.taxRatePercent,
-    currency: version.currency,
-    notes: version.notes,
-    publishedAt: version.publishedAt,
-    updatedAt: version.updatedAt,
-  }
-}
-
 export class PrismaTariffVersionRepository implements TariffVersionRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
@@ -503,20 +517,8 @@ export class PrismaTariffVersionRepository implements TariffVersionRepository {
   }
 
   async save(version: TariffVersion): Promise<void> {
-    const mutableFields = toTariffVersionColumns(version)
-
     try {
-      await this.prisma.tariffVersion.upsert({
-        where: { id: version.id },
-        create: {
-          id: version.id,
-          seriesId: version.seriesId,
-          versionNumber: version.versionNumber,
-          createdAt: version.createdAt,
-          ...mutableFields,
-        },
-        update: mutableFields,
-      })
+      await this.prisma.tariffVersion.upsert(tariffVersionUpsert(version))
     } catch (error) {
       // Defensa en profundidad: la comprobación previa del caso de uso no cubre dos publicaciones
       // concurrentes; aquí la base de datos ya ha rechazado el solape (CIF-89).
@@ -543,13 +545,47 @@ export class PrismaTariffVersionRepository implements TariffVersionRepository {
           seriesId: version.seriesId,
           versionNumber: version.versionNumber,
           createdAt: version.createdAt,
-          ...toTariffVersionColumns(version),
+          ...mutableTariffVersionFields(version),
         },
       })
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictError(
           `La serie "${version.seriesId}" ya tiene una versión de tarifa con el número ${version.versionNumber}`,
+        )
+      }
+
+      throw error
+    }
+  }
+
+  /**
+   * Publica la sucesora y cierra la predecesora en **una transacción** (ADR-0003 rev. 2 §10): si
+   * cualquiera de las dos escrituras falla —por ejemplo, porque el conjunto proyectado choca con la
+   * restricción de exclusión de CIF-89— no queda ninguna de las dos a medias.
+   *
+   * La predecesora se actualiza **antes** que la sucesora: el orden de bloqueo es siempre el mismo
+   * (de la más antigua a la más nueva) y dos publicaciones concurrentes de la misma serie no se
+   * bloquean en cruzado. Las invariantes las comprueba el caso de uso antes de llegar aquí.
+   */
+  async savePublishTransition(transition: TariffPublishTransition): Promise<void> {
+    const { successor, predecessor } = transition
+
+    try {
+      await this.prisma.$transaction(async (transaction) => {
+        if (predecessor !== null) {
+          await transaction.tariffVersion.update({
+            where: { id: predecessor.id },
+            data: mutableTariffVersionFields(predecessor),
+          })
+        }
+
+        await transaction.tariffVersion.upsert(tariffVersionUpsert(successor))
+      })
+    } catch (error) {
+      if (isPublishedTariffOverlapViolation(error)) {
+        throw new AmbiguousTariffError(
+          `Ya hay una versión de tarifa publicada que se solapa con la versión ${successor.versionNumber} de la serie "${successor.seriesId}"`,
         )
       }
 

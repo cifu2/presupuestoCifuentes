@@ -117,10 +117,13 @@ fusionar. Los flujos pendientes se añaden en el mismo PR que trae la funcionali
 
 - Cada test prepara y limpia su propio estado; nunca depende del orden de ejecución.
 - E2E de API y de UI: catálogo de demostración en memoria (`CATALOG_DEMO_MODE`), sin base de datos.
-- El catálogo de demostración siembra dos **borradores** de tarifa para el E2E de publicación: uno
-  con vigencia futura (publicarlo no cambia el precio vigente de su serie) y otro que solapa con la
-  tarifa publicada de la suya. No tienen tabla de precios, así que publicarlos no altera ningún
-  precio del configurador ni depende del orden de ejecución de los tests.
+- El catálogo de demostración siembra los **borradores** de tarifa que necesita el E2E de
+  publicación (CIF-544): dos con vigencia futura y sin predecesora (publicarlos no cambia el precio
+  vigente de su serie, CI-400), uno por proyecto de Playwright con **predecesora de vigencia
+  abierta** y precio distinto (CI-100 para `chromium` y CI-300 para `movil`: publicarlos cierra la
+  predecesora en su `validFrom` y el configurador pasa a dar el precio nuevo) y uno que empieza a la
+  vez que la tarifa publicada de su serie (CI-200), que es el caso `409` que nunca escribe. Los ids
+  y las series son distintos por proyecto para que `fullyParallel` no comparta estado mutable.
 - E2E con base de datos: hoy **ningún** E2E la usa. Si alguno la necesitara, hay que añadirle al job
   `e2e` el mismo servicio `postgres:17` (`cifuentes_test`) y el paso
   `DATABASE_URL="$TEST_DATABASE_URL" pnpm db:deploy` que ya tiene el job `calidad` (ver más abajo).
@@ -163,15 +166,18 @@ Por eso la suite levanta dos servidores con la misma build:
   ([ADR-0025](adr/0025-validacion-via-envio-por-entorno.md) §2-§3). Los specs con credencial —los que
   hacen `test.use({ baseURL: E2E_ADMIN_BASE_URL })`— corren en el servidor de administración de CI,
   nunca contra un despliegue: el token de pruebas solo vale para el servidor que levanta la suite.
-- `e2e/admin-tariff-publish.spec.ts` (CIF-86/CIF-87) cubre `503` —también con un id inexistente,
-  para demostrar que la guarda corre antes que cualquier otra comprobación—, `401` (sin cabecera y
-  con token incorrecto), `404 NOT_FOUND` con un id que no es UUID y con un UUID válido inexistente
-  (nunca `500`, hallazgo N2 de CIF-85), `200` con publicación idempotente —tanto al publicar un
-  borrador dos veces como al republicar una tarifa ya publicada, que conserva su `publishedAt`— y
-  `409 AMBIGUOUS_TARIFF` dejando el borrador intacto. Los ids de las tarifas del catálogo demo son
-  UUID canónicos (`0192f1b0-…`) porque el borde valida el `:id`; el spec usa los de las series
-  CI-100 y CI-400. Los borradores que siembra el catálogo demo son el mínimo para cubrirlo sin
-  panel: crear el borrador **desde la interfaz** llega con CIF-9 (flujo 3).
+- `e2e/admin-tariff-publish.spec.ts` (CIF-86/CIF-87/CIF-544) cubre `503` —también con un id
+  inexistente, para demostrar que la guarda corre antes que cualquier otra comprobación—, `401` (sin
+  cabecera y con token incorrecto), `404 NOT_FOUND` con un id que no es UUID y con un UUID válido
+  inexistente (nunca `500`, hallazgo N2 de CIF-85), `200` con publicación idempotente —tanto al
+  publicar un borrador dos veces como al republicar una tarifa ya publicada, que conserva su
+  `publishedAt`—, el **cierre de la predecesora de vigencia abierta** (ADR-0003 rev. 2 §8: la
+  respuesta trae `closedPredecessor` cerrado en el `validFrom` de la candidata y el configurador del
+  servidor de administración sirve el precio nuevo) y `409 AMBIGUOUS_TARIFF` dejando el borrador
+  intacto. Los ids de las tarifas del catálogo demo son UUID canónicos (`0192f1b0-…`) porque el
+  borde valida el `:id`; el spec usa los de las series CI-100 (chromium), CI-300 (movil), CI-200
+  (caso 409) y CI-400 (sin predecesora). Los borradores que siembra el catálogo demo son el mínimo
+  para cubrirlo sin panel: crear el borrador **desde la interfaz** llega con CIF-9 (flujo 3).
 
 ## Alcance por entorno: qué se valida en el preview y qué en CI (ADR-0025)
 
