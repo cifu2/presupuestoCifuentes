@@ -13,6 +13,12 @@
  * Playwright publica en **su** serie (`SUCCESSOR_DRAFTS`), porque con `fullyParallel` los dos
  * proyectos mutan a la vez el mismo servidor y no pueden compartir estado.
  *
+ * §12 («el panel dice la verdad») cierra el caso con lo que el panel sirve de verdad: una versión
+ * publicada se pinta con su fecha de entrada en vigor en «Vigente desde» y el aviso de la pantalla
+ * dice qué le pasa a la anterior al publicar (CIF-545). La aserción **no** observa el efecto de esta
+ * publicación en el panel: la página y las rutas HTTP cargan contenedores distintos del catálogo de
+ * demostración, con su propio catálogo en memoria cada una (hallazgo de CIF-545).
+ *
  * Los casos 503 y 401 no se pueden observar en el mismo servidor, porque son configuraciones de
  * entorno distintas: la suite levanta dos servidores y el bloque autenticado cambia de `baseURL`.
  * El configurador de este bloque es el del servidor de administración —el mismo proceso que acaba
@@ -23,7 +29,7 @@
 
 import { expect, test, type TestInfo } from '@playwright/test'
 
-import { E2E_ADMIN_BASE_URL, E2E_ADMIN_TOKEN } from './support/servers'
+import { E2E_ADMIN_BASE_URL, E2E_ADMIN_PANEL_PASSWORD, E2E_ADMIN_TOKEN } from './support/servers'
 
 /**
  * Borradores que siembra `src/infrastructure/demo/demo-catalog.ts`. Los ids son UUID canónicos
@@ -66,8 +72,10 @@ const SUCCESSOR_DRAFTS = {
   chromium: {
     id: '0192f1b0-0000-7000-8000-000000000102',
     versionNumber: 2,
+    seriesName: 'Serie CI-100',
     predecessorId: '0192f1b0-0000-7000-8000-000000000101',
     predecessorVersionNumber: 1,
+    predecessorValidFrom: '2026-01-01T00:00:00.000Z',
     validFrom: '2026-06-01T00:00:00.000Z',
     priceQuery: { seriesSlug: 'ci-100', widthMm: 900, heightMm: 2000 },
     // 500,00 €/m² × 1,8 m² exactos.
@@ -76,14 +84,27 @@ const SUCCESSOR_DRAFTS = {
   movil: {
     id: '0192f1b0-0000-7000-8000-000000000302',
     versionNumber: 2,
+    seriesName: 'Serie CI-300',
     predecessorId: '0192f1b0-0000-7000-8000-000000000301',
     predecessorVersionNumber: 1,
+    predecessorValidFrom: '2026-01-01T00:00:00.000Z',
     validFrom: '2026-07-01T00:00:00.000Z',
     priceQuery: { seriesSlug: 'ci-300', widthMm: 800, heightMm: 2000 },
     // Precio fijo de la tabla del borrador.
     expectedBasePrice: '1620.00',
   },
 } as const
+
+/**
+ * El día de entrada en vigor tal como lo pinta el panel: la columna «Vigente desde» usa el formato
+ * del idioma de la página (`formatDay`, `src/ui/admin/panel-navigation.ts`). Se calcula con la misma
+ * llamada a `Intl` que la interfaz para que el E2E afirme el texto servido, no una cadena copiada.
+ */
+function panelDay(isoInstant: string): string {
+  return new Intl.DateTimeFormat('es', { dateStyle: 'medium', timeZone: 'UTC' }).format(
+    new Date(isoInstant),
+  )
+}
 
 function byProject<T>(drafts: Record<string, T>, testInfo: TestInfo): T {
   const draft = drafts[testInfo.project.name]
@@ -199,6 +220,7 @@ test.describe('con ADMIN_API_TOKEN, el endpoint de publicación', () => {
 
   test('publica sobre la predecesora abierta, la cierra en el validFrom y deja el precio nuevo', async ({
     request,
+    page,
   }, testInfo) => {
     const draft = byProject(SUCCESSOR_DRAFTS, testInfo)
     const published = await publish(request, draft.id)
@@ -216,7 +238,7 @@ test.describe('con ADMIN_API_TOKEN, el endpoint de publicación', () => {
       id: draft.predecessorId,
       versionNumber: draft.predecessorVersionNumber,
       status: 'published',
-      validFrom: '2026-01-01T00:00:00.000Z',
+      validFrom: draft.predecessorValidFrom,
       validUntil: draft.validFrom,
     })
 
@@ -238,6 +260,30 @@ test.describe('con ADMIN_API_TOKEN, el endpoint de publicación', () => {
     expect(price.status()).toBe(200)
     expect(priceBody.status).toBe('priced')
     expect(priceBody.breakdown.basePrice.amount).toBe(draft.expectedBasePrice)
+
+    // §12: el panel dice la misma verdad que la respuesta de publicación. La página del panel y las
+    // rutas HTTP del catálogo de demostración no comparten contenedor —cada capa resuelve el suyo, con
+    // su propio catálogo en memoria—, así que la aserción va sobre lo que el panel sí sirve: una
+    // versión publicada con su fecha de entrada en vigor en «Vigente desde», la misma columna y el
+    // mismo formato con los que anunciará la fecha de la versión nueva (CIF-545).
+    const session = await page.request.post('/api/admin/session', {
+      data: { password: E2E_ADMIN_PANEL_PASSWORD },
+    })
+
+    expect(session.status()).toBe(200)
+
+    await page.goto('/es/admin/tarifas')
+
+    const predecessorRow = page
+      .getByRole('row')
+      .filter({ hasText: draft.seriesName })
+      .filter({ hasText: `v${draft.predecessorVersionNumber}` })
+
+    await expect(predecessorRow).toContainText(panelDay(draft.predecessorValidFrom))
+    // Y el aviso de la pantalla explica qué le pasa a la versión anterior, sin prometer dos pasos.
+    await expect(page.getByRole('main')).toContainText(
+      'deja sin vigencia a la anterior en ese mismo instante',
+    )
   })
 
   test('publica el borrador de su proyecto sin predecesora y repetirlo es idempotente', async ({

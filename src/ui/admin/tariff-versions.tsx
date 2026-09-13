@@ -53,6 +53,11 @@ export function TariffVersions({
   }
 
   const isEmpty = state === 'empty' || versions.length === 0
+  // El aviso de `TARIFF_NOT_EDITABLE` (ADR-0003 rev. 2 §12, CIF-545): una versión publicada es el
+  // registro del precio que estuvo vigente, así que no se edita, y el cambio va en la versión nueva
+  // —que entra en vigor en su fecha y deja sin vigencia a la anterior en ese mismo instante—. Solo
+  // se pinta cuando hay alguna publicada: es cuando la regla existe para el propietario.
+  const hasPublishedVersion = versions.some((version) => version.status === 'published')
 
   // La pista de la CTA reutiliza la clave de la fase 1 de series (D3 de CIF-361): describe el mismo
   // «todavía no se puede escribir» sin tocar el inventario de claves.
@@ -67,6 +72,7 @@ export function TariffVersions({
           <span>{t('tariffs.frozen')}</span>
         </span>
       </Alert>
+      {hasPublishedVersion ? <Alert tone="info">{t('tariffs.notEditable')}</Alert> : null}
       {isEmpty ? (
         <EmptyState
           icon={<TagIcon className="size-8" />}

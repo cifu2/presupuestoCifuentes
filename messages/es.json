@@ -116,6 +116,8 @@
     },
     "confirm": {
       "publishTitle": "Publicar serie",
+      "publishTariffTitle": "Publicar la versión",
+      "publishTariffBody": "Entra en vigor el {date} y, en ese mismo instante, la versión anterior deja de estar vigente. Los presupuestos ya emitidos no cambian.",
       "cancel": "Cancelar",
       "publishCta": "Publicar ahora"
     },
@@ -236,6 +238,7 @@
       "edit": "Editar",
       "caption": "Versiones de tarifa de la serie. Solo una está vigente.",
       "allCaption": "Todas las versiones de tarifa del catálogo.",
+      "notEditable": "Una tarifa publicada no se edita: es el registro del precio que estuvo vigente. Los precios cambian con una versión nueva, que entra en vigor en su fecha y deja sin vigencia a la anterior en ese mismo instante.",
       "frozen": "El precio queda congelado al emitir el presupuesto: publicar una tarifa nueva no cambia los presupuestos ya enviados."
     },
     "tariffsEmpty": "Sin tarifas para esta serie.",
@@ -274,7 +277,7 @@
     "SERIES_IN_USE": "La serie tiene una tarifa publicada y vigente; archívala antes de desactivarla.",
     "ITEM_IN_USE": "El elemento está en uso en el catálogo vivo; retíralo antes de desactivarlo.",
     "EMPTY_PRICE_TABLE": "La tarifa no tiene precios cargados; cárgalos antes de publicarla.",
-    "TARIFF_NOT_EDITABLE": "Solo se editan los precios de una tarifa en borrador."
+    "TARIFF_NOT_EDITABLE": "Una tarifa publicada no se edita. El cambio va en un borrador, que entra en vigor en su fecha."
   },
   "ManualQuoteReasons": {
     "size_above_series_max": "La medida {width}×{height} mm supera el máximo de la serie \"{series}\" ({maxWidth}×{maxHeight} mm)",
