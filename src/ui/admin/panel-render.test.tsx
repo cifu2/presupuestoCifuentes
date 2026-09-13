@@ -231,6 +231,40 @@ describe('shell del panel: tarifas e idiomas', () => {
     expect(english).toContain('Effective from')
   })
 
+  it('dice la verdad sobre una tarifa publicada y cuándo entra en vigor la nueva (ADR-0003 rev. 2 §12)', async () => {
+    const spanish = render(
+      'es',
+      <TariffVersions state="ready" versions={await reader.listTariffVersions()} />,
+    )
+    const english = render(
+      'en',
+      <TariffVersions
+        state="ready"
+        versions={await createFixtureAdminCatalogReader('en').listTariffVersions()}
+      />,
+    )
+
+    // No se promete una edición que no existe, ni una salida que el motor no tenga: el cambio va en
+    // la versión nueva y entra en vigor en su fecha, sin dejar la serie sin tarifa vigente.
+    expect(spanish).toContain('Una tarifa publicada no se edita')
+    expect(spanish).toContain('deja sin vigencia a la anterior en ese mismo instante')
+    expect(english).toContain('A published price list is not edited')
+    expect(english).toContain('puts the previous one out of force at that very instant')
+    // El aviso del panel habla el idioma del propietario, no el del motor.
+    expect(spanish).not.toContain('TARIFF_NOT_EDITABLE')
+    expect(english).not.toContain('TARIFF_NOT_EDITABLE')
+  })
+
+  it('solo pinta el aviso de tarifa publicada cuando alguna versión lo está', async () => {
+    const drafts = (await reader.listTariffVersions()).filter(
+      (version) => version.status !== 'published',
+    )
+    const markup = render('es', <TariffVersions state="ready" versions={drafts} />)
+
+    expect(drafts).not.toHaveLength(0)
+    expect(markup).not.toContain('Una tarifa publicada no se edita')
+  })
+
   it('cubre los estados vacío, carga, error y sin permiso de tarifas', async () => {
     const versions = await reader.listTariffVersions()
 

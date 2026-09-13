@@ -116,6 +116,8 @@
     },
     "confirm": {
       "publishTitle": "Publish series",
+      "publishTariffTitle": "Publish version",
+      "publishTariffBody": "It enters into force on {date} and, at that very instant, the previous version stops being in force. Quotes already issued do not change.",
       "cancel": "Cancel",
       "publishCta": "Publish now"
     },
@@ -236,6 +238,7 @@
       "edit": "Edit",
       "caption": "Price list versions for the series. Only one is current.",
       "allCaption": "All price list versions in the catalogue.",
+      "notEditable": "A published price list is not edited: it is the record of the price that was in force. Prices change with a new version, which enters into force on its date and puts the previous one out of force at that very instant.",
       "frozen": "The price is frozen when a quote is issued: publishing a new price list does not change quotes already sent."
     },
     "tariffsEmpty": "No price lists for this series.",
@@ -274,7 +277,7 @@
     "SERIES_IN_USE": "The series has a published tariff in force; archive it before deactivating the series.",
     "ITEM_IN_USE": "The item is in use in the live catalogue; remove it before deactivating it.",
     "EMPTY_PRICE_TABLE": "The tariff has no prices loaded; load them before publishing it.",
-    "TARIFF_NOT_EDITABLE": "Only draft tariff prices can be edited."
+    "TARIFF_NOT_EDITABLE": "A published price list is not edited. The change goes in a draft, which enters into force on its date."
   },
   "ManualQuoteReasons": {
     "size_above_series_max": "The measurement {width}×{height} mm exceeds the maximum size of the \"{series}\" series ({maxWidth}×{maxHeight} mm)",
