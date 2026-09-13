@@ -15,7 +15,8 @@ enviado no puede cambiar cuando se actualicen las tarifas.
 
 1. **Modelo de tarifa versionada con vigencia.** Cada serie tiene una o varias versiones de tarifa
    con `validFrom`, `validUntil` (opcional) y estado (borrador/publicada/archivada). En cada momento
-   hay como máximo una versión vigente por serie.
+   hay como máximo una versión vigente por serie. La versión vigente se cierra automáticamente al
+   publicar su sucesora (revisión 2).
 2. **El motor soporta las tres estrategias y se elige por serie** (así la decisión de negocio no
    condiciona el código):
    - precio base por m² × superficie,
@@ -59,3 +60,67 @@ enviado no puede cambiar cuando se actualicen las tarifas.
   único y auditable; el cliente solo muestra el resultado que devuelve el servidor.
 - **Tarifas en fichero de configuración del repo:** rechazado; el propietario debe poder cambiarlas
   desde el panel sin depender de nadie técnico.
+
+## Revisión 2 (2026-09-13): publicar cierra la predecesora de vigencia abierta
+
+**Decide:** CTO (CIF-523), a petición de Backend en la revisión del criterio 1 de CIF-9.
+
+La decisión 1 dejaba implícito qué ocurre con la versión que estaba vigente cuando se publica su
+sucesora. El caso normal en producción es una versión publicada con **vigencia abierta**
+(`validUntil` vacío) y hoy `publishTariffVersion` la rechaza: la candidata se solapa con ella
+(`assertNoOverlappingPublishedTariffs` → `409 AMBIGUOUS_TARIFF`) y no existe ningún caso de uso que
+la cierre (`TariffVersion.archive()` está en el dominio, pero sin caso de uso, ruta ni botón). Con
+la vigencia abierta el propietario **no puede publicar** su versión siguiente, así que el criterio 1
+de CIF-9 («cambia un precio y se refleja en el configurador en menos de 5 minutos sin tocar código»)
+no se cumple sobre series ya publicadas.
+
+### Decisión
+
+8. **Publicar cierra la predecesora de vigencia abierta.** Al publicar una candidata, el caso de uso
+   `publishTariffVersion` cierra —en la **misma escritura atómica**— la versión publicada de la
+   misma serie que (i) sigue con vigencia abierta y (ii) empieza antes que la candidata, fijando su
+   `validUntil` en el `validFrom` de la candidata. El intervalo es semiabierto, así que no hay hueco
+   ni solape: la predecesora deja de estar vigente exactamente cuando entra la sucesora. La
+   predecesora **conserva el estado `published`** (es el registro histórico del precio que estuvo
+   vigente); no se archiva y no se borra.
+9. **Solo se cierra una predecesora, y solo si el cierre es válido.** Siguen fallando cerrado (409
+   `AMBIGUOUS_TARIFF`, sin tocar ninguna fila) los casos que hoy fija la invariante: solape con una
+   versión publicada de vigencia **cerrada**, candidata con `validFrom` **anterior o igual** al de
+   la predecesora abierta (cerrar hacia atrás sería inválido) y más de una versión publicada abierta
+   en la misma serie. La decisión no relaja la invariante: la evalúa sobre el conjunto
+   **proyectado** (candidata publicada + predecesora cerrada).
+10. **Una sola operación de escritura.** El puerto de tarifas gana una operación explícita que
+    persiste el cierre y la publicación de forma atómica (nombre a elección de Backend, p. ej.
+    `savePublishTransition`), implementada en Prisma con una transacción: si falla, no queda ni el
+    cierre ni la publicación a medias. La validación sigue **antes** de escribir (hallazgo N5 de
+    CIF-78) y el cierre se calcula en el dominio: `ValidityPeriod` gana el cierre explícito y
+    `TariffVersion` el método que lo aplica, solo desde `published` y solo con una fecha posterior a
+    su `validFrom`.
+11. **Los presupuestos emitidos no cambian.** La decisión 6 sigue intacta: el presupuesto guarda su
+    `tariffVersionId` y su instantánea, así que cerrar o publicar tarifas no reescribe precios ya
+    emitidos.
+12. **El panel dice la verdad.** La confirmación de publicación del panel (CIF-243) anuncia la fecha
+    de entrada en vigor de la versión nueva y que la anterior deja de estar vigente en ese instante;
+    el aviso de `TARIFF_NOT_EDITABLE` no puede prometer una salida que no exista. Cargar la tabla de
+    precios sigue siendo obligatorio antes de publicar (`EmptyPriceTableError`).
+
+### Consecuencias
+
+- El propietario cambia precios en **un solo paso** sobre una serie publicada, sin ventana en la que
+  la serie se quede sin tarifa vigente y pase a presupuesto manual.
+- `publishTariffVersion` pasa a ser una escritura de dos filas: hay que revisar los tests y el E2E
+  que hoy fijan el 409 para el solape con una vigencia abierta (`publish-tariff-version.test.ts`,
+  `repositories.test.ts`, `e2e/admin-tariff-publish.spec.ts`) y añadir el caso nuevo: candidata
+  sobre predecesora abierta → 200, predecesora cerrada en la fecha de entrada y configurador
+  sirviendo el precio nuevo. El catálogo de demo necesita una predecesora abierta para el camino
+  feliz.
+- La restricción de exclusión de la base (CIF-89) sigue siendo la última red y **no cambia**: el
+  rango cerrado ya no solapa con el de la sucesora.
+
+### Alternativas consideradas
+
+- **(b) Caso de uso `archiveTariffVersion` aparte.** Descartada: dos acciones en el panel y una
+  ventana en la que la serie no tiene tarifa vigente, de modo que el configurador degrada a
+  presupuesto manual entre ambos pasos.
+- **(c) Dejar la creación de versiones fuera del MVP.** Descartada: rebaja la promesa del criterio 1
+  de CIF-9, que es el objetivo del panel de administración.
