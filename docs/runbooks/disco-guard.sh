@@ -6,11 +6,16 @@
 # datos ni worktrees de issues activos: retirar un worktree cerrado es una decisión humana y está
 # en el procedimiento manual de docs/operacion.md, apartado 4.3.
 #
-# Este fichero es la copia canónica y revisable. En el host se instala con:
+# Este fichero es la copia canónica y revisable. En el host se instalan los tres ficheros del
+# directorio:
 #   install -m 0755 docs/runbooks/disco-guard.sh /usr/local/sbin/paperclip-disco-guard.sh
-# y se ejecuta con `paperclip-disco-guard.timer` (diario, 04:15, más 15 min tras el arranque).
+#   install -m 0644 docs/runbooks/paperclip-disco-guard.service /etc/systemd/system/
+#   install -m 0644 docs/runbooks/paperclip-disco-guard.timer   /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now paperclip-disco-guard.timer
 #
 # Umbrales y procedimiento: docs/operacion.md, apartados 3 y 4.3.
+# Códigos de salida: 0 normal, 1 aviso (la unidad no se marca failed: `SuccessExitStatus=1`),
+# 2 crítico, 3 no se pudo medir el disco.
 set -uo pipefail
 
 UMBRAL_AVISO=${UMBRAL_AVISO:-80}
@@ -27,6 +32,16 @@ mkdir -p "$ESTADO_DIR"
 uso=$(df --output=pcent / | tail -n1 | tr -dc '0-9')
 libre=$(df -h --output=avail / | tail -n1 | tr -d ' ')
 ts=$(date -Is)
+
+# Si `df` no devuelve un número no se sabe cuánto disco hay: nunca se borra la marca ni se sale 0,
+# porque eso silenciaría la alerta justo cuando la medición está rota (fail-closed).
+case "$uso" in
+  '' | *[!0-9]*)
+    logger -t "$TAG" -p daemon.err "no se pudo medir el uso de / (df devolvio '${uso}'); se conserva la marca y se sale con 3"
+    exit 3
+    ;;
+esac
+
 logger -t "$TAG" -p daemon.info "uso raiz ${uso}% (libre ${libre}); umbral aviso ${UMBRAL_AVISO}%, critico ${UMBRAL_CRITICO}%"
 
 if [ "$uso" -ge "$UMBRAL_AVISO" ]; then
@@ -38,8 +53,9 @@ if [ "$uso" -ge "$UMBRAL_AVISO" ]; then
   rm -rf /root/.cache/pnpm
   pnpm store prune >/dev/null 2>&1 || true
 
-  # 2. Journal del sistema y caché de paquetes .deb.
-  journalctl --vacuum-size=120M >/dev/null 2>&1 || true
+  # 2. Caché de paquetes .deb. El journal NO se recorta aquí: es el rastro forense del incidente y
+  #    este host lo tiene acotado por `SystemMaxUse=200M` (journald.conf). Un recorte del journal es
+  #    una decisión humana y consciente, no un efecto colateral de la guarda.
   apt-get clean >/dev/null 2>&1 || true
 
   # 3. Artefactos de build regenerables con más de $DIAS_ARTEFACTOS días. Solo nombres de

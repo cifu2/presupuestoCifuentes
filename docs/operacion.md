@@ -169,11 +169,22 @@ journal y deja el fichero `/var/lib/paperclip-disco-guard/ALERTA` mientras siga 
 | ≥ 85 %     | incumple el criterio de cierre | saneamiento manual: retirar worktrees de issues cerrados                     |
 | ≥ 92 %     | **crítico**                    | la guarda sale con estado 2 (systemd la marca `failed`) y se escala a DevOps |
 
+La guarda sale `0` en operación normal, `1` con aviso, `2` en crítico y `3` si `df` no devuelve un
+número (ahí no toca la marca: una medición rota no puede silenciar la alerta). La unidad declara
+`SuccessExitStatus=1`, así que `failed` en systemd significa crítico o medición rota, no el aviso;
+con aviso lo que queda es el fichero `ALERTA`.
+
 El `paperclip-disco-guard.timer` la ejecuta a diario (04:15 ± 10 min) y 15 minutos después del
-arranque. Solo borra material regenerable: metadatos de pnpm, journal, `.deb` cacheados y artefactos
-de build (`.next`, `coverage`, `playwright-report`, `test-results`, `tsconfig.tsbuildinfo`) con más
-de dos días. **No** borra el store de pnpm (lo comparten todos los workspaces), ni fuentes, ni
-worktrees: retirar un worktree es una decisión con estado de tarea delante y está abajo.
+arranque. Solo borra material regenerable: metadatos de pnpm, `.deb` cacheados y artefactos de build
+(`.next`, `coverage`, `playwright-report`, `test-results`, `tsconfig.tsbuildinfo`) con más de dos
+días. **No** borra el store de pnpm (lo comparten todos los workspaces), ni fuentes, ni worktrees:
+retirar un worktree es una decisión con estado de tarea delante y está abajo. Tampoco recorta el
+**journal**, que no es regenerable y es el rastro que explica el incidente: este host lo acota con
+`SystemMaxUse=200M` en `/etc/systemd/journald.conf`, y un recorte mayor es una decisión humana
+(`journalctl --vacuum-size=120M`, se conservan los últimos 120 MB y el resto se descarta).
+
+La guarda son tres ficheros de `docs/runbooks/` (`disco-guard.sh`, `paperclip-disco-guard.service` y
+`paperclip-disco-guard.timer`), con el comando de instalación en la cabecera del script.
 
 **Saneamiento manual, de mayor a menor beneficio** (medido el 2026-09-13 en este host: de 253 MB
 libres al 99 % a 4,5 GB libres al 76 %):
@@ -181,7 +192,24 @@ libres al 99 % a 4,5 GB libres al 76 %):
 1. **Worktrees de issues cerrados.** Es el grueso del consumo: cada uno arrastra su `node_modules` y
    su `.next`. Son worktrees del mismo repositorio (los objetos viven en el `.git` compartido), así
    que borrar el directorio **no pierde ningún commit**; solo descarta cambios sin commitear, y por
-   eso el criterio mira el estado del issue.
+   eso el criterio mira el estado del issue. Los tres filtros, copiables:
+
+   ```bash
+   # 1) Issues en estado terminal (se leen del control plane; el token va en el entorno, no se imprime)
+   curl -s -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+     "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/issues?limit=1000" |
+     python3 -c 'import json,sys
+   d=json.load(sys.stdin); items=d if isinstance(d,list) else d.get("issues",[])
+   print("\n".join(i["identifier"] for i in items if i["status"] in ("done","cancelled")))'
+
+   # 2) El worktree no se ha tocado en los últimos 90 minutos (sin salida = candidato)
+   find /ruta/al/worktree -newermt '-90 minutes' -print -quit
+
+   # 3) Ningún proceso con el directorio abierto (sin salida = candidato)
+   lsof +D /ruta/al/worktree 2>/dev/null | tail -n +2
+   fuser -m /ruta/al/worktree 2>/dev/null
+   ```
+
    - Se retiran solo los del issue en estado terminal (`done`/`cancelled`) según la API de Paperclip,
      sin tocar en los últimos 90 minutos y sin ningún proceso con el directorio abierto. Los de
      issues activos (`in_progress`, `todo`, `in_review`, `blocked`) no se tocan nunca.
@@ -195,6 +223,7 @@ libres al 99 % a 4,5 GB libres al 76 %):
      store (comprobado el 2026-09-13: 910 MB en 5 s).
    - Después, `git worktree prune` y `git gc --prune=now` en el repositorio (el `.git` del proyecto
      pasó de 28 MB a 3,7 MB).
+
 2. **Cachés compartidas.** `pnpm store prune` y borrar `/root/.cache/pnpm` (metadatos, se
    regeneran). El store en sí no se borra: reconstruirlo cuesta una descarga completa.
 3. **Artefactos de build** del resto de workspaces (mismos nombres que la guarda). Regenerables.
