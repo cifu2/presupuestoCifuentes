@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { PrismaClient } from '@prisma/client'
 
+import { ValidityPeriod } from '@/domain/catalog/validity-period'
 import { makeTariffVersion } from '@/domain/catalog/testing/factories'
 import { AmbiguousTariffError } from '@/domain/shared/errors'
 
@@ -201,5 +202,86 @@ describe('PrismaTariffVersionRepository.save ante una publicación concurrente',
     const repository = repositoryThrowing(failure)
 
     await expect(repository.save(makeTariffVersion())).rejects.toBe(failure)
+  })
+})
+
+/**
+ * Traducción del borde en `savePublishTransition` (CIF-544/CIF-572). Desde CIF-544 publicar ya no
+ * pasa por `save`, sino por la transacción que publica la sucesora y cierra la predecesora: si la
+ * traducción de la carrera se queda solo en `save`, el entrelazado que aborta la base vuelve a salir
+ * como un 500 por el camino que el caso de uso usa de verdad. El test de integración lo fuerza
+ * contra PostgreSQL, pero el cruce es estocástico; aquí se fija la cadena completa —error de Prisma
+ * → `AmbiguousTariffError` (409)— en las dos sentencias de la transacción.
+ */
+describe('PrismaTariffVersionRepository.savePublishTransition ante una publicación concurrente', () => {
+  const transition = () => ({
+    successor: makeTariffVersion({ id: 'tariff-ci-100-v2', versionNumber: 2 }),
+    predecessor: makeTariffVersion({
+      id: 'tariff-ci-100-v1',
+      versionNumber: 1,
+      validity: ValidityPeriod.of(
+        new Date('2026-01-01T00:00:00.000Z'),
+        new Date('2026-06-01T00:00:00.000Z'),
+      ),
+    }),
+  })
+
+  /** Doble de Prisma: la transacción falla al ejecutar la sentencia indicada. */
+  const repositoryFailingOn = (statement: 'update' | 'upsert', error: unknown) =>
+    new PrismaTariffVersionRepository({
+      $transaction: (run: (transaction: unknown) => Promise<void>) =>
+        run({
+          tariffVersion: {
+            update: () => (statement === 'update' ? Promise.reject(error) : Promise.resolve({})),
+            upsert: () => (statement === 'upsert' ? Promise.reject(error) : Promise.resolve({})),
+          },
+        }),
+    } as unknown as PrismaClient)
+
+  const deadlockError = {
+    name: 'PrismaClientKnownRequestError',
+    code: 'P2034',
+    message:
+      'Transaction failed due to a write conflict or a deadlock. Please retry your transaction',
+    meta: {
+      driverAdapterError: {
+        cause: {
+          originalCode: '40P01',
+          originalMessage: 'deadlock detected',
+          kind: 'TransactionWriteConflict',
+        },
+      },
+    },
+  }
+
+  const exclusionViolationError = {
+    name: 'PrismaClientKnownRequestError',
+    code: 'P2039',
+    message:
+      'Database error. Code: `23P01`. Message: `conflicting key value violates exclusion constraint',
+    meta: { driverAdapterError: { cause: { originalCode: '23P01', kind: 'postgres' } } },
+  }
+
+  it('traduce el bloqueo mutuo (40P01/P2034) al error de dominio, no a un 500', async () => {
+    const repository = repositoryFailingOn('upsert', deadlockError)
+
+    await expect(repository.savePublishTransition(transition())).rejects.toThrow(
+      AmbiguousTariffError,
+    )
+  })
+
+  it('traduce la violación de exclusión (23P01) al mismo error de dominio', async () => {
+    const repository = repositoryFailingOn('update', exclusionViolationError)
+
+    await expect(repository.savePublishTransition(transition())).rejects.toThrow(
+      AmbiguousTariffError,
+    )
+  })
+
+  it('deja pasar cualquier otro error de la transacción sin disfrazarlo de carrera', async () => {
+    const failure = Object.assign(new Error('conexión cerrada'), { code: 'P1017' })
+    const repository = repositoryFailingOn('upsert', failure)
+
+    await expect(repository.savePublishTransition(transition())).rejects.toBe(failure)
   })
 })

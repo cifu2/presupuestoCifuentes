@@ -874,7 +874,7 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
        *
        * La costura va en `savePublishTransition` y no en `save` porque desde CIF-544 publicar pasa
        * por ahí: con la costura en `save` los entrelazados forzados no llegarían a la transición y
-       * los tests de la carrera dejarían de ejercitarla (CIF-559/CIF-542).
+       * los tests de la carrera dejarían de ejercitarla (CIF-544, CIF-572).
        */
       function withPublishSeam(beforeWrite: () => Promise<void>): TariffVersionRepository {
         return {
@@ -1047,15 +1047,20 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
      * El cruce es determinista y no depende del scheduling: cada transacción bloquea una fila y pide
      * la que tiene la otra, en orden inverso, así que el círculo se forma siempre (a diferencia de
      * la carrera de dos `save` simultáneos, que solo a veces se cruza).
+     *
+     * Las dos series son nuevas en cada pasada (`randomUUID`): el test nació sobre `86b1cc3` con ids
+     * fijos y CIF-544 (#98) sembró después una de esas filas como fixture (`failedTransitionSeries`),
+     * así que el `createMany` chocaba con la clave primaria en el head integrado (CIF-572).
      */
     describe('bloqueo mutuo real de PostgreSQL (CIF-542)', () => {
-      const SERIES_A = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc'
-      const SERIES_B = 'dddddddd-dddd-7ddd-8ddd-dddddddddddd'
+      const SERIES_A = randomUUID()
+      const SERIES_B = randomUUID()
 
-      const seriesRow = (id: string, order: number, suffix: string) => ({
+      // El `code` es `VarChar(32)`: el sufijo corto del uuid basta para que las dos filas sean únicas.
+      const seriesRow = (id: string, order: number) => ({
         id,
-        code: `CI-MUTEX-${suffix}`,
-        slug: `ci-mutex-${suffix}`,
+        code: `CI-MUTEX-${id.slice(0, 8)}`,
+        slug: `ci-mutex-${id.slice(0, 8)}`,
         status: 'PUBLISHED' as const,
         minWidthMm: 600,
         maxWidthMm: 1000,
@@ -1066,7 +1071,7 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
 
       it('la base aborta una de las dos transacciones con 40P01 y el adaptador lo reconoce', async () => {
         await prisma.doorSeries.createMany({
-          data: [seriesRow(SERIES_A, 30, 'A'), seriesRow(SERIES_B, 31, 'B')],
+          data: [seriesRow(SERIES_A, 30), seriesRow(SERIES_B, 31)],
         })
 
         try {

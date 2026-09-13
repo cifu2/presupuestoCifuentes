@@ -209,10 +209,13 @@ export function isPublishedTariffOverlapViolation(error: unknown): boolean {
  * que el 409 no dependa de que Prisma siga anotando `originalCode` —quien busque «40P01» en el log
  * de Prisma no lo verá—.
  *
- * El `kind` cubre también el 40001 (fallo de serialización), así que solo se acepta en el `upsert`
- * de una sola sentencia de `save` (READ COMMITTED), donde el único cruce posible es el índice de
- * exclusión; no es un predicado general para caminos con transacciones de varias sentencias, donde
- * un 40001 podría venir de otra cosa.
+ * El `kind` cubre también el 40001 (fallo de serialización), así que se acepta solo en los dos
+ * caminos de escritura de tarifas —el `upsert` de una sentencia de `save` y la transacción de dos
+ * sentencias de `savePublishTransition`, por la que publica el caso de uso desde CIF-544—, que
+ * corren con el nivel de aislamiento por defecto del servidor (READ COMMITTED; el cliente no fija
+ * `isolationLevel`), donde el 40001 no puede darse y el único cruce posible entre dos publicaciones
+ * de la misma serie es la restricción de exclusión. No es un predicado general: en un camino con
+ * SERIALIZABLE o REPEATABLE READ, donde el 40001 sí aparece, habría que ceñirse al SQLSTATE 40P01.
  */
 export function isDeadlockDetected(error: unknown): boolean {
   return errorGraphMentions(error, [POSTGRES_DEADLOCK_DETECTED, TRANSACTION_WRITE_CONFLICT_KIND])
@@ -643,6 +646,11 @@ export class PrismaTariffVersionRepository implements TariffVersionRepository {
    * La predecesora se actualiza **antes** que la sucesora: el orden de bloqueo es siempre el mismo
    * (de la más antigua a la más nueva) y dos publicaciones concurrentes de la misma serie no se
    * bloquean en cruzado. Las invariantes las comprueba el caso de uso antes de llegar aquí.
+   *
+   * La carrera con otra publicación de la misma serie se traduce igual que en `save`: la
+   * transacción se deshace entera, así que da lo mismo que la rechace la restricción de exclusión
+   * (23P01) o que PostgreSQL aborte una de las dos por bloqueo mutuo (40P01) — el borde responde
+   * `409 AMBIGUOUS_TARIFF` y no un 500 (CIF-542, CIF-572).
    */
   async savePublishTransition(transition: TariffPublishTransition): Promise<void> {
     const { successor, predecessor } = transition
