@@ -220,4 +220,31 @@ describe('POST /api/admin/tariff-versions', () => {
       before.length,
     )
   })
+
+  it('sin `notes` hereda las del origen y con `notes: null` las vacía (H1 de CIF-522)', async () => {
+    // El catálogo de demostración no siembra notas, así que el origen se abre aquí: la regresión es
+    // que el esquema del borde convertía «omitido» en «bórralas» con `.default(null)`, y el caso de
+    // uso solo hereda cuando el valor llega `undefined`.
+    const origin = await post({
+      seriesId: SERIES_ID,
+      strategy: 'per_square_metre',
+      taxRatePercent: '21',
+      notes: 'NOTA-DEL-ORIGEN',
+    })
+    const originDraft = (await origin.json()).data
+
+    expect(origin.status).toBe(201)
+
+    const inherited = await post({ seriesId: SERIES_ID, cloneFromVersionId: originDraft.id })
+    const cleared = await post({
+      seriesId: SERIES_ID,
+      cloneFromVersionId: originDraft.id,
+      notes: null,
+    })
+
+    expect(inherited.status).toBe(201)
+    expect((await inherited.json()).data.notes).toBe('NOTA-DEL-ORIGEN')
+    // `null` explícito sigue significando «vaciar a propósito»: no se confunde con omitir.
+    expect((await cleared.json()).data.notes).toBeNull()
+  })
 })
