@@ -59,6 +59,22 @@ aviso.
 4. **Adaptador** (`src/infrastructure`): lee/escribe PostgreSQL, renderiza el PDF, envía el email.
 5. El borde traduce el resultado o el error de dominio a una respuesta HTTP con código estable.
 
+### Un contenedor por proceso, no por grafo de módulos
+
+Next.js compila el servidor en **varios grafos de módulos**: la capa RSC de las páginas y la de las
+rutas HTTP son dos, y cada una evalúa `src/composition/container.ts` por su cuenta. Una caché a
+nivel de módulo da, por tanto, un valor distinto a cada capa. Con `DATABASE_URL` no se nota —las dos
+leen la misma base—, pero en modo demostración cada capa se quedaba con su propio catálogo en
+memoria: el panel seguía pintando «Borrador» después de que `POST /api/admin/tariff-versions/:id/publish`
+respondiera `published` (CIF-577, hallazgo del E2E de CIF-545).
+
+`createContainer()` se memoiza en un registro sobre `globalThis` (`src/composition/process-singleton.ts`),
+que sí es único en el proceso, y las dos capas comparten la misma instancia. **Alcance: un proceso.**
+En Vercel cada ruta es una función distinta —procesos separados—, así que esto no convierte el modo
+demostración en el catálogo de un despliegue de preview; para eso está el seed sobre la base
+(`docs/despliegue.md` §3.1). Lo que garantiza es que la demo y el `next start` local se comporten
+como una sola aplicación, que es lo que un E2E del panel necesita poder observar.
+
 ## Ejemplo: cómo se añade un caso de uso
 
 1. Define o reutiliza el puerto en `src/application/ports` (p. ej. `TariffProvider`).

@@ -74,6 +74,8 @@ import {
   PrismaTariffVersionRepository,
 } from '@/infrastructure/persistence/prisma/repositories'
 
+import { getProcessSingleton } from './process-singleton'
+
 /**
  * Raíz de composición: único lugar donde se conectan puertos con adaptadores (ADR-0001).
  *
@@ -81,8 +83,15 @@ import {
  * - `prisma` cuando hay `DATABASE_URL`: persistencia real en PostgreSQL.
  * - `demo` cuando no la hay (o `CATALOG_DEMO_MODE=true`): catálogo de demostración en memoria, para
  *   desarrollo y E2E sin base de datos. Los presupuestos y solicitudes se pierden al reiniciar.
+ *
+ * `createContainer()` devuelve **un contenedor por proceso y modo** (`process-singleton.ts`), no uno
+ * por grafo de módulos: las páginas (RSC) y las rutas HTTP comparten el mismo catálogo en memoria,
+ * que es lo que exige el modo demostración para comportarse como una sola aplicación (CIF-577).
  */
 export type CatalogMode = 'prisma' | 'demo'
+
+/** Clave del contenedor de demostración en el registro por proceso (`process-singleton.ts`). */
+const DEMO_CONTAINER_KEY = 'catalog:demo'
 
 export interface Container {
   readonly mode: CatalogMode
@@ -208,20 +217,17 @@ function createEmailSender(): EmailSender {
   return new ConsoleEmailSender()
 }
 
-let cached: Container | null = null
-let cachedKey: string | null = null
-
 export function createContainer(): Container {
-  const useDemo = env.CATALOG_DEMO_MODE || !env.DATABASE_URL
-  const key = useDemo ? 'demo' : `prisma:${env.DATABASE_URL}`
+  const connectionString = env.DATABASE_URL
 
-  if (cached !== null && cachedKey === key) {
-    return cached
+  // Sin base de datos (o con el interruptor de demo) el catálogo vive en memoria: si cada capa del
+  // servidor se quedara con el suyo, el panel no vería lo que publica una ruta HTTP del mismo
+  // proceso. El contenedor se memoiza **por proceso**, no por grafo de módulos (CIF-577).
+  if (env.CATALOG_DEMO_MODE || connectionString === undefined) {
+    return getProcessSingleton(DEMO_CONTAINER_KEY, createDemoContainer)
   }
 
-  cached =
-    useDemo || !env.DATABASE_URL ? createDemoContainer() : createPrismaContainer(env.DATABASE_URL)
-  cachedKey = key
-
-  return cached
+  return getProcessSingleton(`prisma:${connectionString}`, () =>
+    createPrismaContainer(connectionString),
+  )
 }
