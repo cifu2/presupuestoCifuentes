@@ -867,18 +867,24 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
       })
 
       /**
-       * El repositorio real con una costura en `save`: el test decide cuándo se completa cada
-       * escritura. `beforeSave` corre **antes** de que la escritura llegue a la base, así que deja
-       * una publicación detenida con todas sus comprobaciones ya pasadas.
+       * El repositorio real con una costura en la escritura por la que publica el caso de uso: el
+       * test decide cuándo se completa cada publicación. `beforeWrite` corre **antes** de que la
+       * escritura llegue a la base, así que deja una publicación detenida con todas sus
+       * comprobaciones ya pasadas.
+       *
+       * La costura va en `savePublishTransition` y no en `save` porque desde CIF-544 publicar pasa
+       * por ahí: con la costura en `save` los entrelazados forzados no llegarían a la transición y
+       * los tests de la carrera dejarían de ejercitarla (CIF-559/CIF-542).
        */
-      function withSaveSeam(beforeSave: () => Promise<void>): TariffVersionRepository {
+      function withPublishSeam(beforeWrite: () => Promise<void>): TariffVersionRepository {
         return {
           findById: (id) => raceRepository.findById(id),
           listBySeriesId: (seriesId) => raceRepository.listBySeriesId(seriesId),
           create: (version) => raceRepository.create(version),
-          save: async (version) => {
-            await beforeSave()
-            await raceRepository.save(version)
+          save: (version) => raceRepository.save(version),
+          savePublishTransition: async (transition) => {
+            await beforeWrite()
+            await raceRepository.savePublishTransition(transition)
           },
           findPriceTableByVersionId: (id) => raceRepository.findPriceTableByVersionId(id),
           savePriceTable: (priceTable) => raceRepository.savePriceTable(priceTable),
@@ -932,7 +938,7 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
         // La primera publicación se queda detenida justo antes de escribir; la segunda corre entera
         // dentro de esa ventana y publica. Al reanudar, la escritura de la primera se encuentra la
         // fila ya publicada y la rechaza PostgreSQL (23P01), no el caso de uso.
-        const repository = withSaveSeam(async () => {
+        const repository = withPublishSeam(async () => {
           saves += 1
 
           if (saves > 1) return
@@ -974,7 +980,7 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
         // `deadlock detected` (40P01) en vez de con la violación de exclusión (23P01). Las dos
         // lecturas son legítimas y significan lo mismo para el llamante, así que la afirmación vale
         // para cualquiera de las dos.
-        const repository = withSaveSeam(async () => {
+        const repository = withPublishSeam(async () => {
           inFlight += 1
 
           if (inFlight === 2) bothInFlight()
