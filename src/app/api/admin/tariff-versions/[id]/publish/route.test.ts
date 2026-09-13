@@ -5,6 +5,9 @@
  * solape se comprueba antes que la tabla vacía, y el caso de solape de este fichero no siembra tabla a
  * propósito.
  *
+ * El camino feliz sobre una predecesora de vigencia abierta (ADR-0003 rev. 2 §8) comprueba que el
+ * borde devuelve el cierre y que las dos filas viajan en la **misma** transición de escritura.
+ *
  * Los ids son UUID reales porque el `:id` se valida en el borde (hallazgo N2 de CIF-85).
  */
 
@@ -21,6 +24,7 @@ const TOKEN = 'token-de-prueba-suficientemente-largo'
 const store = vi.hoisted(() => ({
   versions: [] as unknown[],
   saves: [] as unknown[],
+  transitions: [] as unknown[],
   findByIdCalls: [] as string[],
   /** Tablas de precios por versión: el doble del puerto devuelve una si el test la sembró. */
   priceTables: new Map<string, unknown>(),
@@ -50,18 +54,37 @@ vi.mock('@/composition/container', () => ({
       },
       save: async (version: { id: string }) => {
         store.saves.push(version)
-        const versions = store.versions as { id: string }[]
-        const index = versions.findIndex((candidate) => candidate.id === version.id)
+        write(version)
+      },
+      savePublishTransition: async (transition: {
+        successor: { id: string }
+        predecessor: { id: string } | null
+      }) => {
+        store.transitions.push(transition)
+        store.saves.push(transition.successor)
 
-        if (index === -1) {
-          versions.push(version)
-        } else {
-          versions[index] = version
+        if (transition.predecessor !== null) {
+          store.saves.push(transition.predecessor)
+          write(transition.predecessor)
         }
+
+        write(transition.successor)
       },
     },
   }),
 }))
+
+function write(version: unknown): void {
+  const id = (version as { id: string }).id
+  const versions = store.versions as { id: string }[]
+  const index = versions.findIndex((candidate) => candidate.id === id)
+
+  if (index === -1) {
+    versions.push(version as { id: string })
+  } else {
+    versions[index] = version as { id: string }
+  }
+}
 
 const { POST } = await import('./route')
 
@@ -77,6 +100,7 @@ function publish(id: string, token: string | null = TOKEN): Promise<Response> {
 function seed(versions: readonly TariffVersion[]): void {
   store.versions.length = 0
   store.saves.length = 0
+  store.transitions.length = 0
   store.findByIdCalls.length = 0
   store.priceTables.clear()
   store.versions.push(...versions)
@@ -93,6 +117,14 @@ const CI_400_V1 = '0192f1b0-0000-7000-8000-000000000401'
 const MISSING_ID = '0192f1b0-0000-7000-8000-0000000009ff'
 
 const PUBLISHED = makeTariffVersion({ id: CI_100_V1 })
+/** Publicada con vigencia cerrada: en el mismo instante que la candidata, así que solapan. */
+const PUBLISHED_CLOSED = makeTariffVersion({
+  id: CI_100_V1,
+  validity: ValidityPeriod.of(
+    new Date('2026-01-01T00:00:00.000Z'),
+    new Date('2027-01-01T00:00:00.000Z'),
+  ),
+})
 
 describe('POST /api/admin/tariff-versions/[id]/publish', () => {
   it('publica el borrador sin solape', async () => {
@@ -115,9 +147,47 @@ describe('POST /api/admin/tariff-versions/[id]/publish', () => {
     expect(store.saves).toHaveLength(1)
   })
 
-  it('responde 409 AMBIGUOUS_TARIFF y no escribe si se solapa con otra publicada', async () => {
+  it('publica sobre la predecesora abierta y la cierra en la misma escritura (ADR-0003 rev. 2 §8)', async () => {
     seed([
       PUBLISHED,
+      makeTariffVersion({
+        id: CI_100_V2,
+        versionNumber: 2,
+        status: 'draft',
+        publishedAt: null,
+        validity: ValidityPeriod.of(new Date('2026-06-01T00:00:00.000Z')),
+      }),
+    ])
+    seedPriceTable(CI_100_V2)
+
+    const response = await publish(CI_100_V2)
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.data.closedPredecessor).toEqual({
+      id: CI_100_V1,
+      versionNumber: 1,
+      status: 'published',
+      validFrom: '2026-01-01T00:00:00.000Z',
+      validUntil: body.data.validFrom,
+    })
+    expect(store.transitions).toHaveLength(1)
+    // Las dos filas quedan escritas: la sucesora publicada y la predecesora cerrada, sin archivar.
+    expect(store.saves.map((version) => (version as TariffVersion).id)).toEqual([
+      CI_100_V2,
+      CI_100_V1,
+    ])
+    const predecessor = (store.versions as TariffVersion[]).find(
+      (version) => version.id === CI_100_V1,
+    )
+
+    expect(predecessor?.status).toBe('published')
+    expect(predecessor?.validity.validUntil?.toISOString()).toBe('2026-06-01T00:00:00.000Z')
+  })
+
+  it('responde 409 AMBIGUOUS_TARIFF y no escribe si se solapa con otra publicada cerrada', async () => {
+    seed([
+      PUBLISHED_CLOSED,
       makeTariffVersion({
         id: CI_100_V2,
         versionNumber: 2,
@@ -133,6 +203,7 @@ describe('POST /api/admin/tariff-versions/[id]/publish', () => {
     expect(response.status).toBe(409)
     expect(body.error.code).toBe('AMBIGUOUS_TARIFF')
     expect(store.saves).toEqual([])
+    expect(store.transitions).toEqual([])
     expect(
       (store.versions as TariffVersion[]).find((version) => version.id === CI_100_V2)?.status,
     ).toBe('draft')

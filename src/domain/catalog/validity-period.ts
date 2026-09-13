@@ -4,6 +4,9 @@
  * Intervalo semiabierto `[validFrom, validUntil)`: una tarifa que termina el 2026-12-31 sigue
  * siendo vigente ese día y deja de serlo al empezar el 2027-01-01. `validUntil` nulo significa
  * vigencia abierta.
+ *
+ * Una vigencia abierta se cierra con `close`, que es como publicar una sucesora cierra a su
+ * predecesora sin dejar hueco ni solape (ADR-0003 rev. 2, §8).
  */
 
 import { assertValidDate } from '@/domain/shared/assertions'
@@ -51,5 +54,23 @@ export class ValidityPeriod {
 
   isOpenEnded(): boolean {
     return this.validUntil === null
+  }
+
+  /**
+   * Cierra la vigencia en `validUntil` (pasa a `[validFrom, validUntil)`).
+   *
+   * Solo se cierra una vigencia **abierta** y con una fecha **posterior** a `validFrom`: cerrar
+   * hacia atrás —o en el propio inicio— dejaría un intervalo invertido o vacío, que es justo lo que
+   * el intervalo semiabierto no admite. Volver a cerrar una vigencia ya cerrada tampoco mueve su
+   * fin, así que se rechaza en vez de reescribirlo en silencio.
+   */
+  close(validUntil: Date): ValidityPeriod {
+    if (this.validUntil !== null) {
+      throw new InvalidValidityPeriodError(
+        'La vigencia ya está cerrada; no se puede volver a cerrar',
+      )
+    }
+
+    return ValidityPeriod.of(this.validFrom, validUntil)
   }
 }
