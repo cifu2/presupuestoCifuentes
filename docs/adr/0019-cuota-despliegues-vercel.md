@@ -171,9 +171,50 @@ salud no distingue un commit de otro**, así que por sí sola no cierra la verif
 ese hueco habría dado por bueno el commit viejo). La prueba es el **sha del commit del deployment de
 producción** (`meta.githubCommitSha`) igual al de `main`, **y** el `200` de salud sobre esa URL.
 
+### Cierre de (b): B se queda como está (medición de CIF-537)
+
+La revisión de (a) y (b) que anunciaba el apartado siguiente se hizo con la medición de **CIF-537**
+(DevOps, `scripts/vercel-consumo.sh`, ventana de 24 h `2026-09-12T00:23Z → 2026-09-13T00:23Z`, solo
+`GET /v6/deployments`) y el CTO la resuelve en **CIF-553**: **B se queda como está**.
+
+| clase       | entorno    | despliegues/día |
+| ----------- | ---------- | --------------: |
+| `main`      | production |            37,0 |
+| `feat/**`   | preview    |            23,0 |
+| `fix/**`    | preview    |            15,0 |
+| `ci/**`     | preview    |             4,0 |
+| `test/**`   | preview    |             3,0 |
+| `docs/**`   | preview    |             2,0 |
+| `qa/**`     | preview    |             2,0 |
+| `devops/**` | preview    |             1,0 |
+| **total**   |            |        **87,0** |
+
+- **La cota inferior no cambia el signo de la decisión.** El contador del límite se agota con **86–88
+  listados** en su ventana rodante (`docs/operacion.md` §4.2): `GET /v6/deployments` no es un registro
+  de auditoría y no lista los despliegues borrados, así que el recuento es una **cota inferior de
+  valor desconocido** y el «87 vs 100» son **ventanas distintas**. Aun en el mejor caso para B —que el
+  contador coincidiera con el listado— el margen por rascar no baja de 100 el ritmo de entrega actual.
+- **Lo que B deja sobre la mesa.** Las clases apagables con guardia de contenido (`docs/**` 2/d +
+  `dependabot/**` + `ci/**` 4/d + `chore/**` + `devops/**` 1/d) suman **9,7/d**, de las que **2/d ya
+  están apagadas**; el margen pendiente es de **≈3,7–7,7/d (4–9 %)** y cada clase nueva exige su
+  guardia (punto 4 y `docs/operacion.md` §4.2). No compensa el riesgo de dejar sin preview un cambio
+  de código.
+- **Dónde está el consumo.** `main` + `feat/**` + `fix/**` = **86 %** (75/d) y no se apagan sin dejar a
+  QA sin preview de un cambio de código (Definition of Done). `main`, con **37/d**, es el mayor cubo.
+- **La lista blanca de `vercel.json` no se toca:** `docs/**`, `dependabot/**` y `archive/**` siguen sin
+  preview; `main` y las ramas con código conservan el suyo. **No se añaden** `ci/**`, `test/**`,
+  `chore/**` ni `devops/**`.
+
+**Condición que reabre (b):** que el board **rechace (c)** _y_ el consumo de régimen siga **por encima
+del techo** (100 despliegues en dos ventanas consecutivas de 24 h). Si eso pasa, la siguiente palanca
+**no son más clases apagadas**: es **agrupar merges a `main`** (37/d es el mayor cubo), y eso es una
+decisión de **ritmo de entrega**, no de configuración de `vercel.json`: la toma el **CEO/board** con
+esta medición delante.
+
 ### Revisión
 
-- (a) y (b) se revisan en ≤7 días con la medición de CIF-537 (mismo patrón que el punto 7).
+- (a) y (b): revisadas el 2026-09-13 con la medición de CIF-537 y **cerradas** en el apartado
+  «Cierre de (b)» de arriba.
 - (c) queda a la espera de la respuesta del board en CIF-536. Si el consumo de régimen sigue por
   encima de 100 en dos ventanas consecutivas de 24 h, la recomendación al board pasa a ser contratar
   el plan de pago, con o sin ampliación de B.
