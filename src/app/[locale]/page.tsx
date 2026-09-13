@@ -39,7 +39,9 @@ export default async function HomePage({ params }: HomePageProps) {
           </p>
           <LocaleSwitcher />
         </div>
-        <h1 className="text-4xl font-bold text-brand-900">{t('title')}</h1>
+        <h1 className="text-[2rem] leading-[2.375rem] font-bold text-brand-900 sm:text-[2.5rem] sm:leading-[2.75rem]">
+          {t('title')}
+        </h1>
         <p className="text-lg text-brand-700">{t('intro')}</p>
         <Link
           href="/configurador"
