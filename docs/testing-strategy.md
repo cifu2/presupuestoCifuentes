@@ -31,7 +31,9 @@ mapa de flujos a specs, los datos de prueba y la plantilla de informe de fallo e
 - Los dobles son de **puertos**, nunca del dominio. Un test que mockea el dominio está probando la
   implementación, no la regla.
 - Datos de prueba con factorías; nada de literales gigantes repetidos.
-- Un test debe poder ejecutarse solo: `pnpm test -- money` o `pnpm e2e -- --grep "tamaño máximo"`.
+- Un test debe poder ejecutarse solo: `pnpm test -- money` o
+  `pnpm exec playwright test --grep "tamaño máximo"` (`pnpm e2e -- --grep "…"` no filtra y ejecuta la
+  suite completa: ver [e2e-playbook.md](e2e-playbook.md)).
 - Prohibido `skip`, `only` o `fixme` sin acuerdo del CTO en el PR.
 - **Verificación previa al push:** `pnpm secret:scan` solo mira ficheros **rastreados** por git. Con
   ficheros nuevos hay que ejecutarlo **después** de `git add`; antes del `git add` da un verde falso

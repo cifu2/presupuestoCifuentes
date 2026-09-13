@@ -11,6 +11,12 @@
 
 import { expect, test, type Page } from '@playwright/test'
 
+import {
+  catalogIsEmpty,
+  requirePublishedCatalog,
+  type CatalogFetcher,
+} from './support/catalog-precondition'
+
 const CONFIGURATOR_PATH = '/es/configurador'
 
 const CONTACT = {
@@ -26,6 +32,45 @@ async function fillContact(page: Page): Promise<void> {
   await page.getByTestId('contact-phone').fill(CONTACT.phone)
   await page.getByTestId('contact-message').fill(CONTACT.message)
 }
+
+// ADR-0026 §7: contra un entorno desplegado sin catálogo el spec debe fallar como precondición con
+// mensaje, no agotar el timeout del selector `configurator-series`. En el entorno hermético
+// (`CATALOG_DEMO_MODE=true`) el catálogo de demostración cumple la precondición.
+test.beforeEach(async ({ request }) => {
+  await requirePublishedCatalog(request)
+})
+
+test('un entorno sin catálogo falla como precondición con mensaje, no por timeout (ADR-0026 §7)', async () => {
+  const emptyEnvironment: CatalogFetcher = {
+    get: async () => ({
+      ok: () => true,
+      status: () => 200,
+      json: async () => ({ data: [], meta: { locale: 'es', mode: 'prisma' } }),
+    }),
+  }
+  const unavailableEnvironment: CatalogFetcher = {
+    get: async () => ({ ok: () => false, status: () => 503, json: async () => ({}) }),
+  }
+  const seededEnvironment: CatalogFetcher = {
+    get: async () => ({
+      ok: () => true,
+      status: () => 200,
+      json: async () => ({ data: [{ slug: 'ci-100' }], meta: { locale: 'es', mode: 'demo' } }),
+    }),
+  }
+
+  await expect(requirePublishedCatalog(emptyEnvironment)).rejects.toThrow(/ADR-0026 §7/)
+  await expect(requirePublishedCatalog(emptyEnvironment)).rejects.toThrow(/ADR-0015 §7/)
+  await expect(requirePublishedCatalog(emptyEnvironment)).rejects.toThrow(/preview sembrado/)
+  await expect(requirePublishedCatalog(unavailableEnvironment)).rejects.toThrow(
+    /respondió 503 en vez de 2xx/,
+  )
+  await expect(requirePublishedCatalog(seededEnvironment)).resolves.toBeUndefined()
+
+  expect(catalogIsEmpty({ data: [] })).toBe(true)
+  expect(catalogIsEmpty({ meta: { locale: 'es' } })).toBe(true)
+  expect(catalogIsEmpty({ data: [{ slug: 'ci-100' }] })).toBe(false)
+})
 
 test('la portada enlaza con el configurador', async ({ page }) => {
   await page.goto('/es')
