@@ -16,7 +16,7 @@
 
 import { expect, test, type TestInfo } from '@playwright/test'
 
-import { E2E_ADMIN_BASE_URL, E2E_ADMIN_TOKEN } from './support/servers'
+import { E2E_ADMIN_BASE_URL, E2E_ADMIN_PANEL_PASSWORD, E2E_ADMIN_TOKEN } from './support/servers'
 
 interface SupersededSeries {
   readonly seriesId: string
@@ -136,4 +136,49 @@ test.describe('con ADMIN_API_TOKEN, abrir un borrador de tarifa', () => {
     expect(after.status).toBe('priced')
     expect(after.breakdown.total).toEqual(before.breakdown.total)
   })
+})
+
+/**
+ * El aviso que lee el propietario antes de tocar un precio (ADR-0003 rev. 2 §12, CIF-545): una
+ * tarifa publicada no se edita —es el registro del precio que estuvo vigente— y el cambio va en la
+ * versión nueva, que entra en vigor en su fecha y deja sin vigencia a la anterior en ese mismo
+ * instante. Se afirma el **texto servido** por el panel, en los dos idiomas, y no la clave de
+ * traducción: es el contrato que ve quien publica.
+ */
+const NOT_EDITABLE_NOTICE = {
+  es: ['Una tarifa publicada no se edita', 'deja sin vigencia a la anterior en ese mismo instante'],
+  en: [
+    'A published price list is not edited',
+    'puts the previous one out of force at that very instant',
+  ],
+} as const
+
+test.describe('con ADMIN_API_TOKEN, el aviso del panel sobre una tarifa publicada', () => {
+  test.use({ baseURL: E2E_ADMIN_BASE_URL })
+
+  test.beforeEach(async ({ page }) => {
+    const session = await page.request.post('/api/admin/session', {
+      data: { password: E2E_ADMIN_PANEL_PASSWORD },
+    })
+
+    expect(session.status()).toBe(200)
+  })
+
+  for (const locale of ['es', 'en'] as const) {
+    test(`dice en ${locale} que la tarifa publicada no se edita y cuándo entra en vigor la nueva`, async ({
+      page,
+    }) => {
+      await page.goto(`/${locale}/admin/tarifas`)
+
+      const main = page.getByRole('main')
+
+      for (const fragment of NOT_EDITABLE_NOTICE[locale]) {
+        await expect(main).toContainText(fragment)
+      }
+      // El aviso es para el propietario: ni el código del error ni la promesa de una salida de dos
+      // pasos (la serie no se queda sin tarifa vigente en ningún momento).
+      await expect(main).not.toContainText('TARIFF_NOT_EDITABLE')
+      await expect(main).not.toContainText('dos pasos')
+    })
+  }
 })
