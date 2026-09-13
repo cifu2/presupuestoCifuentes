@@ -76,6 +76,15 @@ type TextMap = ReturnType<typeof groupCatalogTexts>
 /** SQLSTATE que PostgreSQL devuelve al violar una restricción de exclusión (`EXCLUDE`). */
 const POSTGRES_EXCLUSION_VIOLATION = '23P01'
 
+/** SQLSTATE con el que PostgreSQL aborta una de dos transacciones que se esperan en círculo. */
+const POSTGRES_DEADLOCK_DETECTED = '40P01'
+
+/**
+ * `kind` con el que el adaptador `pg` clasifica el 40P01 (bloqueo mutuo) y el 40001 (fallo de
+ * serialización) antes de que Prisma los convierta en `P2034`.
+ */
+const TRANSACTION_WRITE_CONFLICT_KIND = 'TransactionWriteConflict'
+
 /** Restricción de exclusión que impide dos tarifas publicadas solapadas de la misma serie. */
 const PUBLISHED_TARIFF_OVERLAP_CONSTRAINT = 'tariff_version_published_no_overlap'
 
@@ -113,18 +122,22 @@ function tariffVersionUpsert(version: TariffVersion) {
 }
 
 /**
- * ¿El error viene de publicar dos versiones de tarifa solapadas de la misma serie?
+ * ¿Algún nodo del grafo del error menciona alguno de esos códigos o nombres?
  *
- * La restricción de exclusión (`tariff_version_published_no_overlap`) es la defensa en escritura
- * frente a dos publicaciones concurrentes (CIF-89). Prisma 7 (adaptador `pg`) envuelve el error de
- * PostgreSQL en un `PrismaClientKnownRequestError` con código `P2039`, y el SQLSTATE real queda
- * anidado en `meta.driverAdapterError.cause` (`code`/`originalCode`). Para no depender de esa
- * forma concreta se recorre el grafo del error buscando el SQLSTATE 23P01 o el nombre de la
- * restricción (que aparece en `message`, `originalMessage` y `detail`). Se exporta para probarlo
- * sin base de datos.
+ * Prisma 7 (adaptador `pg`) anida el error del driver en `meta.driverAdapterError.cause`: el SQLSTATE
+ * aparece en un campo `code`-like (`code`, `originalCode`, `sqlState`) o solo dentro del mensaje, el
+ * nombre de la restricción, en `message`/`constraint`, y el adaptador clasifica el desenlace en
+ * `kind`. Se recorre el grafo buscando esos rastros —en vez de mirar una ruta fija— para no
+ * depender de la forma concreta del error ni del código con que Prisma lo envuelva. `message` y
+ * `cause` no son enumerables en las subclases de `Error`, así que se leen aparte, y el recorrido
+ * corta a `MAX_ERROR_DEPTH` y con un conjunto de visitados para no quedarse colgado con referencias
+ * circulares.
  */
-export function isPublishedTariffOverlapViolation(error: unknown): boolean {
+function errorGraphMentions(error: unknown, needles: readonly string[]): boolean {
   const visited = new Set<unknown>()
+
+  const mentions = (value: unknown): boolean =>
+    typeof value === 'string' && needles.some((needle) => value.includes(needle))
 
   const inspect = (value: unknown, depth: number): boolean => {
     if (depth > MAX_ERROR_DEPTH || typeof value !== 'object' || value === null) {
@@ -138,21 +151,13 @@ export function isPublishedTariffOverlapViolation(error: unknown): boolean {
     visited.add(value)
 
     const record = value as Record<string, unknown>
-    const code = record.code ?? record.originalCode ?? record.sqlState
+    const code = record.code ?? record.originalCode ?? record.sqlState ?? record.kind
 
-    if (typeof code === 'string' && code === POSTGRES_EXCLUSION_VIOLATION) {
+    if (typeof code === 'string' && needles.includes(code)) {
       return true
     }
 
-    if (record.constraint === PUBLISHED_TARIFF_OVERLAP_CONSTRAINT) {
-      return true
-    }
-
-    // `message` (y `cause` en algunos motores) no son enumerables en las subclases de `Error`, así
-    // que se leen aparte de `Object.values`.
-    const message = record.message
-
-    if (typeof message === 'string' && message.includes(PUBLISHED_TARIFF_OVERLAP_CONSTRAINT)) {
+    if (mentions(record.constraint) || mentions(record.message)) {
       return true
     }
 
@@ -170,6 +175,50 @@ export function isPublishedTariffOverlapViolation(error: unknown): boolean {
   }
 
   return inspect(error, 0)
+}
+
+/**
+ * ¿El error viene de publicar dos versiones de tarifa solapadas de la misma serie?
+ *
+ * La restricción de exclusión (`tariff_version_published_no_overlap`) es la defensa en escritura
+ * frente a dos publicaciones concurrentes (CIF-89): PostgreSQL la rechaza con el SQLSTATE 23P01, o
+ * con el nombre de la restricción en el mensaje. Se exporta para probarlo sin base de datos.
+ */
+export function isPublishedTariffOverlapViolation(error: unknown): boolean {
+  return errorGraphMentions(error, [
+    POSTGRES_EXCLUSION_VIOLATION,
+    PUBLISHED_TARIFF_OVERLAP_CONSTRAINT,
+  ])
+}
+
+/**
+ * ¿La base ha abortado la escritura por un bloqueo mutuo con otra publicación concurrente?
+ *
+ * La restricción de exclusión de tarifas publicadas resuelve dos inserciones solapadas que se cruzan
+ * dejando que cada transacción espere a la otra: PostgreSQL detecta el círculo y aborta una con
+ * `deadlock detected` (SQLSTATE 40P01). Es la misma carrera que la violación de exclusión (23P01)
+ * con otro desenlace —la que pierde no ha publicado nada, porque la transacción se deshace entera—
+ * así que el borde debe responder el mismo 409 y no un 500 (CIF-542).
+ *
+ * A diferencia del 23P01, aquí no hay nombre de restricción al que agarrarse. La forma que produce
+ * Prisma 7 con el adaptador `pg` está medida en `repositories.test.ts` (bloqueo mutuo real forzado
+ * con dos transacciones cruzadas): un `PrismaClientKnownRequestError` con código `P2034` —
+ * «Transaction failed due to a write conflict or a deadlock»— y el SQLSTATE y el `kind` del
+ * adaptador anidados en `meta.driverAdapterError.cause`. Se aceptan los dos rastros: el SQLSTATE
+ * 40P01 y el `kind` `TransactionWriteConflict` (el que el adaptador usa para 40P01 y 40001), para
+ * que el 409 no dependa de que Prisma siga anotando `originalCode` —quien busque «40P01» en el log
+ * de Prisma no lo verá—.
+ *
+ * El `kind` cubre también el 40001 (fallo de serialización), así que se acepta solo en los dos
+ * caminos de escritura de tarifas —el `upsert` de una sentencia de `save` y la transacción de dos
+ * sentencias de `savePublishTransition`, por la que publica el caso de uso desde CIF-544—, que
+ * corren con el nivel de aislamiento por defecto del servidor (READ COMMITTED; el cliente no fija
+ * `isolationLevel`), donde el 40001 no puede darse y el único cruce posible entre dos publicaciones
+ * de la misma serie es la restricción de exclusión. No es un predicado general: en un camino con
+ * SERIALIZABLE o REPEATABLE READ, donde el 40001 sí aparece, habría que ceñirse al SQLSTATE 40P01.
+ */
+export function isDeadlockDetected(error: unknown): boolean {
+  return errorGraphMentions(error, [POSTGRES_DEADLOCK_DETECTED, TRANSACTION_WRITE_CONFLICT_KIND])
 }
 
 /** Códigos de Prisma para las violaciones de integridad que el borde debe traducir a dominio. */
@@ -498,6 +547,36 @@ export class PrismaTariffPricingRepository implements TariffPricingRepository {
   }
 }
 
+/**
+ * Traduce al error de dominio la carrera de dos publicaciones de la misma serie.
+ *
+ * Publicar puede chocar con otra publicación concurrente de dos maneras: la restricción de exclusión
+ * rechaza la que llega tarde (23P01) o PostgreSQL aborta una de las dos transacciones que se esperan
+ * en círculo (40P01, «deadlock detected»). En los dos casos la que pierde no ha escrito nada —su
+ * transacción se deshace entera— y el desenlace es el mismo para el borde: otra publicación de la
+ * serie ganó, así que responde `409 AMBIGUOUS_TARIFF` y no un 500 (CIF-89, CIF-542).
+ *
+ * Devuelve `null` cuando el error no viene de esa carrera, para que el llamante lo deje pasar.
+ */
+function toAmbiguousTariffError(
+  error: unknown,
+  version: TariffVersion,
+): AmbiguousTariffError | null {
+  if (isPublishedTariffOverlapViolation(error)) {
+    return new AmbiguousTariffError(
+      `Ya hay una versión de tarifa publicada que se solapa con la versión ${version.versionNumber} de la serie "${version.seriesId}"`,
+    )
+  }
+
+  if (isDeadlockDetected(error)) {
+    return new AmbiguousTariffError(
+      `Otra publicación concurrente de la serie "${version.seriesId}" ganó la carrera por la versión ${version.versionNumber}; vuelve a leer el catálogo y reintenta`,
+    )
+  }
+
+  return null
+}
+
 export class PrismaTariffVersionRepository implements TariffVersionRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
@@ -522,10 +601,10 @@ export class PrismaTariffVersionRepository implements TariffVersionRepository {
     } catch (error) {
       // Defensa en profundidad: la comprobación previa del caso de uso no cubre dos publicaciones
       // concurrentes; aquí la base de datos ya ha rechazado el solape (CIF-89).
-      if (isPublishedTariffOverlapViolation(error)) {
-        throw new AmbiguousTariffError(
-          `Ya hay una versión de tarifa publicada que se solapa con la versión ${version.versionNumber} de la serie "${version.seriesId}"`,
-        )
+      const ambiguous = toAmbiguousTariffError(error, version)
+
+      if (ambiguous !== null) {
+        throw ambiguous
       }
 
       throw error
@@ -567,6 +646,11 @@ export class PrismaTariffVersionRepository implements TariffVersionRepository {
    * La predecesora se actualiza **antes** que la sucesora: el orden de bloqueo es siempre el mismo
    * (de la más antigua a la más nueva) y dos publicaciones concurrentes de la misma serie no se
    * bloquean en cruzado. Las invariantes las comprueba el caso de uso antes de llegar aquí.
+   *
+   * La carrera con otra publicación de la misma serie se traduce igual que en `save`: la
+   * transacción se deshace entera, así que da lo mismo que la rechace la restricción de exclusión
+   * (23P01) o que PostgreSQL aborte una de las dos por bloqueo mutuo (40P01) — el borde responde
+   * `409 AMBIGUOUS_TARIFF` y no un 500 (CIF-542, CIF-572).
    */
   async savePublishTransition(transition: TariffPublishTransition): Promise<void> {
     const { successor, predecessor } = transition
@@ -583,10 +667,14 @@ export class PrismaTariffVersionRepository implements TariffVersionRepository {
         await transaction.tariffVersion.upsert(tariffVersionUpsert(successor))
       })
     } catch (error) {
-      if (isPublishedTariffOverlapViolation(error)) {
-        throw new AmbiguousTariffError(
-          `Ya hay una versión de tarifa publicada que se solapa con la versión ${successor.versionNumber} de la serie "${successor.seriesId}"`,
-        )
+      // La transacción se deshace entera, así que la carrera deja el catálogo como estaba: los dos
+      // desenlaces (violación de exclusión o bloqueo mutuo) son el mismo 409 para el borde. Desde
+      // CIF-544 publicar pasa por aquí y no por `save`, así que la traducción tiene que estar en los
+      // dos caminos (era el rojo intermitente que CIF-542 perseguía).
+      const ambiguous = toAmbiguousTariffError(error, successor)
+
+      if (ambiguous !== null) {
+        throw ambiguous
       }
 
       throw error
