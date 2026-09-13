@@ -487,9 +487,12 @@ configurador: la versión nace en `draft`, sin `publishedAt`, y no da precio has
 La edición de los números del borrador (`updateTariffPrice`) todavía no tiene ruta HTTP: la añade el
 cableado del panel en CIF-243.
 
-> **Límite conocido.** Si la versión vigente de la serie tiene la vigencia abierta (`validUntil`
-> vacío), publicar su sucesora sigue chocando con `409 AMBIGUOUS_TARIFF`: falta el caso de uso que
-> cierre o archive la versión predecesora (hallazgo abierto de CIF-514).
+> **Vigencia abierta de la predecesora.** Publicar la sucesora ya no choca con la versión vigente de
+> vigencia abierta (`validUntil` vacío): el caso de uso le pone como `validUntil` el `validFrom` de
+> la candidata y publica las dos escrituras en la misma transacción (ADR-0003 rev. 2 §8-§11). El
+> `409 AMBIGUOUS_TARIFF` queda para las invariantes que siguen vigentes —solape con una publicada de
+> vigencia cerrada, candidata con `validFrom` anterior o igual al de la predecesora abierta y más de
+> una publicada abierta en la serie—; ver `POST /api/admin/tariff-versions/:id/publish`.
 
 ```bash
 curl -s -X POST http://localhost:3000/api/admin/tariff-versions \
