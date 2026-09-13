@@ -106,21 +106,32 @@ apartado **actualiza** la decisión sin reescribir los puntos aceptados.
 Con A (runbook §4.1) y B (`vercel.json` con `archive/**`, `dependabot/**` y `docs/**`) en vigor, **un
 merge a `main` volvió a quedarse sin despliegue de producción**: es exactamente el supuesto que el
 punto 6 manda escalar. La escalada la resolvió el **CTO** en CIF-536 —el CEO está sin heartbeat
-(CIF-405)—; la decisión de gasto (C) queda **elevada al board**, que es quien puede aprobarla.
+(CIF-405)—; la decisión de gasto (C) queda **elevada al board**, que es quien puede aprobarla. La
+corrección de DevOps en CIF-536 (00:10Z) reencuadra el incidente: **el paso A del runbook reparó el
+hueco cinco minutos después**, así que lo que queda abierto es la política de cuota, no una
+producción desactualizada.
 
-### Medición (2026-09-13 00:05Z, DevOps, CIF-530)
+### Cronología y medición (DevOps, CIF-530 y CIF-536)
 
-- `main` = `5c0afcbf…` (squash del PR #94, CIF-525) y, trece minutos después, `7f92ff7` (PR #87):
-  **dos merges seguidos sin despliegue de producción**. Producción seguía sirviendo `a112a2d`.
-- Check `Vercel` de `5c0afcb` en `failure`: «Deployment rate limited — retry in 24 hours»
-  (`api-deployments-free-per-day`). Cuatro `POST /v13/deployments` (`gitSource` de `main`,
-  `target=production`) entre 23:52Z y 00:05Z: **cuatro `402 payment_required`**.
+- **23:52Z — merge del PR #94 (`main` = `5c0afcbf…`).** El check `Vercel` de ese commit queda en
+  `failure`: «Deployment rate limited — retry in 24 hours» (`api-deployments-free-per-day`). Cuatro
+  `POST /v13/deployments` (`gitSource` de `main`, `target=production`) entre 23:52Z y 00:05Z
+  devuelven **cuatro `402 payment_required`**. Entre las 23:52Z y las 23:57Z producción sirve el
+  commit anterior, `a112a2d`.
+- **23:57:33Z — el paso A del runbook repara el hueco.** En cuanto la ventana rodante libera un
+  cupo, el relanzamiento por API deja el deployment de `5c0afcb` **`READY` y con el alias de
+  producción** (`targets.production`). Producción estuvo **~5 minutos** por detrás de `main`, no
+  horas: el hueco no acumuló contenido y el release quedó verificado contra la API de Vercel, no
+  contra una sonda de salud (DevOps, CIF-530 y CIF-536).
+- **00:06Z — `main` avanza otra vez (`7f92ff7`, PR #87).** Ese release queda pendiente mientras la
+  ventana siga agotada; lo cubre el mismo paso A en el siguiente reintento de la rutina **horaria**
+  `b3ce0dae…` (CIF-530). El diff de `7f92ff7` es solo `docs/**` y `e2e/**`: no cambia runtime.
 - **87 despliegues** del proyecto contados con `GET /v6/deployments` en la ventana rodante; el límite
   informa `{total: 100, remaining: 0, reset: 2026-09-13T23:56:31Z}`. Los 13 que faltan hasta 100 son
   despliegues que `v6/deployments` ya no lista (borrados) o de otras fuentes: la medición directa
   **subestima** el consumo y el margen real es menor que el medido.
-- `/api/health` respondió **200** (`status: ok`, `database: ok`) durante todo el incidente: era la
-  sonda del commit viejo.
+- `/api/health` respondió **200** (`status: ok`, `database: ok`) durante el hueco (23:52Z–23:57Z):
+  era la sonda del commit viejo.
 
 Con las mediciones anteriores (111/24 h en CIF-149; 113 en la vida del proyecto en CIF-153), el
 consumo de régimen se mueve **entre 87 y 111 despliegues al día contra un techo de 100**. No es un
@@ -130,7 +141,7 @@ push de rama).
 ### Decisión (CTO, CIF-536)
 
 1. **(a) se mantiene.** A + B siguen siendo la postura: producción puede ir unas horas por detrás de
-   `main`, con el runbook §4.1 y la rutina de reintento (CIF-530) verificando el release. No se
+   `main`, con el runbook §4.1 y la rutina de reintento horaria (CIF-530) verificando el release. No se
    despliega otra rama ni otro commit para «dar el release por bueno». El retraso **no acumula
    contenido**: cuando la ventana libera, un solo despliegue del `main` vigente pone al día todo lo
    pendiente, así que el coste de (a) es latencia de release, no divergencia.
@@ -151,10 +162,11 @@ push de rama).
 
 ### El paso 4 del runbook se endurece: un `200` no prueba que el release aterrizó
 
-El incidente deja una lección que entra en `docs/despliegue.md` §4.1: producción sirvió `a112a2d` con
-`/api/health` en **200** mientras `main` era `5c0afcb`. **La sonda de salud no distingue un commit de
-otro**, así que por sí sola no cierra la verificación del release. La prueba es el **sha del commit
-del deployment de producción** (`meta.githubCommitSha`) igual al de `main`, **y** el `200` de salud.
+El incidente deja una lección que entra en `docs/despliegue.md` §4.1: entre las 23:52Z y las 23:57Z
+producción sirvió `a112a2d` con `/api/health` en **200** mientras `main` era `5c0afcb`. **La sonda de
+salud no distingue un commit de otro**, así que por sí sola no cierra la verificación del release (en
+ese hueco habría dado por bueno el commit viejo). La prueba es el **sha del commit del deployment de
+producción** (`meta.githubCommitSha`) igual al de `main`, **y** el `200` de salud sobre esa URL.
 
 ### Revisión
 
