@@ -444,6 +444,61 @@ contactar; no se registran en logs.
 
 ---
 
+## POST /api/admin/tariff-versions
+
+Abre la **siguiente versión de tarifa en borrador** de una serie (CIF-126a, ADR-0003). Es la puerta de
+entrada del flujo de «el propietario cambia un precio sin tocar código»: una versión publicada es
+inmutable (`409 TARIFF_NOT_EDITABLE`), así que el panel abre un borrador —clonando la tabla de precios
+de la vigente—, edita sus números y lo publica. Abrir el borrador **no** cambia lo que ve el
+configurador: la versión nace en `draft`, sin `publishedAt`, y no da precio hasta publicarse.
+
+| Campo                | Tipo           | Obligatorio | Notas                                                                                                                                                          |
+| -------------------- | -------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `seriesId`           | id             | sí          | La serie a la que pertenece la versión nueva: el id que devuelve la lectura de administración (UUID en producción, id legible en el catálogo de demostración). |
+| `cloneFromVersionId` | UUID \| null   | no          | Versión de la que se hereda estrategia, IVA, moneda y notas, y cuya tabla de precios se copia.                                                                 |
+| `validFrom`          | fecha \| null  | no          | `YYYY-MM-DD`. Por defecto, el día en que termina la versión clonada o, si no la hay, el día en que se abre el borrador.                                        |
+| `validUntil`         | fecha \| null  | no          | `YYYY-MM-DD`; vacío deja la vigencia abierta.                                                                                                                  |
+| `notes`              | string \| null | no          | Si falta, hereda las de la versión clonada.                                                                                                                    |
+| `strategy`           | enum           | no          | `per_square_metre` \| `size_bands` \| `fixed`. Solo se puede omitir si se clona (la estrategia viaja con la versión).                                          |
+| `taxRatePercent`     | string         | no          | Porcentaje con dos decimales máximo. Obligatorio si no se clona.                                                                                               |
+| `currency`           | string(3)      | no          | `EUR` por defecto.                                                                                                                                             |
+
+- `201` con `{ "data": { "id", "seriesId", "versionNumber", "status": "draft", "strategy", "validFrom", "validUntil", "currency", "taxRatePercent", "notes", "createdAt", "updatedAt", "priceTable" } }`.
+  El `versionNumber` es el siguiente libre de la serie y `priceTable` es la tabla clonada (con ids
+  nuevos), lista para editar; `null` si no se clonó o el origen no tenía.
+- `400` `VALIDATION_ERROR` si el cuerpo no cumple el contrato (`seriesId` vacío, `cloneFromVersionId`
+  que no es UUID o fechas que no son `YYYY-MM-DD`). Una fecha mal formada se queda aquí, en el borde:
+  al caso de uso no le llega nunca, así que ese caso no responde `INVALID_TARIFF`.
+- `400` `INVALID_VALIDITY_PERIOD` si `validUntil` no es posterior a `validFrom` (la vigencia es
+  semiabierta, `[validFrom, validUntil)`: el mismo día tampoco vale).
+- `400` `INVALID_TARIFF` si no se clona y falta `strategy` o `taxRatePercent`, o si la versión origen
+  es de otra serie.
+- `404` `NOT_FOUND` si la serie o la versión origen no existen. Un `seriesId` con formato imposible
+  (en producción un id que no es UUID) no revienta la columna `@db.Uuid`: el adaptador Prisma lo trata
+  como inexistente.
+- `409` `CONFLICT` solo si el número sigue ocupado tras agotar los `VERSION_NUMBER_ATTEMPTS` (3)
+  intentos: en cada choque el caso de uso recalcula el número libre y vuelve a intentarlo, así que
+  **pocas altas simultáneas convergen** y no hay umbral de tres. Medido contra PostgreSQL real (CIF-522):
+  dos altas simultáneas pasan, con los números 2 y 3; tres simultáneas pasan las tres; con doce
+  simultáneas, 8 recibieron `409`. El reintento absorbe la concurrencia normal, no una ráfaga.
+- `401`/`503` como el resto del API del panel (ver más abajo).
+
+La edición de los números del borrador (`updateTariffPrice`) todavía no tiene ruta HTTP: la añade el
+cableado del panel en CIF-243.
+
+> **Límite conocido.** Si la versión vigente de la serie tiene la vigencia abierta (`validUntil`
+> vacío), publicar su sucesora sigue chocando con `409 AMBIGUOUS_TARIFF`: falta el caso de uso que
+> cierre o archive la versión predecesora (hallazgo abierto de CIF-514).
+
+```bash
+curl -s -X POST http://localhost:3000/api/admin/tariff-versions \
+  -H "Authorization: Bearer $ADMIN_API_TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"seriesId":"<uuid>","cloneFromVersionId":"<uuid-vigente>"}' | jq '.data.versionNumber'
+```
+
+---
+
 ## POST /api/admin/tariff-versions/:id/publish
 
 Publica una versión de tarifa del panel (ADR-0003). Es la única vía para que una tarifa dé precio

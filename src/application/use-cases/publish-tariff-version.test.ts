@@ -30,6 +30,10 @@ class CountingTariffVersionRepository implements TariffVersionRepository {
     return this.inner.listBySeriesId(seriesId)
   }
 
+  create(version: TariffVersion): Promise<void> {
+    return this.inner.create(version)
+  }
+
   async save(version: TariffVersion): Promise<void> {
     this.saved.push(version)
     await this.inner.save(version)
