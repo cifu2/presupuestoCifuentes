@@ -82,7 +82,7 @@ export default async function ConfiguratorPage({ params }: ConfiguratorPageProps
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-8 px-6 py-8 lg:py-12">
       <header className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold text-brand-900">{t('title')}</h1>
+        <h1 className="text-[2rem] leading-[2.5rem] font-bold text-brand-900">{t('title')}</h1>
         <p className="text-brand-700">{t('intro')}</p>
       </header>
       <ConfiguratorApp locale={locale} series={series} initialDetail={initialDetail} />

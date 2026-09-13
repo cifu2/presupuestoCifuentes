@@ -59,7 +59,7 @@ export default async function AccessPage({ params, searchParams }: AccessPagePro
         <p className="text-sm font-semibold uppercase tracking-widest text-brand-500">
           {t('eyebrow')}
         </p>
-        <h1 className="text-3xl font-bold text-brand-900">{t('title')}</h1>
+        <h1 className="text-[2rem] leading-[2.5rem] font-bold text-brand-900">{t('title')}</h1>
         <p className="text-brand-700">{t('intro')}</p>
       </header>
 

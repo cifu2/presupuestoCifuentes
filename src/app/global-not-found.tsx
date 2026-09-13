@@ -45,7 +45,9 @@ export default async function GlobalNotFound() {
       <body className="min-h-screen antialiased">
         <main className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-16">
           <p className="text-sm font-semibold uppercase tracking-widest text-brand-500">404</p>
-          <h1 className="text-4xl font-bold text-brand-900">{t('title')}</h1>
+          <h1 className="text-[2rem] leading-[2.375rem] font-bold text-brand-900 sm:text-[2.5rem] sm:leading-[2.75rem]">
+            {t('title')}
+          </h1>
           <p className="text-lg text-brand-700">{t('description')}</p>
           <p>
             <a
