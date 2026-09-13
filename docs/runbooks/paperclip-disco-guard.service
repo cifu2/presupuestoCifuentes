@@ -1,0 +1,13 @@
+[Unit]
+Description=Guarda de disco del host del control plane (CIF-585)
+Documentation=https://github.com/cifu2/presupuestoCifuentes/blob/main/docs/operacion.md
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/paperclip-disco-guard.sh
+# El código 1 es el aviso (por encima del 80 %): la alerta ya queda en el journal y en la marca
+# /var/lib/paperclip-disco-guard/ALERTA. Solo el 2 (crítico) y el 3 (medición rota) son fallos.
+SuccessExitStatus=1
+Nice=10
+IOSchedulingClass=idle

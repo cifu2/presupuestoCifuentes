@@ -64,6 +64,10 @@ Decisiones asociadas: [ADR-0007](adr/0007-despliegue-vercel-github.md) y
     Vercel o un servicio gratuito de uptime), con aviso por email.
 - **Coste:** plan gratuito de Vercel y de Neon es suficiente para el MVP; si se supera, se revisa con
   el **CEO** antes de subir de plan (ADR-0019 §6). No se contrata nada de pago sin aprobación.
+- **Disco del host del control plane:** la guarda `docs/runbooks/disco-guard.sh` mide el uso del
+  volumen raíz (20 GB, el único que hay) y avisa al 80 %; el detalle del umbral y del saneamiento
+  está en el apartado 4.3. Se ejecuta con `paperclip-disco-guard.timer` a diario y deja el rastro en
+  `journalctl -t paperclip-disco-guard`.
 - **Lo que no se monitoriza (todavía):** métricas de negocio y trazas distribuidas. Se añadirán
   cuando existan flujos reales (configurador y presupuestos) y tráfico que lo justifique.
 
@@ -145,6 +149,94 @@ una tabla TSV `clase de rama × entorno` con el recuento y la tasa por día; su 
 Apagar una clase de rama en `vercel.json` no es gratis: cada clase apagada es un cambio de código que
 se queda sin preview, de ahí la guardia de contenido de ADR-0019 §4. La lista de clases la decide el
 CTO con la medición delante, no a ciegas.
+
+### 4.3 Volumen raíz del host al límite (disco lleno)
+
+El host donde corren los agentes, los workspaces y la base del control plane tiene **un solo
+volumen raíz** de 20 GB (`/dev/mapper/pve-vm--108--disk--0`, ext4, montado en `/`). Cuando se llena
+no falla solo un build: `git` no puede escribir el índice del worktree
+(`fatal: sha1 file '…/index.lock' write error. Out of diskspace`) y cualquier run que escriba en el
+repositorio, migraciones incluidas, se queda a medias. Pasó el 2026-09-13 (0 bytes libres; borrar
+`/root/.cache/node-gyp` dejó un alivio temporal de ~277 MB) y es el hallazgo de CIF-585.
+
+**Umbrales y aviso.** La guarda `docs/runbooks/disco-guard.sh` mide el uso de `/`, lo registra en el
+journal y deja el fichero `/var/lib/paperclip-disco-guard/ALERTA` mientras siga por encima del aviso:
+
+| Uso de `/` | Significado                    | Qué se hace                                                                  |
+| ---------- | ------------------------------ | ---------------------------------------------------------------------------- |
+| < 80 %     | normal                         | nada                                                                         |
+| ≥ 80 %     | **aviso**                      | la guarda sanea lo regenerable y deja la marca; DevOps lo revisa             |
+| ≥ 85 %     | incumple el criterio de cierre | saneamiento manual: retirar worktrees de issues cerrados                     |
+| ≥ 92 %     | **crítico**                    | la guarda sale con estado 2 (systemd la marca `failed`) y se escala a DevOps |
+
+La guarda sale `0` en operación normal, `1` con aviso, `2` en crítico y `3` si `df` no devuelve un
+número (ahí no toca la marca: una medición rota no puede silenciar la alerta). La unidad declara
+`SuccessExitStatus=1`, así que `failed` en systemd significa crítico o medición rota, no el aviso;
+con aviso lo que queda es el fichero `ALERTA`.
+
+El `paperclip-disco-guard.timer` la ejecuta a diario (04:15 ± 10 min) y 15 minutos después del
+arranque. Solo borra material regenerable: metadatos de pnpm, `.deb` cacheados y artefactos de build
+(`.next`, `coverage`, `playwright-report`, `test-results`, `tsconfig.tsbuildinfo`) con más de dos
+días. **No** borra el store de pnpm (lo comparten todos los workspaces), ni fuentes, ni worktrees:
+retirar un worktree es una decisión con estado de tarea delante y está abajo. Tampoco recorta el
+**journal**, que no es regenerable y es el rastro que explica el incidente: este host lo acota con
+`SystemMaxUse=200M` en `/etc/systemd/journald.conf`, y un recorte mayor es una decisión humana
+(`journalctl --vacuum-size=120M`, se conservan los últimos 120 MB y el resto se descarta).
+
+La guarda son tres ficheros de `docs/runbooks/` (`disco-guard.sh`, `paperclip-disco-guard.service` y
+`paperclip-disco-guard.timer`), con el comando de instalación en la cabecera del script.
+
+**Saneamiento manual, de mayor a menor beneficio** (medido el 2026-09-13 en este host: de 253 MB
+libres al 99 % a 4,5 GB libres al 76 %):
+
+1. **Worktrees de issues cerrados.** Es el grueso del consumo: cada uno arrastra su `node_modules` y
+   su `.next`. Son worktrees del mismo repositorio (los objetos viven en el `.git` compartido), así
+   que borrar el directorio **no pierde ningún commit**; solo descarta cambios sin commitear, y por
+   eso el criterio mira el estado del issue. Los tres filtros, copiables:
+
+   ```bash
+   # 1) Issues en estado terminal (se leen del control plane; el token va en el entorno, no se imprime)
+   curl -s -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
+     "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/issues?limit=1000" |
+     python3 -c 'import json,sys
+   d=json.load(sys.stdin); items=d if isinstance(d,list) else d.get("issues",[])
+   print("\n".join(i["identifier"] for i in items if i["status"] in ("done","cancelled")))'
+
+   # 2) El worktree no se ha tocado en los últimos 90 minutos (sin salida = candidato)
+   find /ruta/al/worktree -newermt '-90 minutes' -print -quit
+
+   # 3) Ningún proceso con el directorio abierto (sin salida = candidato)
+   lsof +D /ruta/al/worktree 2>/dev/null | tail -n +2
+   fuser -m /ruta/al/worktree 2>/dev/null
+   ```
+
+   - Se retiran solo los del issue en estado terminal (`done`/`cancelled`) según la API de Paperclip,
+     sin tocar en los últimos 90 minutos y sin ningún proceso con el directorio abierto. Los de
+     issues activos (`in_progress`, `todo`, `in_review`, `blocked`) no se tocan nunca.
+   - Si su `node_modules` está montado, `rm -r` falla con `Device or resource busy`: hay que
+     `umount -l` del punto de montaje **dentro del worktree que se retira** antes de borrar.
+   - **Cuidado con los montajes compartidos.** Un `node_modules` montado desde el proyecto (o desde
+     otro worktree) es el _mismo_ directorio: borrar su contenido desde el worktree retirado vacía
+     el origen y deja a los demás workspaces sin dependencias. Antes de borrar, comprobar el origen
+     (`findmnt -o TARGET,SOURCE | grep node_modules`) y desmontar primero. Si aun así se vacía,
+     `pnpm install --frozen-lockfile --offline` en el proyecto lo reconstruye en segundos desde el
+     store (comprobado el 2026-09-13: 910 MB en 5 s).
+   - Después, `git worktree prune` y `git gc --prune=now` en el repositorio (el `.git` del proyecto
+     pasó de 28 MB a 3,7 MB).
+
+2. **Cachés compartidas.** `pnpm store prune` y borrar `/root/.cache/pnpm` (metadatos, se
+   regeneran). El store en sí no se borra: reconstruirlo cuesta una descarga completa.
+3. **Artefactos de build** del resto de workspaces (mismos nombres que la guarda). Regenerables.
+4. **`/tmp` es tmpfs: consume RAM, no disco.** Un `/tmp/.pnpm-store` de 2,7 GB de un run antiguo
+   presionaba la memoria del host. Los temporales de cada run viven en `PAPERCLIP_SCRATCH_DIR` y los
+   retira el arnés.
+5. **Estructural (pendiente).** El volumen raíz es una LV de 20 GB del hipervisor y no hay un
+   segundo volumen al que mover los workspaces, aunque el host tiene ~465 GB por SSD. Ampliar la LV
+   —o mover los workspaces a otro volumen— es una acción del **operador del host**: los agentes
+   corren dentro del contenedor y no deben redimensionar el volumen de la raíz desde dentro.
+
+Cierre del incidente: `/` por debajo del 85 %, un `git` de escritura (crear/borrar worktree o
+commit) sin error de espacio y este apartado actualizado si el procedimiento cambia.
 
 ## 5. Logs y privacidad
 
