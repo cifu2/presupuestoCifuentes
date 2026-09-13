@@ -101,6 +101,124 @@ apartado **actualiza** la decisión sin reescribir los puntos aceptados.
   push a `docs/**`, medir la ventana rodante y comprobar **0 despliegues** de `dependabot/**`,
   `archive/**` y `docs/**`.
 
+## Escalada al mando (2026-09-13): la condición del punto 6 se cumple tras A + B
+
+Con A (runbook §4.1) y B (`vercel.json` con `archive/**`, `dependabot/**` y `docs/**`) en vigor, **un
+merge a `main` volvió a quedarse sin despliegue de producción**: es exactamente el supuesto que el
+punto 6 manda escalar. La escalada la resolvió el **CTO** en CIF-536 —el CEO está sin heartbeat
+(CIF-405)—; la decisión de gasto (C) queda **elevada al board**, que es quien puede aprobarla. La
+corrección de DevOps en CIF-536 (00:10Z) reencuadra el incidente: **el paso A del runbook reparó el
+hueco cinco minutos después**, así que lo que queda abierto es la política de cuota, no una
+producción desactualizada.
+
+### Cronología y medición (DevOps, CIF-530 y CIF-536)
+
+- **23:52Z — merge del PR #94 (`main` = `5c0afcbf…`).** El check `Vercel` de ese commit queda en
+  `failure`: «Deployment rate limited — retry in 24 hours» (`api-deployments-free-per-day`). Cuatro
+  `POST /v13/deployments` (`gitSource` de `main`, `target=production`) entre 23:52Z y 00:05Z
+  devuelven **cuatro `402 payment_required`**. Entre las 23:52Z y las 23:57Z producción sirve el
+  commit anterior, `a112a2d`.
+- **23:57:33Z — el paso A del runbook repara el hueco.** En cuanto la ventana rodante libera un
+  cupo, el relanzamiento por API deja el deployment de `5c0afcb` **`READY` y con el alias de
+  producción** (`targets.production`). Producción estuvo **~5 minutos** por detrás de `main`, no
+  horas: el hueco no acumuló contenido y el release quedó verificado contra la API de Vercel, no
+  contra una sonda de salud (DevOps, CIF-530 y CIF-536).
+- **00:06Z — `main` avanza otra vez (`7f92ff7`, PR #87).** Ese release queda pendiente mientras la
+  ventana siga agotada; lo cubre el mismo paso A en el siguiente reintento de la rutina **horaria**
+  `b3ce0dae…` (CIF-530). El diff de `7f92ff7` es solo `docs/**` y `e2e/**`: no cambia runtime.
+- **87 despliegues** del proyecto contados con `GET /v6/deployments` en la ventana rodante; el límite
+  informa `{total: 100, remaining: 0, reset: 2026-09-13T23:56:31Z}`. La ventana que agotó el contador
+  y la rodante de 24 h **no son la misma**: la comparación 87 vs 100 **no mide una subestimación**,
+  mide desalineación de ventana. Lo único cierto por construcción es que el listado directo es una
+  **cota inferior**, porque los despliegues borrados desaparecen de `v6/deployments`; su magnitud
+  queda como **hipótesis sin cifra** hasta que se publiquen el recuento por ventana candidata y el
+  instante de la lectura (pedido en CIF-537).
+- `/api/health` respondió **200** (`status: ok`, `database: ok`) durante el hueco (23:52Z–23:57Z):
+  era la sonda del commit viejo.
+
+Con las mediciones anteriores (111/24 h en CIF-149; 113 en la vida del proyecto en CIF-153), el
+consumo de régimen se mueve **entre 87 y 111 despliegues al día contra un techo de 100**. No es un
+pico: es el techo estructural del ritmo de entrega actual (≈30 merges a `main` al día, un preview por
+push de rama).
+
+### Decisión (CTO, CIF-536)
+
+1. **(a) se mantiene.** A + B siguen siendo la postura: producción puede ir unas horas por detrás de
+   `main`, con el runbook §4.1 y la rutina de reintento horaria (CIF-530) verificando el release. No se
+   despliega otra rama ni otro commit para «dar el release por bueno». El retraso **no acumula
+   contenido**: cuando la ventana libera, un solo despliegue del `main` vigente pone al día todo lo
+   pendiente, así que el coste de (a) es latencia de release, no divergencia.
+2. **(b) se amplía con números, no a ojo.** El ahorro de B es real pero moderado: recortar clases de
+   rama menores no baja de 100 los 87–111 despliegues/día. Antes de apagar el preview de una clase
+   nueva (`ci/**`, `test/**`, `devops/**`, `chore/**`) hacen falta las dos cosas que el punto 4 ya
+   exigió para `docs/**`: **medición por clase y por entorno** en la ventana rodante (DevOps,
+   CIF-537) y una **guardia de contenido** que falle si la rama toca código de la aplicación. La
+   lista de clases la decide el CTO con esos números, en ≤7 días.
+3. **(c) se eleva al board**, con la recomendación del CTO de **contratarla** si el board quiere
+   quitar el techo. El plan Pro lleva el límite a **6.000 despliegues/día** (_Deployments Created per
+   Day_ en la tabla oficial de límites de Vercel: Hobby 100 / Pro 6000) y cuesta una cuota mensual
+   por usuario, que hay que confirmar en el panel antes de contratar. No la contrata ningún agente:
+   requiere aprobación explícita de coste (punto 6). La tarjeta está abierta en CIF-536.
+4. **Lo que no se toca:** no se apaga el preview de `main` ni el de las ramas con código, y siguen
+   descartados `ignoreCommand` y los comodines globales (`"*": false`), por las razones de los
+   puntos 3 y 4 y de las alternativas de abajo.
+
+### El paso 4 del runbook se endurece: un `200` no prueba que el release aterrizó
+
+El incidente deja una lección que entra en `docs/despliegue.md` §4.1: entre las 23:52Z y las 23:57Z
+producción sirvió `a112a2d` con `/api/health` en **200** mientras `main` era `5c0afcb`. **La sonda de
+salud no distingue un commit de otro**, así que por sí sola no cierra la verificación del release (en
+ese hueco habría dado por bueno el commit viejo). La prueba es el **sha del commit del deployment de
+producción** (`meta.githubCommitSha`) igual al de `main`, **y** el `200` de salud sobre esa URL.
+
+### Cierre de (b): B se queda como está (medición de CIF-537)
+
+La revisión de (a) y (b) que anunciaba el apartado siguiente se hizo con la medición de **CIF-537**
+(DevOps, `scripts/vercel-consumo.sh`, ventana de 24 h `2026-09-12T00:23Z → 2026-09-13T00:23Z`, solo
+`GET /v6/deployments`) y el CTO la resuelve en **CIF-553**: **B se queda como está**.
+
+| clase       | entorno    | despliegues/día |
+| ----------- | ---------- | --------------: |
+| `main`      | production |            37,0 |
+| `feat/**`   | preview    |            23,0 |
+| `fix/**`    | preview    |            15,0 |
+| `ci/**`     | preview    |             4,0 |
+| `test/**`   | preview    |             3,0 |
+| `docs/**`   | preview    |             2,0 |
+| `qa/**`     | preview    |             2,0 |
+| `devops/**` | preview    |             1,0 |
+| **total**   |            |        **87,0** |
+
+- **La cota inferior no cambia el signo de la decisión.** El contador del límite se agota con **86–88
+  listados** en su ventana rodante (`docs/operacion.md` §4.2): `GET /v6/deployments` no es un registro
+  de auditoría y no lista los despliegues borrados, así que el recuento es una **cota inferior de
+  valor desconocido** y el «87 vs 100» son **ventanas distintas**. Aun en el mejor caso para B —que el
+  contador coincidiera con el listado— el margen por rascar no baja de 100 el ritmo de entrega actual.
+- **Lo que B deja sobre la mesa.** Las clases apagables con guardia de contenido (`docs/**` 2/d +
+  `dependabot/**` + `ci/**` 4/d + `chore/**` + `devops/**` 1/d) suman **9,7/d**, de las que **2/d ya
+  están apagadas**; el margen pendiente es de **≈3,7–7,7/d (4–9 %)** y cada clase nueva exige su
+  guardia (punto 4 y `docs/operacion.md` §4.2). No compensa el riesgo de dejar sin preview un cambio
+  de código.
+- **Dónde está el consumo.** `main` + `feat/**` + `fix/**` = **86 %** (75/d) y no se apagan sin dejar a
+  QA sin preview de un cambio de código (Definition of Done). `main`, con **37/d**, es el mayor cubo.
+- **La lista blanca de `vercel.json` no se toca:** `docs/**`, `dependabot/**` y `archive/**` siguen sin
+  preview; `main` y las ramas con código conservan el suyo. **No se añaden** `ci/**`, `test/**`,
+  `chore/**` ni `devops/**`.
+
+**Condición que reabre (b):** que el board **rechace (c)** _y_ el consumo de régimen siga **por encima
+del techo** (100 despliegues en dos ventanas consecutivas de 24 h). Si eso pasa, la siguiente palanca
+**no son más clases apagadas**: es **agrupar merges a `main`** (37/d es el mayor cubo), y eso es una
+decisión de **ritmo de entrega**, no de configuración de `vercel.json`: la toma el **CEO/board** con
+esta medición delante.
+
+### Revisión
+
+- (a) y (b): revisadas el 2026-09-13 con la medición de CIF-537 y **cerradas** en el apartado
+  «Cierre de (b)» de arriba.
+- (c) queda a la espera de la respuesta del board en CIF-536. Si el consumo de régimen sigue por
+  encima de 100 en dos ventanas consecutivas de 24 h, la recomendación al board pasa a ser contratar
+  el plan de pago, con o sin ampliación de B.
+
 ## Consecuencias
 
 - Producción puede seguir quedándose unos minutos (u horas) por detrás de `main` cuando la cuota se
