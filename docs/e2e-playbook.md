@@ -192,6 +192,11 @@ fallo que haya que reportar.
 - **Sin `RESEND_FROM` y `RESEND_API_KEY` no hay envío real**: la entrega la ejerce el adaptador de
   consola (ADR-0004 §4), así que un preview «en vivo» no probaría ningún correo. El envío real se
   comprueba en producción tras el release, con la configuración del propietario (CIF-14).
+- **Un entorno sin catálogo falla como precondición con mensaje, no por timeout** (ADR-0026 §7,
+  dentro de ADR-0015 §7): `e2e/configurator.spec.ts` comprueba `GET /api/catalog/series` antes de
+  interactuar y, si no hay series publicadas, falla nombrando la decisión y el preview sembrado
+  (`scripts/seed-preview-catalogo.sh`, CIF-330). El catálogo de demostración de la suite mantiene el
+  spec en verde en CI y en local (`CATALOG_DEMO_MODE=true`).
 
 ## Base de datos en CI
 
