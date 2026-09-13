@@ -16,9 +16,10 @@
  *
  * §12 («el panel dice la verdad») cierra el caso con lo que el panel sirve de verdad: una versión
  * publicada se pinta con su fecha de entrada en vigor en «Vigente desde» y el aviso de la pantalla
- * dice qué le pasa a la anterior al publicar (CIF-545). La aserción **no** observa el efecto de esta
- * publicación en el panel: la página y las rutas HTTP cargan contenedores distintos del catálogo de
- * demostración, con su propio catálogo en memoria cada una (hallazgo de CIF-545).
+ * dice qué le pasa a la anterior al publicar (CIF-545). Dentro de este servidor la página del panel y
+ * las rutas HTTP comparten el contenedor (CIF-577), así que la publicación **sí** llega al panel; la
+ * aserción no depende de ese efecto: mira la fila de la predecesora, cuya vigencia no cambia, y sirve
+ * igual antes y después de publicar la sucesora.
  *
  * Los casos 503 y 401 no se pueden observar en el mismo servidor, porque son configuraciones de
  * entorno distintas: la suite levanta dos servidores y el bloque autenticado cambia de `baseURL`.
@@ -146,17 +147,6 @@ function withToken(token: string): { readonly authorization: string } {
   return { authorization: `Bearer ${token}` }
 }
 
-/**
- * El día tal como lo pinta el panel: la columna «Vigente desde» usa el formato del idioma de la
- * página (`formatDay`, `src/ui/admin/panel-navigation.ts`). Se calcula con la misma llamada a
- * `Intl` para afirmar el texto servido, no una cadena copiada.
- */
-function effectiveFromDay(isoInstant: string): string {
-  return new Intl.DateTimeFormat('es', { dateStyle: 'medium', timeZone: 'UTC' }).format(
-    new Date(isoInstant),
-  )
-}
-
 test.describe('sin ADMIN_API_TOKEN, el endpoint de publicación', () => {
   test('falla cerrado con 503 y no llega a mirar la versión', async ({ request }, testInfo) => {
     // Ni un borrador publicable ni un id inexistente pasan de la guarda: la comprobación de
@@ -276,10 +266,11 @@ test.describe('con ADMIN_API_TOKEN, el endpoint de publicación', () => {
     expect(priceBody.breakdown.basePrice.amount).toBe(draft.expectedBasePrice)
 
     // §12: el panel dice la misma verdad que la respuesta de publicación. La página del panel y las
-    // rutas HTTP del catálogo de demostración no comparten contenedor —cada capa resuelve el suyo, con
-    // su propio catálogo en memoria—, así que la aserción va sobre lo que el panel sí sirve: una
-    // versión publicada con su fecha de entrada en vigor en «Vigente desde», la misma columna y el
-    // mismo formato con los que anunciará la fecha de la versión nueva (CIF-545).
+    // rutas HTTP comparten contenedor en este proceso (CIF-577), pero la aserción no espera a ver el
+    // efecto de esta publicación: mira la fila de la predecesora, ya publicada y con su vigencia
+    // intacta, que sirve lo mismo antes y después —una versión publicada con su fecha de entrada en
+    // vigor en «Vigente desde», la misma columna y el mismo formato con los que anunciará la fecha de
+    // la versión nueva (CIF-545).
     const session = await page.request.post('/api/admin/session', {
       data: { password: E2E_ADMIN_PANEL_PASSWORD },
     })
@@ -396,7 +387,7 @@ test.describe('con ADMIN_API_TOKEN, el panel lee lo que publica el API del mismo
     // `validFrom` como fecha de entrada en vigor, no el «—» de un borrador.
     await expect(row).toContainText('Publicada')
     await expect(row).not.toContainText('Borrador')
-    await expect(row).toContainText(effectiveFromDay(draft.validFrom))
+    await expect(row).toContainText(panelDay(draft.validFrom))
   })
 })
 
