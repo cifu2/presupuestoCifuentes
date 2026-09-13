@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isPublishedTariffOverlapViolation } from './repositories'
+import { isDeadlockDetected, isPublishedTariffOverlapViolation } from './repositories'
 
 /**
  * Test unitario (sin base de datos) del traductor de la violación de la restricción de exclusión
@@ -65,5 +65,64 @@ describe('isPublishedTariffOverlapViolation', () => {
     error.cause = error
 
     expect(isPublishedTariffOverlapViolation(error)).toBe(false)
+  })
+})
+
+/**
+ * Test unitario del traductor del bloqueo mutuo (CIF-542). PostgreSQL resuelve dos publicaciones
+ * solapadas que se cruzan de dos maneras —violación de la restricción de exclusión (23P01) o bloqueo
+ * mutuo, abortando una de las dos transacciones (40P01)—, y las dos significan lo mismo para el
+ * llamante: la que pierde no ha publicado nada (su transacción se deshace entera) y el borde
+ * responde el mismo 409. Sin esta traducción, el desenlace que destapó el rojo intermitente de
+ * `calidad` (CIF-542) salía como un 500.
+ */
+describe('isDeadlockDetected', () => {
+  // Forma real de Prisma 7 con el adaptador `pg`: `P2039` envolviendo el SQLSTATE 40P01.
+  const prismaDriverAdapterError = {
+    name: 'PrismaClientKnownRequestError',
+    code: 'P2039',
+    message: 'Database error. Code: `40P01`. Message: `deadlock detected`',
+    meta: {
+      modelName: 'TariffVersion',
+      driverAdapterError: {
+        name: 'DriverAdapterError',
+        cause: {
+          originalCode: '40P01',
+          kind: 'postgres',
+          code: '40P01',
+          message: 'deadlock detected',
+        },
+      },
+    },
+  }
+
+  it('reconoce el error del adaptador de Prisma 7 por el SQLSTATE 40P01', () => {
+    expect(isDeadlockDetected(prismaDriverAdapterError)).toBe(true)
+  })
+
+  it('reconoce el bloqueo mutuo aunque el SQLSTATE solo venga dentro del mensaje', () => {
+    const error = new Error('Database error. Code: `40P01`. Message: `deadlock detected`')
+
+    expect(isDeadlockDetected(error)).toBe(true)
+  })
+
+  it('no confunde la violación de exclusión (23P01) ni otros errores con el bloqueo mutuo', () => {
+    const exclusion = Object.assign(
+      new Error('conflicting key value violates exclusion constraint'),
+      { code: 'P2039', meta: { driverAdapterError: { cause: { originalCode: '23P01' } } } },
+    )
+    const unique = Object.assign(new Error('Unique constraint failed'), { code: 'P2002' })
+
+    expect(isDeadlockDetected(exclusion)).toBe(false)
+    expect(isDeadlockDetected(unique)).toBe(false)
+    expect(isDeadlockDetected(null)).toBe(false)
+    expect(isDeadlockDetected('texto suelto')).toBe(false)
+  })
+
+  it('no se queda colgado con referencias circulares', () => {
+    const error: { code: string; cause?: unknown } = { code: 'P2039' }
+    error.cause = error
+
+    expect(isDeadlockDetected(error)).toBe(false)
   })
 })

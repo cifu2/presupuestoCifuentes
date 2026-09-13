@@ -115,4 +115,23 @@ las afirmaciones se hacen sobre la **reserva idempotente** (una fila y un intent
 un correo por destinatario) y no sobre cuántas respuestas ven `delivered`. La repetición de las 5
 pasadas en `calidad` es la evidencia de que el escenario es determinista (CIF-406).
 
+La carrera de dos publicaciones de tarifa solapadas de la misma serie (CIF-89) se prueba igual, en
+`repositories.test.ts`: una costura en `save` deja la primera publicación detenida con todas sus
+comprobaciones pasadas, la segunda corre entera y, al reanudar, la restricción de exclusión de
+PostgreSQL rechaza la primera (23P01) → `409 AMBIGUOUS_TARIFF`. Un segundo caso suelta las **dos**
+escrituras en el mismo tick, que es el entrelazado que destapó CIF-542, y un tercero deja el
+`Promise.all` real afirmando solo la invariante cierta en cualquier reparto (una sola publicada y un
+409 en la que pierde).
+
+Ese rojo intermitente de `calidad` no era del test sino de la traducción del borde: la restricción de
+exclusión resuelve el cruce de dos escrituras de dos maneras —violación de exclusión (23P01) o
+bloqueo mutuo, abortando PostgreSQL una de las transacciones (40P01)—, y el adaptador solo traducía
+la primera. La segunda salía como `500`. Un `retry` a ciegas no arreglaba nada: la transacción
+abortada no deja fila escrita y lo que corresponde es el mismo `409` que ya devolvía el camino de
+23P01, que es lo que traduce `isDeadlockDetected`. El desenlace de bloqueo mutuo es minoritario pero
+real (medido contra PostgreSQL 17: 3 de 20 inserciones solapadas simultáneas y 3 de 60 carreras por
+el camino real de Prisma) y estocástico, así que la traducción se fija además con un test unitario de
+la forma del error (`repositories.overlap-error.test.ts`) y no solo con el test de integración. El
+paso de 5 pasadas en `calidad` sigue siendo la evidencia de que el escenario es sostenido.
+
 Procedimiento y plantilla de informes de fallo: [e2e-playbook.md](e2e-playbook.md).

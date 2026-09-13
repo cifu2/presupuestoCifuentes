@@ -512,7 +512,9 @@ configurador.
 - `409` `INVALID_CATALOG_TRANSITION` si la versión está archivada (hay que restaurarla a borrador).
 - `409` `AMBIGUOUS_TARIFF` si la versión se solapa con otra ya publicada de la misma serie. **No se
   escribe nada**: la invariante `assertNoOverlappingPublishedTariffs` se comprueba en el caso de uso
-  antes del `INSERT`/`UPDATE`. Republicar una tarifa ya publicada es idempotente (no escribe).
+  antes del `INSERT`/`UPDATE`. Republicar una tarifa ya publicada es idempotente (no escribe). Si dos
+  publicaciones solapadas de la misma serie se cruzan, la que pierde también responde `409`
+  `AMBIGUOUS_TARIFF`: lo decide la restricción de exclusión de la base (CIF-89, CIF-542), no un 500.
 
 **Acceso.** El API del panel acepta dos credenciales (CIF-241,
 [ADR-0024](adr/0024-autenticacion-panel-sesion-firmada.md)):

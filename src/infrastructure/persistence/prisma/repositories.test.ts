@@ -8,7 +8,7 @@
 
 import { randomUUID } from 'node:crypto'
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { ManualQuoteRequest } from '@/domain/catalog/manual-quote-request'
 import { Dimensions } from '@/domain/catalog/measurement'
@@ -30,6 +30,7 @@ import { QUOTE_DELIVERY_CLAIM_LEASE_MS } from '@/application/ports/quote-deliver
 import type { EmailMessage, EmailSender } from '@/application/ports/email-sender'
 import type { QuoteDocumentSettings } from '@/application/ports/quote-document-settings'
 import type { QuotePdfRenderer } from '@/application/ports/quote-pdf-renderer'
+import type { TariffVersionRepository } from '@/application/ports/tariff-version-repository'
 import { calculatePrice } from '@/application/use-cases/calculate-price'
 import { createTariffVersionDraft } from '@/application/use-cases/create-tariff-version-draft'
 import { createAdminCatalogUseCase } from '@/application/use-cases/get-admin-catalog'
@@ -658,37 +659,189 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
       expect(row?.publishedAt).toBeNull()
     })
 
-    it('dos publicaciones concurrentes solapadas dejan una sola tarifa publicada (CIF-89)', async () => {
-      const tariffVersionRepository = new PrismaTariffVersionRepository(prisma)
+    /**
+     * Dos publicaciones concurrentes solapadas de la misma serie (CIF-89).
+     *
+     * El `Promise.all` original dejaba el desenlace al scheduling —la segunda publicación podía pasar
+     * su comprobación previa antes de que la primera escribiera (decide la restricción de exclusión)
+     * o después (decide el caso de uso)— y PostgreSQL resuelve el cruce de escrituras de dos maneras
+     * distintas: violación de exclusión (23P01) o bloqueo mutuo, abortando una de las transacciones
+     * (40P01). El rojo intermitente de CIF-542 salía de ahí: la traducción del 40P01 no existía y el
+     * desenlace legítimo de la carrera llegaba al borde como un 500. Aquí se prueba cada entrelazado
+     * por separado —dos forzados con una costura en `save` y el real—, afirmando sobre la invariante
+     * (una sola publicada, 409 en la que pierde) y no sobre el reparto que haga el runner.
+     */
+    describe('dos publicaciones concurrentes solapadas de la misma serie (CIF-89)', () => {
+      const raceRepository = new PrismaTariffVersionRepository(prisma)
 
-      const [first, second] = await Promise.allSettled([
-        publishTariffVersion(
-          { tariffVersionRepository, clock },
-          { tariffVersionId: IDS.tariffRaceA },
-        ),
-        publishTariffVersion(
-          { tariffVersionRepository, clock },
-          { tariffVersionId: IDS.tariffRaceC },
-        ),
-      ])
-
-      const rejected = [first, second].filter(
-        (result): result is PromiseRejectedResult => result.status === 'rejected',
-      )
-      const fulfilled = [first, second].filter((result) => result.status === 'fulfilled')
-
-      // La invariante se cumple pase lo que pase: una publica y la otra choca, con el error de
-      // dominio (409) tanto si lo detecta la comprobación previa como si lo detecta PostgreSQL.
-      expect(fulfilled).toHaveLength(1)
-      expect(rejected).toHaveLength(1)
-      expect(rejected[0]?.reason).toBeInstanceOf(AmbiguousTariffError)
-
-      const published = await prisma.tariffVersion.findMany({
-        where: { seriesId: IDS.raceSeries, status: 'PUBLISHED' },
-        select: { id: true },
+      /** Devuelve la serie de la carrera al estado del `seed`: los dos borradores sin publicar. */
+      beforeEach(async () => {
+        await prisma.tariffVersion.updateMany({
+          where: { seriesId: IDS.raceSeries },
+          data: { status: 'DRAFT', publishedAt: null },
+        })
       })
 
-      expect(published).toHaveLength(1)
+      /**
+       * El repositorio real con una costura en `save`: el test decide cuándo se completa cada
+       * escritura. `beforeSave` corre **antes** de que la escritura llegue a la base, así que deja
+       * una publicación detenida con todas sus comprobaciones ya pasadas.
+       */
+      function withSaveSeam(beforeSave: () => Promise<void>): TariffVersionRepository {
+        return {
+          findById: (id) => raceRepository.findById(id),
+          listBySeriesId: (seriesId) => raceRepository.listBySeriesId(seriesId),
+          save: async (version) => {
+            await beforeSave()
+            await raceRepository.save(version)
+          },
+          findPriceTableByVersionId: (id) => raceRepository.findPriceTableByVersionId(id),
+          savePriceTable: (priceTable) => raceRepository.savePriceTable(priceTable),
+        }
+      }
+
+      const publishRaceA = (repository: TariffVersionRepository) =>
+        publishTariffVersion(
+          { tariffVersionRepository: repository, clock },
+          { tariffVersionId: IDS.tariffRaceA },
+        )
+      const publishRaceC = (repository: TariffVersionRepository) =>
+        publishTariffVersion(
+          { tariffVersionRepository: repository, clock },
+          { tariffVersionId: IDS.tariffRaceC },
+        )
+
+      /** Estado de las dos versiones de la carrera: cuál publicó y cuál sigue intacta. */
+      async function raceState(): Promise<{
+        readonly published: readonly string[]
+        readonly drafts: readonly string[]
+      }> {
+        const rows = await prisma.tariffVersion.findMany({
+          where: { seriesId: IDS.raceSeries },
+          select: { id: true, status: true, publishedAt: true },
+        })
+
+        expect(
+          rows.filter((row) => row.status === 'PUBLISHED').every((row) => row.publishedAt !== null),
+        ).toBe(true)
+
+        return {
+          published: rows.filter((row) => row.status === 'PUBLISHED').map((row) => row.id),
+          drafts: rows
+            .filter((row) => row.status === 'DRAFT' && row.publishedAt === null)
+            .map((row) => row.id),
+        }
+      }
+
+      it('si la segunda termina antes de que la primera escriba, la rechaza la restricción de exclusión: 409 y una sola publicada', async () => {
+        let firstSaveReached!: () => void
+        const firstSaveStarted = new Promise<void>((resolve) => {
+          firstSaveReached = resolve
+        })
+        let allowFirstSave!: () => void
+        const firstSaveGate = new Promise<void>((resolve) => {
+          allowFirstSave = resolve
+        })
+        let saves = 0
+
+        // La primera publicación se queda detenida justo antes de escribir; la segunda corre entera
+        // dentro de esa ventana y publica. Al reanudar, la escritura de la primera se encuentra la
+        // fila ya publicada y la rechaza PostgreSQL (23P01), no el caso de uso.
+        const repository = withSaveSeam(async () => {
+          saves += 1
+
+          if (saves > 1) return
+
+          firstSaveReached()
+          await firstSaveGate
+        })
+
+        const first = publishRaceA(repository)
+
+        await firstSaveStarted
+
+        const second = await publishRaceC(repository)
+
+        expect(second.status).toBe('published')
+
+        allowFirstSave()
+
+        await expect(first).rejects.toThrow(AmbiguousTariffError)
+        await expect(raceState()).resolves.toEqual({
+          published: [IDS.tariffRaceC],
+          drafts: [IDS.tariffRaceA],
+        })
+      })
+
+      it('con las dos escrituras en el aire a la vez, el desenlace que aborta la base (40P01) responde 409 igual', async () => {
+        let inFlight = 0
+        let bothInFlight!: () => void
+        const bothWritesReached = new Promise<void>((resolve) => {
+          bothInFlight = resolve
+        })
+        let releaseWrites!: () => void
+        const writesGate = new Promise<void>((resolve) => {
+          releaseWrites = resolve
+        })
+
+        // Las dos publicaciones pasan sus comprobaciones y sueltan su escritura en el mismo tick: es
+        // el entrelazado que destapó CIF-542 en CI, donde la base puede resolver el cruce con
+        // `deadlock detected` (40P01) en vez de con la violación de exclusión (23P01). Las dos
+        // lecturas son legítimas y significan lo mismo para el llamante, así que la afirmación vale
+        // para cualquiera de las dos.
+        const repository = withSaveSeam(async () => {
+          inFlight += 1
+
+          if (inFlight === 2) bothInFlight()
+
+          await writesGate
+        })
+
+        const first = publishRaceA(repository)
+        const second = publishRaceC(repository)
+
+        await bothWritesReached
+        releaseWrites()
+
+        const results = await Promise.allSettled([first, second])
+        const rejected = results.filter(
+          (result): result is PromiseRejectedResult => result.status === 'rejected',
+        )
+        const fulfilled = results.filter((result) => result.status === 'fulfilled')
+
+        expect(fulfilled).toHaveLength(1)
+        expect(rejected).toHaveLength(1)
+        expect(rejected[0]?.reason).toBeInstanceOf(AmbiguousTariffError)
+
+        const state = await raceState()
+
+        expect(state.published).toHaveLength(1)
+        expect(state.drafts).toHaveLength(1)
+      })
+
+      it('cualquier entrelazado real deja una sola tarifa publicada y un 409, no un 500', async () => {
+        const [first, second] = await Promise.allSettled([
+          publishRaceA(raceRepository),
+          publishRaceC(raceRepository),
+        ])
+
+        const rejected = [first, second].filter(
+          (result): result is PromiseRejectedResult => result.status === 'rejected',
+        )
+        const fulfilled = [first, second].filter((result) => result.status === 'fulfilled')
+
+        // La invariante se cumple pase lo que pase: una publica y la otra choca, con el error de
+        // dominio (409) tanto si lo detecta la comprobación previa del caso de uso como si lo
+        // detecta PostgreSQL (violación de exclusión o bloqueo mutuo, ver el adaptador).
+        expect(fulfilled).toHaveLength(1)
+        expect(rejected).toHaveLength(1)
+        expect(rejected[0]?.reason).toBeInstanceOf(AmbiguousTariffError)
+
+        const state = await raceState()
+
+        expect(state.published).toHaveLength(1)
+        expect(state.drafts).toHaveLength(1)
+      })
     })
 
     /**

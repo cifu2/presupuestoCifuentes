@@ -73,6 +73,9 @@ type TextMap = ReturnType<typeof groupCatalogTexts>
 /** SQLSTATE que PostgreSQL devuelve al violar una restricción de exclusión (`EXCLUDE`). */
 const POSTGRES_EXCLUSION_VIOLATION = '23P01'
 
+/** SQLSTATE con el que PostgreSQL aborta una de dos transacciones que se esperan en círculo. */
+const POSTGRES_DEADLOCK_DETECTED = '40P01'
+
 /** Restricción de exclusión que impide dos tarifas publicadas solapadas de la misma serie. */
 const PUBLISHED_TARIFF_OVERLAP_CONSTRAINT = 'tariff_version_published_no_overlap'
 
@@ -80,18 +83,21 @@ const PUBLISHED_TARIFF_OVERLAP_CONSTRAINT = 'tariff_version_published_no_overlap
 const MAX_ERROR_DEPTH = 8
 
 /**
- * ¿El error viene de publicar dos versiones de tarifa solapadas de la misma serie?
+ * ¿Algún nodo del grafo del error menciona alguno de esos códigos o nombres?
  *
- * La restricción de exclusión (`tariff_version_published_no_overlap`) es la defensa en escritura
- * frente a dos publicaciones concurrentes (CIF-89). Prisma 7 (adaptador `pg`) envuelve el error de
- * PostgreSQL en un `PrismaClientKnownRequestError` con código `P2039`, y el SQLSTATE real queda
- * anidado en `meta.driverAdapterError.cause` (`code`/`originalCode`). Para no depender de esa
- * forma concreta se recorre el grafo del error buscando el SQLSTATE 23P01 o el nombre de la
- * restricción (que aparece en `message`, `originalMessage` y `detail`). Se exporta para probarlo
- * sin base de datos.
+ * Prisma 7 (adaptador `pg`) envuelve los errores de PostgreSQL en un `PrismaClientKnownRequestError`
+ * con código `P2039` y anida el del driver en `meta.driverAdapterError.cause`: el SQLSTATE aparece
+ * en un campo `code`-like y a veces solo dentro del mensaje, y el nombre de la restricción, en
+ * `message`/`constraint`. Se recorre el grafo buscando esos rastros —en vez de mirar una ruta
+ * fija— para no depender de la forma concreta del error. `message` y `cause` no son enumerables en
+ * las subclases de `Error`, así que se leen aparte, y el recorrido corta a `MAX_ERROR_DEPTH` y con
+ * un conjunto de visitados para no quedarse colgado con referencias circulares.
  */
-export function isPublishedTariffOverlapViolation(error: unknown): boolean {
+function errorGraphMentions(error: unknown, needles: readonly string[]): boolean {
   const visited = new Set<unknown>()
+
+  const mentions = (value: unknown): boolean =>
+    typeof value === 'string' && needles.some((needle) => value.includes(needle))
 
   const inspect = (value: unknown, depth: number): boolean => {
     if (depth > MAX_ERROR_DEPTH || typeof value !== 'object' || value === null) {
@@ -107,19 +113,11 @@ export function isPublishedTariffOverlapViolation(error: unknown): boolean {
     const record = value as Record<string, unknown>
     const code = record.code ?? record.originalCode ?? record.sqlState
 
-    if (typeof code === 'string' && code === POSTGRES_EXCLUSION_VIOLATION) {
+    if (typeof code === 'string' && needles.includes(code)) {
       return true
     }
 
-    if (record.constraint === PUBLISHED_TARIFF_OVERLAP_CONSTRAINT) {
-      return true
-    }
-
-    // `message` (y `cause` en algunos motores) no son enumerables en las subclases de `Error`, así
-    // que se leen aparte de `Object.values`.
-    const message = record.message
-
-    if (typeof message === 'string' && message.includes(PUBLISHED_TARIFF_OVERLAP_CONSTRAINT)) {
+    if (mentions(record.constraint) || mentions(record.message)) {
       return true
     }
 
@@ -137,6 +135,35 @@ export function isPublishedTariffOverlapViolation(error: unknown): boolean {
   }
 
   return inspect(error, 0)
+}
+
+/**
+ * ¿El error viene de publicar dos versiones de tarifa solapadas de la misma serie?
+ *
+ * La restricción de exclusión (`tariff_version_published_no_overlap`) es la defensa en escritura
+ * frente a dos publicaciones concurrentes (CIF-89): PostgreSQL la rechaza con el SQLSTATE 23P01, o
+ * con el nombre de la restricción en el mensaje. Se exporta para probarlo sin base de datos.
+ */
+export function isPublishedTariffOverlapViolation(error: unknown): boolean {
+  return errorGraphMentions(error, [
+    POSTGRES_EXCLUSION_VIOLATION,
+    PUBLISHED_TARIFF_OVERLAP_CONSTRAINT,
+  ])
+}
+
+/**
+ * ¿La base ha abortado la escritura por un bloqueo mutuo con otra publicación concurrente?
+ *
+ * La restricción de exclusión de tarifas publicadas resuelve dos inserciones solapadas que se cruzan
+ * dejando que cada transacción espere a la otra: PostgreSQL detecta el círculo y aborta una con
+ * `deadlock detected` (SQLSTATE 40P01). Es la misma carrera que la violación de exclusión (23P01)
+ * con otro desenlace —la que pierde no ha publicado nada, porque la transacción se deshace entera—
+ * así que el borde debe responder el mismo 409 y no un 500 (CIF-542). La forma del error es la
+ * misma que la de 23P01 (Prisma 7 lo envuelve en `P2039` con el SQLSTATE anidado), pero aquí no hay
+ * nombre de restricción al que agarrarse: se busca el SQLSTATE en el grafo.
+ */
+export function isDeadlockDetected(error: unknown): boolean {
+  return errorGraphMentions(error, [POSTGRES_DEADLOCK_DETECTED])
 }
 
 /** Códigos de Prisma para las violaciones de integridad que el borde debe traducir a dominio. */
@@ -523,6 +550,16 @@ export class PrismaTariffVersionRepository implements TariffVersionRepository {
       if (isPublishedTariffOverlapViolation(error)) {
         throw new AmbiguousTariffError(
           `Ya hay una versión de tarifa publicada que se solapa con la versión ${version.versionNumber} de la serie "${version.seriesId}"`,
+        )
+      }
+
+      // Dos escrituras simultáneas de la misma serie pueden acabar en bloqueo mutuo en vez de en la
+      // violación de exclusión: PostgreSQL aborta una de las dos (40P01) y esa transacción se
+      // deshace entera, así que el resultado es el mismo 409 —otra publicación de la serie ganó—
+      // y no el 500 que salía por el borde (CIF-542).
+      if (isDeadlockDetected(error)) {
+        throw new AmbiguousTariffError(
+          `Otra publicación concurrente de la serie "${version.seriesId}" ganó la carrera por la versión ${version.versionNumber}; vuelve a leer el catálogo y reintenta`,
         )
       }
 
