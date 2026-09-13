@@ -136,7 +136,8 @@
     "empty": "There are no items in the catalogue yet.",
     "error": {
       "title": "We couldn't load the data.",
-      "retry": "Retry"
+      "retry": "Retry",
+      "saveFailed": "We could not save your changes. Please try again."
     },
     "fields": {
       "name": "Name",
@@ -250,7 +251,15 @@
     },
     "translatedInto": "Translated into {language}",
     "translations": "Translations",
-    "unpublish": "Unpublish"
+    "unpublish": "Unpublish",
+    "price": {
+      "perSquareMetre": "Price per m² (€)",
+      "fixedPrice": "Fixed price (€)",
+      "quickEditHelp": "Only the amounts you change are saved; the rest of the price table is left untouched.",
+      "invalidAmount": "Enter an amount such as 450 or 450.50.",
+      "saved": "Price saved.",
+      "archivedLocked": "This version is archived: it is neither edited nor published."
+    }
   },
   "DomainErrors": {
     "INVALID_VALUE": "Some data has a value that is not valid.",
