@@ -15,7 +15,10 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { createContainer } from '@/composition/container'
 import { VERSION_NUMBER_ATTEMPTS } from '@/application/use-cases/create-tariff-version-draft'
-import type { TariffVersionRepository } from '@/application/ports/tariff-version-repository'
+import type {
+  TariffPublishTransition,
+  TariffVersionRepository,
+} from '@/application/ports/tariff-version-repository'
 import type { TariffVersion } from '@/domain/catalog/tariff-version'
 import type { PriceTable } from '@/domain/pricing/price-table'
 import { ConflictError } from '@/domain/shared/errors'
@@ -52,6 +55,10 @@ class ConflictingTariffVersionRepository implements TariffVersionRepository {
 
   save(version: TariffVersion): Promise<void> {
     return this.inner.save(version)
+  }
+
+  savePublishTransition(transition: TariffPublishTransition): Promise<void> {
+    return this.inner.savePublishTransition(transition)
   }
 
   findPriceTableByVersionId(tariffVersionId: string): Promise<PriceTable | null> {

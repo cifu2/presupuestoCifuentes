@@ -115,6 +115,30 @@ export class TariffVersion {
     return this.withStatus('published', at)
   }
 
+  /**
+   * Cierra la vigencia de una versión **publicada** (ADR-0003 rev. 2, §8).
+   *
+   * Conserva el estado `published` y su `publishedAt`: la predecesora cerrada es el registro
+   * histórico del precio que estuvo vigente, no se archiva ni se borra. El cierre exige una fecha
+   * posterior a su `validFrom` (lo valida `ValidityPeriod.close`) y actualiza `updatedAt` al
+   * instante de la operación.
+   */
+  closeValidity(validUntil: Date, at: Date): TariffVersion {
+    if (!this.isPublished()) {
+      throw new InvalidTariffVersionError(
+        `Solo se cierra la vigencia de una versión publicada; la versión "${this.id}" está en estado "${this.status}"`,
+      )
+    }
+
+    assertValidDate(at, 'updatedAt')
+
+    return new TariffVersion({
+      ...this,
+      validity: this.validity.close(validUntil),
+      updatedAt: at,
+    })
+  }
+
   archive(at: Date): TariffVersion {
     return this.withStatus('archived', at)
   }
@@ -174,4 +198,73 @@ export function assertNoOverlappingPublishedTariffs(versions: readonly TariffVer
       }
     })
   }
+}
+
+/**
+ * Proyección del conjunto publicado al publicar la candidata (ADR-0003 rev. 2, §8-§9).
+ *
+ * El resultado es lo que quedará publicado: la candidata y, cerrada en su `validFrom`, la versión
+ * publicada de la misma serie que seguía con vigencia **abierta** y empezaba antes. El intervalo es
+ * semiabierto, así que la predecesora deja de estar vigente justo cuando entra la sucesora: ni
+ * hueco ni solape.
+ *
+ * La invariante se evalúa sobre ese conjunto proyectado y **antes** de escribir nada; si el
+ * propietario no puede publicar, lanza `AmbiguousTariffError` (409) sin tocar ninguna fila:
+ *
+ * - solape con una versión publicada de vigencia **cerrada**;
+ * - candidata con `validFrom` anterior o igual al de la predecesora abierta (cerrar hacia atrás
+ *   sería inválido);
+ * - más de una versión publicada con vigencia abierta en la misma serie.
+ */
+export interface PublishedSetProjection {
+  /** La candidata, ya publicada, que queda vigente a partir de su `validFrom`. */
+  readonly successor: TariffVersion
+  /** La predecesora abierta cerrada en el `validFrom` de la sucesora, o `null` si no había ninguna. */
+  readonly predecessor: TariffVersion | null
+}
+
+export function projectPublishedSet(
+  versions: readonly TariffVersion[],
+  candidate: TariffVersion,
+): PublishedSetProjection {
+  if (!candidate.isPublished()) {
+    throw new InvalidTariffVersionError(
+      `La versión "${candidate.id}" tiene que estar publicada para proyectar el conjunto publicado`,
+    )
+  }
+
+  const others = versions.filter(
+    (version) =>
+      version.isPublished() &&
+      version.seriesId === candidate.seriesId &&
+      version.id !== candidate.id,
+  )
+  const openPublished = others.filter((version) => version.validity.isOpenEnded())
+
+  if (openPublished.length > 1) {
+    throw new AmbiguousTariffError(
+      `Hay ${openPublished.length} versiones publicadas de la serie "${candidate.seriesId}" con vigencia abierta; solo puede haber una`,
+    )
+  }
+
+  const openPredecessor = openPublished[0] ?? null
+  let predecessor: TariffVersion | null = null
+
+  if (openPredecessor !== null) {
+    if (candidate.validity.validFrom.getTime() <= openPredecessor.validity.validFrom.getTime()) {
+      throw new AmbiguousTariffError(
+        `La versión ${candidate.versionNumber} de la serie "${candidate.seriesId}" entra en vigor antes o a la vez que la versión publicada ${openPredecessor.versionNumber}, con vigencia abierta; el cierre tiene que ser posterior`,
+      )
+    }
+
+    predecessor = openPredecessor.closeValidity(candidate.validity.validFrom, candidate.updatedAt)
+  }
+
+  const projected = others.map((version) =>
+    predecessor !== null && version.id === predecessor.id ? predecessor : version,
+  )
+
+  assertNoOverlappingPublishedTariffs([...projected, candidate])
+
+  return { successor: candidate, predecessor }
 }

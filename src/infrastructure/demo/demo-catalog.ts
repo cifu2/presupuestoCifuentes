@@ -31,25 +31,32 @@ const TARIFF_CI_200_V1 = '0192f1b0-0000-7000-8000-000000000201'
 const TARIFF_CI_300_V1 = '0192f1b0-0000-7000-8000-000000000301'
 
 /**
- * Borradores del panel. El E2E de publicación (CIF-86) los necesita para cubrir el 200 y el 409,
- * que exigen un borrador real.
+ * Borradores del panel. El E2E de publicación (CIF-86/CIF-544) los necesita para cubrir el 200 y el
+ * 409, que exigen un borrador real.
  *
- * - `TARIFF_CI_400_2027_DRAFT`: vigencia futura, así que publicarla no cambia el precio vigente de
- *   la serie (el configurador sigue pasando a presupuesto manual); es el caso **sin** solape.
- * - `TARIFF_CI_400_2029_DRAFT`: mismo caso sin solape que el anterior pero en otra ventana, para que
- *   cada proyecto de Playwright (`chromium` y `movil`) publique **su propio** borrador: con
- *   `fullyParallel` los dos proyectos mutan a la vez el mismo servidor y no pueden compartirlo
- *   (criterio 2 de la revisión CIF-86 → CIF-9). Las dos ventanas no se solapan entre sí.
- * - `TARIFF_CI_100_V2_DRAFT`: solapa con la v1 publicada de la serie CI-100 (vigencia abierta), así
- *   que la invariante de no solapamiento debe rechazarla sin escribir.
+ * - `TARIFF_CI_400_2027_DRAFT` y `TARIFF_CI_400_2029_DRAFT`: vigencia futura, así que publicarlos no
+ *   cambia el precio vigente de la serie (el configurador sigue pasando a presupuesto manual); son
+ *   los casos **sin** predecesora que cerrar. Cada proyecto de Playwright (`chromium` y `movil`)
+ *   publica **su propio** borrador: con `fullyParallel` los dos proyectos mutan a la vez el mismo
+ *   servidor y no pueden compartirlo (criterio 2 de la revisión CIF-86 → CIF-9).
+ * - `TARIFF_CI_100_V2_DRAFT` (chromium) y `TARIFF_CI_300_V2_DRAFT` (movil): entran en vigor **antes**
+ *   del instante de la suite pero **después** de la v1 publicada de su serie, que sigue con vigencia
+ *   abierta. Son el camino feliz de ADR-0003 rev. 2 §8: publicarlos cierra la predecesora en su
+ *   `validFrom` y el configurador pasa a dar el precio nuevo. Una serie por proyecto para no
+ *   compartir estado mutable.
+ * - `TARIFF_CI_200_V2_DRAFT`: empieza a la vez que la v1 publicada de su serie, así que la
+ *   candidata no es posterior a la predecesora abierta y publicarla debe responder 409
+ *   `AMBIGUOUS_TARIFF` sin escribir nada. Es el caso de fallo cerrado, idempotente entre proyectos.
  *
- * Los dos borradores publicables llevan tabla de precios (CIF-126a, ADR-0027 §4): una versión sin
- * tabla no se publica, así que un borrador vacío ya no puede recorrer el camino 200. El de solape se
- * queda **sin** tabla a propósito: prueba que el no-solapamiento se comprueba antes que el vacío.
+ * Los borradores que tienen que publicarse de verdad llevan tabla de precios (CIF-126a, ADR-0027
+ * §4): una versión sin tabla no se publica. El del 409 se queda **sin** tabla a propósito: prueba
+ * que el no-solapamiento se comprueba antes que el vacío.
  */
 const TARIFF_CI_400_2027_DRAFT = '0192f1b0-0000-7000-8000-000000000401'
 const TARIFF_CI_400_2029_DRAFT = '0192f1b0-0000-7000-8000-000000000402'
 const TARIFF_CI_100_V2_DRAFT = '0192f1b0-0000-7000-8000-000000000102'
+const TARIFF_CI_200_V2_DRAFT = '0192f1b0-0000-7000-8000-000000000202'
+const TARIFF_CI_300_V2_DRAFT = '0192f1b0-0000-7000-8000-000000000302'
 
 function money(value: string): Money {
   return Money.fromDecimalString(value)
@@ -464,15 +471,56 @@ export function buildDemoCatalog(): CatalogStoreSnapshot {
         modifiers: [],
       }),
     },
+    {
+      // Sucesora de CI-100 con precio distinto al de la v1 (380,00 €/m²): al publicarla, la v1
+      // abierta se cierra en su `validFrom` y el configurador pasa a cobrar esta. Tabla sin
+      // modificadores: la aserción del E2E es sobre el precio base.
+      tariff: draftTariff({
+        id: TARIFF_CI_100_V2_DRAFT,
+        seriesId: catalogoSeries.id,
+        strategy: 'per_square_metre',
+        versionNumber: 2,
+        validFrom: new Date('2026-06-01T00:00:00.000Z'),
+      }),
+      priceTable: PriceTable.create({
+        tariffVersionId: TARIFF_CI_100_V2_DRAFT,
+        strategy: 'per_square_metre',
+        perSquareMetre: money('500.00'),
+        fixedPrice: null,
+        bands: [],
+        modifiers: [],
+      }),
+    },
+    {
+      // Sucesora de CI-300 (precio fijo): mismo camino feliz pero en la serie que solo usa este E2E,
+      // la que publica el proyecto `movil`.
+      tariff: draftTariff({
+        id: TARIFF_CI_300_V2_DRAFT,
+        seriesId: ci300.id,
+        strategy: 'fixed',
+        versionNumber: 2,
+        validFrom: new Date('2026-07-01T00:00:00.000Z'),
+      }),
+      priceTable: PriceTable.create({
+        tariffVersionId: TARIFF_CI_300_V2_DRAFT,
+        strategy: 'fixed',
+        perSquareMetre: null,
+        fixedPrice: money('1620.00'),
+        bands: [],
+        modifiers: [],
+      }),
+    },
   ]
 
   const drafts = [
     draftTariff({
-      id: TARIFF_CI_100_V2_DRAFT,
-      seriesId: catalogoSeries.id,
+      // Empieza a la vez que la v1 publicada de CI-200 (2026-01-01): la candidata no es posterior a
+      // la predecesora abierta, así que publicarla falla cerrado (409) sin escribir.
+      id: TARIFF_CI_200_V2_DRAFT,
+      seriesId: ci200.id,
       strategy: 'per_square_metre',
       versionNumber: 2,
-      validFrom: new Date('2027-01-01T00:00:00.000Z'),
+      validFrom: SEED_INSTANT,
     }),
   ]
 

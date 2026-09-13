@@ -50,4 +50,37 @@ describe('ValidityPeriod', () => {
     expect(first.overlaps(adjacent)).toBe(false)
     expect(first.overlaps(before)).toBe(false)
   })
+
+  describe('cierre explícito', () => {
+    it('cierra una vigencia abierta con una fecha posterior al inicio', () => {
+      const closed = ValidityPeriod.of(from).close(until)
+
+      expect(closed.isOpenEnded()).toBe(false)
+      expect(closed.validFrom).toEqual(from)
+      expect(closed.validUntil).toEqual(until)
+      // Semiabierto: sigue vigente en el inicio y deja de estarlo en su fin.
+      expect(closed.contains(from)).toBe(true)
+      expect(closed.contains(until)).toBe(false)
+    })
+
+    it('rechaza cerrar en el inicio o antes (intervalo vacío o invertido)', () => {
+      expect(() => ValidityPeriod.of(from).close(from)).toThrow(InvalidValidityPeriodError)
+      expect(() => ValidityPeriod.of(from).close(new Date('2025-12-31T00:00:00.000Z'))).toThrow(
+        InvalidValidityPeriodError,
+      )
+    })
+
+    it('rechaza cerrar una vigencia ya cerrada sin mover su fin', () => {
+      const closed = ValidityPeriod.of(from, until)
+
+      expect(() => closed.close(new Date('2028-01-01T00:00:00.000Z'))).toThrow(
+        InvalidValidityPeriodError,
+      )
+      expect(closed.validUntil).toEqual(until)
+    })
+
+    it('rechaza una fecha de cierre inválida', () => {
+      expect(() => ValidityPeriod.of(from).close(new Date('no-es-fecha'))).toThrow(/fecha válida/i)
+    })
+  })
 })

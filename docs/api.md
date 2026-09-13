@@ -245,10 +245,11 @@ y el borde compone el texto con el namespace `ManualQuoteReasons` de `messages/<
 > campo). Si la configuración mezcla los dos sentidos, manda el máximo: `manual_quote_required` con
 > `size_exceeds_series_max` (ADR-0022, sección "Reglas de cálculo", punto 1).
 
-> **Tarifas solapadas.** El catálogo no admite dos versiones publicadas vigentes a la vez. La
-> defensa en escritura es `assertNoOverlappingPublishedTariffs`, que el flujo de publicación
-> (`POST /api/admin/tariff-versions/:id/publish`) aplica **antes** de escribir: responde 409
-> `AMBIGUOUS_TARIFF` y no modifica la fila. `selectTariffInForce` (`AMBIGUOUS_TARIFF`, 409) se
+> **Tarifas solapadas.** El catálogo no admite dos versiones publicadas vigentes a la vez. Al
+> publicar, las invariantes se evalúan **antes** de escribir sobre el conjunto **proyectado** —la
+> candidata publicada y, si la serie tenía una publicada con vigencia abierta, esa predecesora
+> cerrada en el `validFrom` de la candidata (ADR-0003 rev. 2 §8-§9)—: responde 409
+> `AMBIGUOUS_TARIFF` y no modifica ninguna fila. `selectTariffInForce` (`AMBIGUOUS_TARIFF`, 409) se
 > mantiene como última red de lectura si dos versiones publicadas llegaran a coincidir.
 
 ### Reglas de cálculo
@@ -505,16 +506,36 @@ Publica una versión de tarifa del panel (ADR-0003). Es la única vía para que 
 automático: pasa el borrador a `published`, le pone `publishedAt` y la deja disponible al
 configurador.
 
-- `200` con `{ "data": { "id", "seriesId", "versionNumber", "status": "published", "strategy", "validFrom", "validUntil", "currency", "taxRatePercent", "publishedAt" } }`.
+En la misma operación **cierra la predecesora de vigencia abierta** de la misma serie (ADR-0003
+rev. 2 §8): la versión publicada que seguía con `validUntil` vacío y empieza antes que la candidata
+recibe como `validUntil` el `validFrom` de la candidata. El intervalo es semiabierto, así que la
+predecesora deja de estar vigente exactamente cuando entra la sucesora (ni hueco ni solape), y
+**conserva el estado `published`**: es el registro histórico del precio que estuvo vigente, no se
+archiva ni se borra. Los presupuestos ya emitidos no se tocan: guardan su `tariffVersionId` y su
+instantánea.
+
+La publicación y el cierre se persisten en **una sola transacción**: si una de las dos escrituras
+falla, no queda ninguna. La validación de invariantes ocurre **antes** de escribir (hallazgo N5 de
+CIF-78).
+
+- `200` con `{ "data": { "id", "seriesId", "versionNumber", "status": "published", "strategy", "validFrom", "validUntil", "currency", "taxRatePercent", "publishedAt", "closedPredecessor" } }`.
+  `closedPredecessor` es `null` cuando la serie no tenía ninguna publicada con vigencia abierta; si
+  la había, llega `{ "id", "versionNumber", "status": "published", "validFrom", "validUntil" }` con
+  `validUntil` igual al `validFrom` de la versión publicada. El panel lo usa para anunciar desde
+  cuándo deja de aplicar el precio anterior (§12).
 - `404` `NOT_FOUND` si la versión no existe **o el `:id` no es un UUID**. El identificador se valida
   con Zod en el borde (la columna es `@db.Uuid`) y se responde sin consultar la base de datos: antes
   un id malformado llegaba a Prisma y devolvía `500 INTERNAL_ERROR` (hallazgo N2 de CIF-85).
 - `409` `INVALID_CATALOG_TRANSITION` si la versión está archivada (hay que restaurarla a borrador).
-- `409` `AMBIGUOUS_TARIFF` si la versión se solapa con otra ya publicada de la misma serie. **No se
-  escribe nada**: la invariante `assertNoOverlappingPublishedTariffs` se comprueba en el caso de uso
-  antes del `INSERT`/`UPDATE`. Republicar una tarifa ya publicada es idempotente (no escribe). Si dos
-  publicaciones solapadas de la misma serie se cruzan, la que pierde también responde `409`
-  `AMBIGUOUS_TARIFF`: lo decide la restricción de exclusión de la base (CIF-89, CIF-542), no un 500.
+- `409` `AMBIGUOUS_TARIFF` si el conjunto proyectado no cumple la invariante: solape con una versión
+  publicada de vigencia **cerrada**, candidata con `validFrom` **anterior o igual** al de la
+  predecesora abierta (cerrar hacia atrás sería inválido) o **más de una** versión publicada con
+  vigencia abierta en la misma serie. **No se escribe nada**: `projectPublishedSet` y
+  `assertNoOverlappingPublishedTariffs` se comprueban en el caso de uso antes del `INSERT`/`UPDATE`.
+  Republicar una tarifa ya publicada es idempotente (no escribe y no cierra nada; una predecesora ya
+  cerrada tampoco se reabre). Si dos publicaciones solapadas de la misma serie se cruzan, la que
+  pierde también responde `409` `AMBIGUOUS_TARIFF`: lo decide la restricción de exclusión de la base
+  (CIF-89, CIF-542), no un 500.
 
 **Acceso.** El API del panel acepta dos credenciales (CIF-241,
 [ADR-0024](adr/0024-autenticacion-panel-sesion-firmada.md)):

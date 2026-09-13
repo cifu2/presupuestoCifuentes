@@ -85,6 +85,13 @@ const IDS = {
   raceSeries: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
   tariffRaceA: '55555555-5555-7555-8555-555555555561',
   tariffRaceC: '55555555-5555-7555-8555-555555555562',
+  transitionSeries: 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb',
+  tariffTransitionV1: '55555555-5555-7555-8555-555555555571',
+  tariffTransitionV2: '55555555-5555-7555-8555-555555555572',
+  failedTransitionSeries: 'cccccccc-cccc-7ccc-8ccc-cccccccccccc',
+  tariffFailedBlocker: '55555555-5555-7555-8555-555555555581',
+  tariffFailedPredecessor: '55555555-5555-7555-8555-555555555582',
+  tariffFailedSuccessor: '55555555-5555-7555-8555-555555555583',
   band: '66666666-6666-7666-8666-666666666666',
   modifier: '77777777-7777-7777-8777-777777777777',
   modifierDiscount: '88888888-8888-7888-8888-888888888888',
@@ -130,11 +137,22 @@ async function clean(prisma: PrismaClient): Promise<void> {
           IDS.tariffDraftSave,
           IDS.tariffRaceA,
           IDS.tariffRaceC,
+          IDS.tariffTransitionV1,
+          IDS.tariffTransitionV2,
+          IDS.tariffFailedBlocker,
+          IDS.tariffFailedPredecessor,
+          IDS.tariffFailedSuccessor,
         ],
       },
     },
   })
-  await prisma.doorSeries.deleteMany({ where: { id: { in: [IDS.series, IDS.raceSeries] } } })
+  await prisma.doorSeries.deleteMany({
+    where: {
+      id: {
+        in: [IDS.series, IDS.raceSeries, IDS.transitionSeries, IDS.failedTransitionSeries],
+      },
+    },
+  })
   await prisma.catalogText.deleteMany({})
   await prisma.finish.deleteMany({ where: { id: IDS.finish } })
   await prisma.accessory.deleteMany({ where: { id: IDS.accessory } })
@@ -386,6 +404,109 @@ async function seed(prisma: PrismaClient): Promise<void> {
       { tariffVersionId: IDS.tariffRaceC, perSquareMetreCents: 41_000n },
     ],
   })
+
+  // Serie del traspaso de vigencia (ADR-0003 rev. 2 §8): v1 publicada con vigencia **abierta** y v2
+  // en borrador que entra después. Publicar la v2 cierra la v1 y, a la vez, la deja publicada.
+  await prisma.doorSeries.create({
+    data: {
+      id: IDS.transitionSeries,
+      code: 'CI-TRANSICION',
+      slug: 'ci-transicion',
+      status: 'PUBLISHED',
+      minWidthMm: 600,
+      maxWidthMm: 1000,
+      minHeightMm: 1800,
+      maxHeightMm: 2200,
+      sortOrder: 3,
+    },
+  })
+
+  await prisma.tariffVersion.create({
+    data: {
+      id: IDS.tariffTransitionV1,
+      seriesId: IDS.transitionSeries,
+      versionNumber: 1,
+      status: 'PUBLISHED',
+      strategy: 'PER_SQUARE_METRE',
+      validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      taxRatePercent: '21',
+      currency: 'EUR',
+      publishedAt: new Date('2026-01-01T00:00:00.000Z'),
+      priceTable: { create: { perSquareMetreCents: 40_000n } },
+    },
+  })
+
+  await prisma.tariffVersion.create({
+    data: {
+      id: IDS.tariffTransitionV2,
+      seriesId: IDS.transitionSeries,
+      versionNumber: 2,
+      status: 'DRAFT',
+      strategy: 'PER_SQUARE_METRE',
+      validFrom: new Date('2026-06-01T00:00:00.000Z'),
+      taxRatePercent: '21',
+      currency: 'EUR',
+      priceTable: { create: { perSquareMetreCents: 41_000n } },
+    },
+  })
+
+  // Serie del fallo forzado de la transición: una publicada cerrada, una predecesora publicada
+  // abierta y una sucesora en borrador. Publicar la sucesora con una vigencia que solapa a la
+  // cerrada hará saltar la restricción de exclusión **después** de cerrar la predecesora, que es
+  // justo lo que la transacción tiene que deshacer.
+  await prisma.doorSeries.create({
+    data: {
+      id: IDS.failedTransitionSeries,
+      code: 'CI-TRANSICION-FALLO',
+      slug: 'ci-transicion-fallo',
+      status: 'PUBLISHED',
+      minWidthMm: 600,
+      maxWidthMm: 1000,
+      minHeightMm: 1800,
+      maxHeightMm: 2200,
+      sortOrder: 4,
+    },
+  })
+
+  await prisma.tariffVersion.createMany({
+    data: [
+      {
+        id: IDS.tariffFailedBlocker,
+        seriesId: IDS.failedTransitionSeries,
+        versionNumber: 1,
+        status: 'PUBLISHED',
+        strategy: 'PER_SQUARE_METRE',
+        validFrom: new Date('2029-01-01T00:00:00.000Z'),
+        validUntil: new Date('2030-01-01T00:00:00.000Z'),
+        taxRatePercent: '21',
+        currency: 'EUR',
+        publishedAt: new Date('2029-01-01T00:00:00.000Z'),
+      },
+      {
+        id: IDS.tariffFailedPredecessor,
+        seriesId: IDS.failedTransitionSeries,
+        versionNumber: 2,
+        status: 'PUBLISHED',
+        strategy: 'PER_SQUARE_METRE',
+        validFrom: new Date('2030-01-01T00:00:00.000Z'),
+        taxRatePercent: '21',
+        currency: 'EUR',
+        publishedAt: new Date('2030-01-01T00:00:00.000Z'),
+      },
+      {
+        id: IDS.tariffFailedSuccessor,
+        seriesId: IDS.failedTransitionSeries,
+        versionNumber: 3,
+        status: 'DRAFT',
+        strategy: 'PER_SQUARE_METRE',
+        // Empieza dentro de la ventana de la publicada cerrada de 2029: al publicarla (transición
+        // mal formada a propósito) PostgreSQL tiene que rechazar esa escritura.
+        validFrom: new Date('2029-06-01T00:00:00.000Z'),
+        taxRatePercent: '21',
+        currency: 'EUR',
+      },
+    ],
+  })
 }
 
 describe.runIf(TEST_DATABASE_URL !== undefined)(
@@ -612,6 +733,68 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
       expect(stored?.publishedAt?.toISOString()).toBe(clock.now().toISOString())
     })
 
+    it('publica cerrando la predecesora abierta en la misma transición (ADR-0003 rev. 2 §8)', async () => {
+      const tariffVersionRepository = new PrismaTariffVersionRepository(prisma)
+
+      const published = await publishTariffVersion(
+        { tariffVersionRepository, clock },
+        { tariffVersionId: IDS.tariffTransitionV2 },
+      )
+
+      expect(published.validFrom).toBe('2026-06-01T00:00:00.000Z')
+      expect(published.closedPredecessor?.id).toBe(IDS.tariffTransitionV1)
+      expect(published.closedPredecessor?.validUntil).toBe('2026-06-01T00:00:00.000Z')
+
+      const rows = await prisma.tariffVersion.findMany({
+        where: { id: { in: [IDS.tariffTransitionV1, IDS.tariffTransitionV2] } },
+        orderBy: { versionNumber: 'asc' },
+      })
+
+      // Las dos filas en su sitio: la predecesora conserva PUBLISHED (registro histórico) y queda
+      // cerrada justo en la entrada en vigor de la sucesora, que ya está publicada.
+      expect(rows.map((row) => [row.status, row.validUntil?.toISOString() ?? null])).toEqual([
+        ['PUBLISHED', '2026-06-01T00:00:00.000Z'],
+        ['PUBLISHED', null],
+      ])
+      expect(rows[1]?.publishedAt?.toISOString()).toBe(clock.now().toISOString())
+    })
+
+    it('si falla la publicación de la sucesora, la transición no deja el cierre a medias', async () => {
+      const tariffVersionRepository = new PrismaTariffVersionRepository(prisma)
+      const predecessor = await tariffVersionRepository.findById(IDS.tariffFailedPredecessor)
+      const successor = await tariffVersionRepository.findById(IDS.tariffFailedSuccessor)
+
+      if (predecessor === null || successor === null) {
+        throw new Error('Faltan las filas sembradas de la transición que tiene que fallar')
+      }
+
+      // Transición mal formada a propósito (el dominio no la produciría): se cierra la predecesora
+      // en 2030-06-01 y se publica una sucesora que entra en 2029-06-01, así que la sucesora solapa
+      // a la publicada cerrada de 2029 y PostgreSQL rechaza esa segunda escritura. El cierre, en
+      // cambio, es válido por sí solo: si la transacción no fuese atómica, quedaría escrito.
+      const closed = predecessor.closeValidity(new Date('2030-06-01T00:00:00.000Z'), clock.now())
+      const published = successor.publish(clock.now())
+
+      await expect(
+        tariffVersionRepository.savePublishTransition({
+          successor: published,
+          predecessor: closed,
+        }),
+      ).rejects.toThrow(AmbiguousTariffError)
+
+      const rows = await prisma.tariffVersion.findMany({
+        where: { id: { in: [IDS.tariffFailedPredecessor, IDS.tariffFailedSuccessor] } },
+        orderBy: { versionNumber: 'asc' },
+      })
+
+      // Ni el cierre ni la publicación: la predecesora sigue abierta y la sucesora sigue en borrador.
+      expect(
+        rows.map((row) => [row.id, row.status, row.validUntil?.toISOString() ?? null]),
+      ).toEqual([
+        [IDS.tariffFailedPredecessor, 'PUBLISHED', null],
+        [IDS.tariffFailedSuccessor, 'DRAFT', null],
+      ])
+    })
     it('la base de datos rechaza publicar una tarifa que se solapa con otra publicada (CIF-89)', async () => {
       // Escritura directa, sin pasar por la comprobación del caso de uso: lo que se prueba aquí es
       // que la restricción de exclusión de PostgreSQL es la que rechaza el solape (SQLSTATE 23P01).
@@ -1532,11 +1715,12 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
         expect(draft?.effectiveFrom).toBeNull()
 
         // Cuenta todo el catálogo, no solo las series de este bloque: la archivada (nombre solo en
-        // español, sin descripción) y las dos series del seed base (una sin descripción y la de la
-        // carrera de tarifas, sin textos) están pendientes en los dos idiomas.
+        // español, sin descripción), las dos series del seed base (una sin descripción y la de la
+        // carrera de tarifas, sin textos) y las dos del traspaso de vigencia (CIF-544, sin textos)
+        // están pendientes en los dos idiomas.
         expect(languages).toEqual([
-          { code: 'es', isActive: true, missingSeries: 3 },
-          { code: 'en', isActive: true, missingSeries: 3 },
+          { code: 'es', isActive: true, missingSeries: 5 },
+          { code: 'en', isActive: true, missingSeries: 5 },
         ])
       })
     })
