@@ -79,6 +79,12 @@ const POSTGRES_EXCLUSION_VIOLATION = '23P01'
 /** SQLSTATE con el que PostgreSQL aborta una de dos transacciones que se esperan en círculo. */
 const POSTGRES_DEADLOCK_DETECTED = '40P01'
 
+/**
+ * `kind` con el que el adaptador `pg` clasifica el 40P01 (bloqueo mutuo) y el 40001 (fallo de
+ * serialización) antes de que Prisma los convierta en `P2034`.
+ */
+const TRANSACTION_WRITE_CONFLICT_KIND = 'TransactionWriteConflict'
+
 /** Restricción de exclusión que impide dos tarifas publicadas solapadas de la misma serie. */
 const PUBLISHED_TARIFF_OVERLAP_CONSTRAINT = 'tariff_version_published_no_overlap'
 
@@ -118,13 +124,14 @@ function tariffVersionUpsert(version: TariffVersion) {
 /**
  * ¿Algún nodo del grafo del error menciona alguno de esos códigos o nombres?
  *
- * Prisma 7 (adaptador `pg`) envuelve los errores de PostgreSQL en un `PrismaClientKnownRequestError`
- * con código `P2039` y anida el del driver en `meta.driverAdapterError.cause`: el SQLSTATE aparece
- * en un campo `code`-like y a veces solo dentro del mensaje, y el nombre de la restricción, en
- * `message`/`constraint`. Se recorre el grafo buscando esos rastros —en vez de mirar una ruta
- * fija— para no depender de la forma concreta del error. `message` y `cause` no son enumerables en
- * las subclases de `Error`, así que se leen aparte, y el recorrido corta a `MAX_ERROR_DEPTH` y con
- * un conjunto de visitados para no quedarse colgado con referencias circulares.
+ * Prisma 7 (adaptador `pg`) anida el error del driver en `meta.driverAdapterError.cause`: el SQLSTATE
+ * aparece en un campo `code`-like (`code`, `originalCode`, `sqlState`) o solo dentro del mensaje, el
+ * nombre de la restricción, en `message`/`constraint`, y el adaptador clasifica el desenlace en
+ * `kind`. Se recorre el grafo buscando esos rastros —en vez de mirar una ruta fija— para no
+ * depender de la forma concreta del error ni del código con que Prisma lo envuelva. `message` y
+ * `cause` no son enumerables en las subclases de `Error`, así que se leen aparte, y el recorrido
+ * corta a `MAX_ERROR_DEPTH` y con un conjunto de visitados para no quedarse colgado con referencias
+ * circulares.
  */
 function errorGraphMentions(error: unknown, needles: readonly string[]): boolean {
   const visited = new Set<unknown>()
@@ -144,7 +151,7 @@ function errorGraphMentions(error: unknown, needles: readonly string[]): boolean
     visited.add(value)
 
     const record = value as Record<string, unknown>
-    const code = record.code ?? record.originalCode ?? record.sqlState
+    const code = record.code ?? record.originalCode ?? record.sqlState ?? record.kind
 
     if (typeof code === 'string' && needles.includes(code)) {
       return true
@@ -191,12 +198,24 @@ export function isPublishedTariffOverlapViolation(error: unknown): boolean {
  * dejando que cada transacción espere a la otra: PostgreSQL detecta el círculo y aborta una con
  * `deadlock detected` (SQLSTATE 40P01). Es la misma carrera que la violación de exclusión (23P01)
  * con otro desenlace —la que pierde no ha publicado nada, porque la transacción se deshace entera—
- * así que el borde debe responder el mismo 409 y no un 500 (CIF-542). La forma del error es la
- * misma que la de 23P01 (Prisma 7 lo envuelve en `P2039` con el SQLSTATE anidado), pero aquí no hay
- * nombre de restricción al que agarrarse: se busca el SQLSTATE en el grafo.
+ * así que el borde debe responder el mismo 409 y no un 500 (CIF-542).
+ *
+ * A diferencia del 23P01, aquí no hay nombre de restricción al que agarrarse. La forma que produce
+ * Prisma 7 con el adaptador `pg` está medida en `repositories.test.ts` (bloqueo mutuo real forzado
+ * con dos transacciones cruzadas): un `PrismaClientKnownRequestError` con código `P2034` —
+ * «Transaction failed due to a write conflict or a deadlock»— y el SQLSTATE y el `kind` del
+ * adaptador anidados en `meta.driverAdapterError.cause`. Se aceptan los dos rastros: el SQLSTATE
+ * 40P01 y el `kind` `TransactionWriteConflict` (el que el adaptador usa para 40P01 y 40001), para
+ * que el 409 no dependa de que Prisma siga anotando `originalCode` —quien busque «40P01» en el log
+ * de Prisma no lo verá—.
+ *
+ * El `kind` cubre también el 40001 (fallo de serialización), así que solo se acepta en el `upsert`
+ * de una sola sentencia de `save` (READ COMMITTED), donde el único cruce posible es el índice de
+ * exclusión; no es un predicado general para caminos con transacciones de varias sentencias, donde
+ * un 40001 podría venir de otra cosa.
  */
 export function isDeadlockDetected(error: unknown): boolean {
-  return errorGraphMentions(error, [POSTGRES_DEADLOCK_DETECTED])
+  return errorGraphMentions(error, [POSTGRES_DEADLOCK_DETECTED, TRANSACTION_WRITE_CONFLICT_KIND])
 }
 
 /** Códigos de Prisma para las violaciones de integridad que el borde debe traducir a dominio. */

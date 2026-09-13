@@ -67,6 +67,7 @@ import {
   PrismaSeriesWriteRepository,
   PrismaTariffPricingRepository,
   PrismaTariffVersionRepository,
+  isDeadlockDetected,
   isPublishedTariffOverlapViolation,
 } from './repositories'
 import type { PrismaClient } from '@prisma/client'
@@ -1026,6 +1027,90 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
         expect(state.published).toHaveLength(1)
         expect(state.drafts).toHaveLength(1)
       })
+    })
+
+    /**
+     * Bloqueo mutuo real de PostgreSQL (CIF-542).
+     *
+     * El rojo intermitente de `calidad` no era del test: la carrera de dos publicaciones solapadas
+     * puede acabar en `deadlock detected` (SQLSTATE 40P01), y esa transacción —la que pierde—
+     * llegaba al borde como un `PrismaClientKnownRequestError` (500). El test unitario fija la forma
+     * del error; este la vuelve a producir contra PostgreSQL de verdad para que la traducción no se
+     * quede en una suposición sobre cómo envuelve Prisma el 40P01.
+     *
+     * El cruce es determinista y no depende del scheduling: cada transacción bloquea una fila y pide
+     * la que tiene la otra, en orden inverso, así que el círculo se forma siempre (a diferencia de
+     * la carrera de dos `save` simultáneos, que solo a veces se cruza).
+     */
+    describe('bloqueo mutuo real de PostgreSQL (CIF-542)', () => {
+      const SERIES_A = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc'
+      const SERIES_B = 'dddddddd-dddd-7ddd-8ddd-dddddddddddd'
+
+      const seriesRow = (id: string, order: number, suffix: string) => ({
+        id,
+        code: `CI-MUTEX-${suffix}`,
+        slug: `ci-mutex-${suffix}`,
+        status: 'PUBLISHED' as const,
+        minWidthMm: 600,
+        maxWidthMm: 1000,
+        minHeightMm: 1800,
+        maxHeightMm: 2200,
+        sortOrder: order,
+      })
+
+      it('la base aborta una de las dos transacciones con 40P01 y el adaptador lo reconoce', async () => {
+        await prisma.doorSeries.createMany({
+          data: [seriesRow(SERIES_A, 30, 'A'), seriesRow(SERIES_B, 31, 'B')],
+        })
+
+        try {
+          let firstLockedReached!: () => void
+          const firstLocked = new Promise<void>((resolve) => {
+            firstLockedReached = resolve
+          })
+          let secondLockedReached!: () => void
+          const secondLocked = new Promise<void>((resolve) => {
+            secondLockedReached = resolve
+          })
+
+          /** Bloquea la primera fila, avisa, espera a que la otra transacción tenga la suya y pide la ajena. */
+          const crossedUpdate = (
+            first: string,
+            second: string,
+            markLocked: () => void,
+            otherLocked: Promise<void>,
+          ) =>
+            prisma.$transaction(
+              async (tx) => {
+                await tx.doorSeries.update({ where: { id: first }, data: { sortOrder: 40 } })
+                markLocked()
+                await otherLocked
+                await tx.doorSeries.update({ where: { id: second }, data: { sortOrder: 41 } })
+              },
+              { timeout: 30_000, maxWait: 30_000 },
+            )
+
+          const left = crossedUpdate(SERIES_A, SERIES_B, firstLockedReached, secondLocked)
+
+          await firstLocked
+
+          const right = crossedUpdate(SERIES_B, SERIES_A, secondLockedReached, firstLocked)
+
+          const results = await Promise.allSettled([left, right])
+          const rejected = results.filter(
+            (result): result is PromiseRejectedResult => result.status === 'rejected',
+          )
+
+          // Una cede (la que PostgreSQL aborta) y la otra termina: la abortada no ha escrito nada,
+          // así que su desenlace es el mismo 409 que el solape detectado por la restricción.
+          expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+          expect(rejected).toHaveLength(1)
+          expect(isDeadlockDetected(rejected[0]?.reason)).toBe(true)
+          expect(isPublishedTariffOverlapViolation(rejected[0]?.reason)).toBe(false)
+        } finally {
+          await prisma.doorSeries.deleteMany({ where: { id: { in: [SERIES_A, SERIES_B] } } })
+        }
+      }, 30_000)
     })
 
     /**

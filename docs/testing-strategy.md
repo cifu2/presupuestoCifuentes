@@ -128,10 +128,18 @@ exclusión resuelve el cruce de dos escrituras de dos maneras —violación de e
 bloqueo mutuo, abortando PostgreSQL una de las transacciones (40P01)—, y el adaptador solo traducía
 la primera. La segunda salía como `500`. Un `retry` a ciegas no arreglaba nada: la transacción
 abortada no deja fila escrita y lo que corresponde es el mismo `409` que ya devolvía el camino de
-23P01, que es lo que traduce `isDeadlockDetected`. El desenlace de bloqueo mutuo es minoritario pero
-real (medido contra PostgreSQL 17: 3 de 20 inserciones solapadas simultáneas y 3 de 60 carreras por
-el camino real de Prisma) y estocástico, así que la traducción se fija además con un test unitario de
-la forma del error (`repositories.overlap-error.test.ts`) y no solo con el test de integración. El
-paso de 5 pasadas en `calidad` sigue siendo la evidencia de que el escenario es sostenido.
+23P01, que es lo que traduce `isDeadlockDetected`.
+
+El bloqueo mutuo no se deja al scheduling: «bloqueo mutuo real de PostgreSQL (CIF-542)» cruza dos
+transacciones —cada una bloquea una fila y pide la que tiene la otra, en orden inverso— y PostgreSQL
+aborta una con `40P01` en cada pasada. La forma real de ese error, medida contra PostgreSQL 17 con
+Prisma 7.10 y el adaptador `pg`, es un `PrismaClientKnownRequestError` con código `P2034`
+(«Transaction failed due to a write conflict or a deadlock») y el SQLSTATE junto al `kind`
+`TransactionWriteConflict` anidados en `meta.driverAdapterError.cause`; `isDeadlockDetected` acepta
+los dos rastros, y `repositories.overlap-error.test.ts` fija además la cadena completa —error de
+Prisma → `409`— sin base de datos. Dos `save` simultáneos con el entrelazado de una sola sentencia no
+reprodujeron el `40P01` en 600 carreras locales: lo que lo hace determinista es el cruce de
+transacciones, no la coincidencia de dos escrituras en el mismo tick. El paso de 5 pasadas en
+`calidad` sigue siendo la evidencia de que el escenario es sostenido.
 
 Procedimiento y plantilla de informes de fallo: [e2e-playbook.md](e2e-playbook.md).

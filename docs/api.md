@@ -536,6 +536,10 @@ CIF-78).
   cerrada tampoco se reabre). Si dos publicaciones solapadas de la misma serie se cruzan, la que
   pierde también responde `409` `AMBIGUOUS_TARIFF`: lo decide la restricción de exclusión de la base
   (CIF-89, CIF-542), no un 500.
+  El error tampoco aparece en los logs como `40P01`: Prisma 7.10 con el adaptador `pg` lo envuelve en
+  un `PrismaClientKnownRequestError` con código `P2034` («Transaction failed due to a write conflict
+  or a deadlock») y el SQLSTATE junto al `kind` `TransactionWriteConflict` anidados en
+  `meta.driverAdapterError.cause`. El adaptador acepta los dos rastros (CIF-566).
 
 **Acceso.** El API del panel acepta dos credenciales (CIF-241,
 [ADR-0024](adr/0024-autenticacion-panel-sesion-firmada.md)):
