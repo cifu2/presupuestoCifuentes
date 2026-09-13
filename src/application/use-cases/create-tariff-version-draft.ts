@@ -56,7 +56,8 @@ export interface CreateTariffVersionDraftInput {
   readonly validFrom?: string | null
   /** Último día de vigencia exclusivo; `null` (por defecto) deja la vigencia abierta. */
   readonly validUntil?: string | null
-  readonly notes?: string | null
+  /** Omitido (`undefined`) hereda las del origen; `null` las deja vacías a propósito. */
+  readonly notes?: string | null | undefined
   /** Solo puede faltar si se clona de otra versión, que ya la declara. */
   readonly strategy?: PricingStrategy | null
   /** Solo puede faltar si se clona de otra versión, que ya la declara. */

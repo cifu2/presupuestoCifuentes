@@ -28,7 +28,9 @@ const createTariffVersionDraftSchema = z.object({
   cloneFromVersionId: uuidSchema.nullable().default(null),
   validFrom: z.iso.date().nullable().default(null),
   validUntil: z.iso.date().nullable().default(null),
-  notes: z.string().max(2000).nullable().default(null),
+  // Omitir `notes` hereda las de la versión clonada; `null` las deja vacías a propósito (hallazgo H1
+  // de CIF-522: con `.default(null)` el «omitido» llegaba al caso de uso como «bórralas»).
+  notes: z.string().max(2000).nullable().optional(),
   strategy: z.enum(PRICING_STRATEGIES).nullable().default(null),
   taxRatePercent: z
     .string()
