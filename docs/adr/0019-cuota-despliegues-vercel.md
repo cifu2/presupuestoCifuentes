@@ -127,9 +127,12 @@ producción desactualizada.
   ventana siga agotada; lo cubre el mismo paso A en el siguiente reintento de la rutina **horaria**
   `b3ce0dae…` (CIF-530). El diff de `7f92ff7` es solo `docs/**` y `e2e/**`: no cambia runtime.
 - **87 despliegues** del proyecto contados con `GET /v6/deployments` en la ventana rodante; el límite
-  informa `{total: 100, remaining: 0, reset: 2026-09-13T23:56:31Z}`. Los 13 que faltan hasta 100 son
-  despliegues que `v6/deployments` ya no lista (borrados) o de otras fuentes: la medición directa
-  **subestima** el consumo y el margen real es menor que el medido.
+  informa `{total: 100, remaining: 0, reset: 2026-09-13T23:56:31Z}`. La ventana que agotó el contador
+  y la rodante de 24 h **no son la misma**: la comparación 87 vs 100 **no mide una subestimación**,
+  mide desalineación de ventana. Lo único cierto por construcción es que el listado directo es una
+  **cota inferior**, porque los despliegues borrados desaparecen de `v6/deployments`; su magnitud
+  queda como **hipótesis sin cifra** hasta que se publiquen el recuento por ventana candidata y el
+  instante de la lectura (pedido en CIF-537).
 - `/api/health` respondió **200** (`status: ok`, `database: ok`) durante el hueco (23:52Z–23:57Z):
   era la sonda del commit viejo.
 
