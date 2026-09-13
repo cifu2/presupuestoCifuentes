@@ -1,15 +1,18 @@
 'use client'
 
 import { useLocale, useTranslations } from 'next-intl'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import type { Locale } from '@/domain/catalog/locale'
 
 import { AdminDialog } from './admin-dialog'
+import { readTariffPriceTableRequest, sendAdminApi } from './admin-api-client'
 import { TagIcon, WarningIcon } from './panel-icons'
 import { formatDay, formatVersionNumber, statusLabelKey } from './panel-navigation'
 import { Alert, Badge, buttonClass, Card, EmptyState, type BadgeTone } from './panel-primitives'
 import { PanelError, PanelForbidden, PanelLoading } from './panel-states'
+import { PriceQuickEdit } from './price-quick-edit'
+import type { PriceTableView } from './price-quick-edit-model'
 import type { AdminPanelState, TariffVersionSummary } from './view-models'
 
 const STATUS_TONES: Readonly<Record<TariffVersionSummary['status'], BadgeTone>> = {
@@ -39,8 +42,36 @@ export function TariffVersions({
   const t = useTranslations('CatalogAdmin')
   const locale = useLocale() as Locale
   const [openVersionId, setOpenVersionId] = useState<string | null>(null)
+  const [priceTable, setPriceTable] = useState<{
+    readonly versionId: string
+    readonly table: PriceTableView | null
+  } | null>(null)
 
   const openVersion = versions.find((version) => version.id === openVersionId) ?? null
+
+  // La edición rápida necesita los importes actuales: se leen al abrir el borrador, no al pintar la
+  // tabla, para que la lista de tarifas no pida una tabla por fila. La lectura se etiqueta con el id
+  // de la versión para que una respuesta lenta de un diálogo anterior no pise la del actual.
+  useEffect(() => {
+    if (openVersion === null || openVersion.status !== 'draft') {
+      return
+    }
+
+    let active = true
+
+    void sendAdminApi<PriceTableView | null>(
+      fetch,
+      readTariffPriceTableRequest(openVersion.id),
+    ).then((result) => {
+      if (active && result.ok) {
+        setPriceTable({ versionId: openVersion.id, table: result.data })
+      }
+    })
+
+    return () => {
+      active = false
+    }
+  }, [openVersion])
 
   if (state === 'loading' || state === 'error' || state === 'forbidden') {
     return (
@@ -175,6 +206,9 @@ export function TariffVersions({
                 : formatDay(openVersion.effectiveFrom, locale)}{' '}
               · {t('tariffs.col.prices')}: {openVersion.priceCount}
             </p>
+            {openVersion.status === 'draft' && priceTable?.versionId === openVersion.id ? (
+              <PriceQuickEdit version={openVersion} initialTable={priceTable.table} />
+            ) : null}
             <div className="flex justify-end">
               <button
                 type="button"

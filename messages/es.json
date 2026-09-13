@@ -136,7 +136,8 @@
     "empty": "Todavía no hay elementos en el catálogo.",
     "error": {
       "title": "No hemos podido cargar los datos.",
-      "retry": "Reintentar"
+      "retry": "Reintentar",
+      "saveFailed": "No hemos podido guardar los cambios. Inténtalo de nuevo."
     },
     "fields": {
       "name": "Nombre",
@@ -250,7 +251,15 @@
     },
     "translatedInto": "Traducido al {language}",
     "translations": "Traducciones",
-    "unpublish": "Despublicar"
+    "unpublish": "Despublicar",
+    "price": {
+      "perSquareMetre": "Precio por m² (€)",
+      "fixedPrice": "Precio fijo (€)",
+      "quickEditHelp": "Solo se guardan los importes que cambias; el resto de la tabla de precios no se toca.",
+      "invalidAmount": "Escribe un importe como 450 o 450,50.",
+      "saved": "Precio guardado.",
+      "archivedLocked": "Esta versión está archivada: no se edita ni se publica."
+    }
   },
   "DomainErrors": {
     "INVALID_VALUE": "Hay un dato con un valor que no es válido.",
