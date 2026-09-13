@@ -1,5 +1,6 @@
 /**
- * E2E del API de publicación de tarifas (ADR-0003, rev. 2 §8-§11; CIF-82/CIF-86/CIF-87/CIF-544).
+ * E2E del API de publicación de tarifas (ADR-0003, rev. 2 §8-§11; CIF-82/CIF-86/CIF-87/CIF-544) y
+ * de que el panel lea lo que publica ese API en modo demostración (CIF-577).
  *
  * Cubre de punta a punta la guarda que falla cerrado, el contrato del identificador y la invariante
  * de no solapamiento: 503 sin `ADMIN_API_TOKEN`, 401 con credenciales ausentes o incorrectas, 404
@@ -22,7 +23,9 @@
  * Los casos 503 y 401 no se pueden observar en el mismo servidor, porque son configuraciones de
  * entorno distintas: la suite levanta dos servidores y el bloque autenticado cambia de `baseURL`.
  * El configurador de este bloque es el del servidor de administración —el mismo proceso que acaba
- * de publicar—, no el público: son dos catálogos de demostración en memoria independientes.
+ * de publicar—, no el público: son dos catálogos de demostración en memoria independientes. Dentro
+ * de un servidor, en cambio, la página del panel y las rutas HTTP comparten el contenedor (CIF-577),
+ * así que la escritura de una se lee desde la otra.
  *
  * Sin `skip`: el catálogo de demo se siembra por proceso y los ids de cada proyecto son distintos.
  */
@@ -141,6 +144,17 @@ function publishPath(tariffVersionId: string): string {
 
 function withToken(token: string): { readonly authorization: string } {
   return { authorization: `Bearer ${token}` }
+}
+
+/**
+ * El día tal como lo pinta el panel: la columna «Vigente desde» usa el formato del idioma de la
+ * página (`formatDay`, `src/ui/admin/panel-navigation.ts`). Se calcula con la misma llamada a
+ * `Intl` para afirmar el texto servido, no una cadena copiada.
+ */
+function effectiveFromDay(isoInstant: string): string {
+  return new Intl.DateTimeFormat('es', { dateStyle: 'medium', timeZone: 'UTC' }).format(
+    new Date(isoInstant),
+  )
 }
 
 test.describe('sin ADMIN_API_TOKEN, el endpoint de publicación', () => {
@@ -336,6 +350,53 @@ test.describe('con ADMIN_API_TOKEN, el endpoint de publicación', () => {
 
     expect(repeated.status()).toBe(409)
     expect((await repeated.json()).error.code).toBe('AMBIGUOUS_TARIFF')
+  })
+})
+
+/**
+ * CIF-577: en modo demostración, la página del panel (RSC) y las rutas HTTP del mismo proceso son
+ * **una sola aplicación**.
+ *
+ * Hasta CIF-577 cada capa del servidor resolvía su propio contenedor y, con él, su propio catálogo
+ * en memoria: el panel del propietario seguía pintando «Borrador» y «Vigente desde —» después de
+ * que `POST …/publish` hubiera respondido `published` (hallazgo de CIF-545). Este test publica por
+ * la ruta HTTP y comprueba el resultado en la **misma** página del panel, que es lo que un E2E del
+ * cableado del panel (CIF-243) necesita poder observar. Cada proyecto usa su propio borrador de
+ * CI-400, como el resto del fichero: republicar el que otro test ya publicó es idempotente, así que
+ * el estado esperado no depende del orden ni de `fullyParallel`.
+ */
+test.describe('con ADMIN_API_TOKEN, el panel lee lo que publica el API del mismo proceso', () => {
+  test.use({ baseURL: E2E_ADMIN_BASE_URL })
+
+  test('la versión publicada por HTTP se pinta publicada y con su fecha de entrada en vigor', async ({
+    page,
+    request,
+  }, testInfo) => {
+    const draft = publishableDraft(testInfo)
+    const published = await request.post(publishPath(draft.id), {
+      headers: withToken(E2E_ADMIN_TOKEN),
+    })
+
+    expect(published.status()).toBe(200)
+
+    const session = await page.request.post('/api/admin/session', {
+      data: { password: E2E_ADMIN_PANEL_PASSWORD },
+    })
+
+    expect(session.status()).toBe(200)
+
+    await page.goto('/es/admin/tarifas')
+
+    const row = page
+      .getByRole('row')
+      .filter({ hasText: 'Serie CI-400' })
+      .filter({ hasText: `v${draft.versionNumber}` })
+
+    // La fila deja de ser la semilla y pinta lo que devolvió la ruta HTTP: el estado publicado y su
+    // `validFrom` como fecha de entrada en vigor, no el «—» de un borrador.
+    await expect(row).toContainText('Publicada')
+    await expect(row).not.toContainText('Borrador')
+    await expect(row).toContainText(effectiveFromDay(draft.validFrom))
   })
 })
 
