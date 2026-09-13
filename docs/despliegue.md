@@ -234,9 +234,13 @@ las 01:01Z ya había un hueco. La decisión de fondo está en
    solo, no hace falta esperar 24 h.
 3. **Relanzar el despliegue de producción del commit que está en `main`** (API de Vercel o panel →
    «Redeploy» de ese commit). No se despliega otra rama ni otro commit para «dar el release por bueno».
-4. **Verificar el release antes de cerrarlo:** el deployment queda `READY` y
-   `curl -fsS https://<dominio-produccion>/api/health` responde `200` con `status: "ok"`. Mientras eso
-   no ocurra, producción no corresponde a `main`.
+4. **Verificar el release antes de cerrarlo:** el deployment **del commit que está en `main`** queda
+   `READY` y `curl -fsS https://<dominio-produccion>/api/health` responde `200` con `status: "ok"`.
+   **Un `200` de la sonda no prueba que el release haya aterrizado**: el 2026-09-13 producción sirvió
+   `a112a2d` con `/api/health` en 200 (`status: ok`, `database: ok`) mientras `main` era `5c0afcb`
+   (CIF-536). Lo que prueba el release es el **sha del commit del deployment de producción**
+   (`meta.githubCommitSha` de `GET /v6/deployments?target=production&limit=1`) igual al sha de `main`,
+   **y** el `200` de salud sobre esa URL. Mientras eso no ocurra, producción no corresponde a `main`.
 5. **Anotar en la tarea de Paperclip** la hora, el commit, el resultado y si hubo que reintentar. Si el
    reintento vuelve a fallar, DevOps lo escala al CEO con el consumo medido (ADR-0019, punto 6).
 
