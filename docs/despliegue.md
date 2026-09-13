@@ -184,7 +184,9 @@ un merge a `main` no se da por desplegado hasta que su deployment está `READY` 
 - `CATALOG_DEMO_MODE=true` en el entorno _Preview_ de Vercel **no resuelve el caso**: el catálogo de
   demostración vive en memoria del proceso y cada ruta es una función distinta, de modo que el
   presupuesto emitido por `POST /api/quotes` no lo ve `GET /api/quotes/:ref/pdf`. La variable sigue
-  siendo para desarrollo y E2E locales.
+  siendo para desarrollo y E2E locales. Dentro de un proceso —`next start` local, la suite E2E— el
+  contenedor **sí** se comparte entre la página del panel y las rutas HTTP (CIF-577,
+  `docs/architecture.md`); lo que no cruza es el límite entre funciones de Vercel.
 - El paso es un seed de datos **inventados** (los mismos de
   `src/infrastructure/demo/demo-catalog.ts`: cuatro series, tres tarifas publicadas y sus textos en
   español e inglés). No son tarifas comerciales ni datos de clientes:
