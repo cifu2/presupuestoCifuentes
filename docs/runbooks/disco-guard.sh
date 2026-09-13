@@ -43,11 +43,19 @@ if [ "$uso" -ge "$UMBRAL_AVISO" ]; then
   apt-get clean >/dev/null 2>&1 || true
 
   # 3. Artefactos de build regenerables con más de $DIAS_ARTEFACTOS días. Solo nombres de
-  #    artefacto, nunca fuentes ni bases de datos; el margen de días evita pisar un build en curso
-  #    o el `node_modules` de un run vivo (que además puede ser un montaje).
+  #    artefacto, nunca fuentes ni bases de datos; el margen de días evita pisar un build en curso.
+  #    Un candidato que sea punto de montaje se omite: es el *mismo* directorio que su origen, así
+  #    que borrar su contenido vaciaría el origen (pasó el 2026-09-13 con el `node_modules` del
+  #    proyecto, montado en varios worktrees; ver docs/operacion.md, 4.3).
   find "$WORKSPACES" -mindepth 1 -maxdepth 6 -type d \
     \( -name .next -o -name coverage -o -name playwright-report -o -name test-results \) \
-    -mtime +"$DIAS_ARTEFACTOS" -prune -exec rm -rf {} + 2>/dev/null || true
+    -mtime +"$DIAS_ARTEFACTOS" 2>/dev/null | while IFS= read -r artefacto; do
+    if [ "$(findmnt -no TARGET --target "$artefacto" 2>/dev/null)" = "$artefacto" ]; then
+      logger -t "$TAG" -p daemon.warning "se omite $artefacto: es un punto de montaje"
+      continue
+    fi
+    rm -rf "$artefacto"
+  done
   find "$WORKSPACES" -mindepth 1 -maxdepth 6 -type f -name tsconfig.tsbuildinfo \
     -mtime +"$DIAS_ARTEFACTOS" -delete 2>/dev/null || true
 
