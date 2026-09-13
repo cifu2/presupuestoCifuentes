@@ -78,6 +78,8 @@ jobs:
         run: ./scripts/docs-preview-guard.sh
       - name: Guarda y paso de siembra del catálogo de preview (CIF-330)
         run: ./scripts/seed-preview-catalogo.test.sh
+      - name: Test de la medición de consumo de despliegues por clase de rama y entorno (ADR-0019 §6, CIF-537)
+        run: ./scripts/vercel-consumo.test.sh
       - name: Test del contrato HTTP real de /api/health (CIF-456)
         run: ./scripts/health-http-check.test.sh
       - run: pnpm lint

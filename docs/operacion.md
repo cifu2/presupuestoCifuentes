@@ -102,6 +102,27 @@ Decisiones asociadas: [ADR-0007](adr/0007-despliegue-vercel-github.md) y
    `scripts/secret-scan.test.sh`, que verifica que la salida no contiene ni el valor ni el patrón) y
    con la revisión de otro agente.
 
+### 4.2 Cuota de despliegues de Vercel: medir antes de tocar `vercel.json`
+
+El plan gratuito permite **100 despliegues por día** (`api-deployments-free-per-day`). El contador
+del límite incluye despliegues que `GET /v6/deployments` ya no lista (borrados), así que la medición
+directa es una **cota inferior**: el 2026-09-13T00:05Z el límite respondía `{total: 100,
+remaining: 0}` mientras la ventana de 24 h listaba 87 (subestima ≥ 13, ≈15 %).
+
+Medición reproducible, **solo `GET`** (crear un despliegue para medir gastaría la cuota que se mide):
+
+```bash
+VERCEL_TEAM_ID=… VERCEL_PROJECT_ID=… scripts/vercel-consumo.sh 24 72
+```
+
+La credencial se lee de `VERCEL_DEVOPS_TOKEN` (gestor de secretos) y nunca se imprime. La salida es
+una tabla TSV `clase de rama × entorno` con el recuento y la tasa por día; su contrato está en
+`scripts/vercel-consumo.test.sh`.
+
+Apagar una clase de rama en `vercel.json` no es gratis: cada clase apagada es un cambio de código que
+se queda sin preview, de ahí la guardia de contenido de ADR-0019 §4. La lista de clases la decide el
+CTO con la medición delante, no a ciegas.
+
 ## 5. Logs y privacidad
 
 - Los logs no contienen datos personales identificables ni `DATABASE_URL`.
