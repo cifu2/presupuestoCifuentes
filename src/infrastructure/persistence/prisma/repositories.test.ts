@@ -691,6 +691,7 @@ describe.runIf(TEST_DATABASE_URL !== undefined)(
         return {
           findById: (id) => raceRepository.findById(id),
           listBySeriesId: (seriesId) => raceRepository.listBySeriesId(seriesId),
+          create: (version) => raceRepository.create(version),
           save: async (version) => {
             await beforeSave()
             await raceRepository.save(version)
