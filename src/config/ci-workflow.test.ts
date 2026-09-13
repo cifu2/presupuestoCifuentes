@@ -39,6 +39,7 @@ describe('un fallo de formato no oculta el resto de la puerta (CIF-489)', () => 
     'bash -n "$script"',
     'run: ./scripts/secret-scan.sh',
     'run: ./scripts/docs-preview-guard.sh',
+    'run: ./scripts/vercel-consumo.test.sh',
   ]
 
   it('deja `format:check` como último paso de verificación del job `calidad`', () => {

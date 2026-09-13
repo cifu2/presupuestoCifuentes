@@ -104,10 +104,30 @@ Decisiones asociadas: [ADR-0007](adr/0007-despliegue-vercel-github.md) y
 
 ### 4.2 Cuota de despliegues de Vercel: medir antes de tocar `vercel.json`
 
-El plan gratuito permite **100 despliegues por día** (`api-deployments-free-per-day`). El contador
-del límite incluye despliegues que `GET /v6/deployments` ya no lista (borrados), así que la medición
-directa es una **cota inferior**: el 2026-09-13T00:05Z el límite respondía `{total: 100,
-remaining: 0}` mientras la ventana de 24 h listaba 87 (subestima ≥ 13, ≈15 %).
+El plan gratuito permite **100 despliegues por día** (`api-deployments-free-per-day`). El contador del
+límite y el listado **no son la misma ventana**: `v6/deployments` lista el proyecto y no es un
+registro de auditoría (los borrados desaparecen del listado), mientras el contador es de la
+cuenta. El 2026-09-13T00:05Z (ventana de los cuatro `402` de CIF-530: 23:52Z–00:05Z) el límite
+respondía `{total: 100, remaining: 0, reset: 2026-09-13T23:56:31Z}`; la ventana rodante de 24 h que
+contiene esa lectura lista **87**. Las ventanas candidatas medidas con `GET /v6/deployments`
+(`projectId` del proyecto, mismo `until`, captura 2026-09-13T00:37Z) son:
+
+| Ventana                                                                        | Listados |
+| ------------------------------------------------------------------------------ | -------: |
+| Rodante 24 h terminando en la lectura del límite (09-12T00:05Z → 09-13T00:05Z) |       87 |
+| Rodante 24 h terminando a las 23:56:26Z (cupo liberado, paso A de CIF-530)     |       86 |
+| Día natural UTC 2026-09-11                                                     |      100 |
+| Día natural UTC 2026-09-12                                                     |       87 |
+| `[reset−24 h, reset)` = 09-10T23:56:31Z → 09-11T23:56:31Z                      |      100 |
+| `[reset, captura)` = 09-12T23:56:31Z → 09-13T00:37Z                            |        2 |
+
+El único bloque del histórico retenido que lista 100 exactos es el día natural UTC 2026-09-11 (la
+ráfaga de 100 en 6,5 h), y **no contiene** el instante de la lectura. Por eso la comparación
+«87 vs 100» **no mide una subestimación**: son ventanas distintas y con `GET` no se reconstruye la
+del contador. Lo medible es que el contador se agota con 86–88 listados en su ventana rodante, así
+que el listado sigue siendo una **cota inferior** de valor desconocido: el margen real que queda por
+rascar no se puede cifrar, y cualquier ahorro de clases de rama (≈3,7–9,7/día) hay que compararlo
+contra esa cota, no contra 87.
 
 Medición reproducible, **solo `GET`** (crear un despliegue para medir gastaría la cuota que se mide):
 
