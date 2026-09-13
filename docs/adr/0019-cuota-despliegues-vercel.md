@@ -101,6 +101,68 @@ apartado **actualiza** la decisión sin reescribir los puntos aceptados.
   push a `docs/**`, medir la ventana rodante y comprobar **0 despliegues** de `dependabot/**`,
   `archive/**` y `docs/**`.
 
+## Escalada al mando (2026-09-13): la condición del punto 6 se cumple tras A + B
+
+Con A (runbook §4.1) y B (`vercel.json` con `archive/**`, `dependabot/**` y `docs/**`) en vigor, **un
+merge a `main` volvió a quedarse sin despliegue de producción**: es exactamente el supuesto que el
+punto 6 manda escalar. La escalada la resolvió el **CTO** en CIF-536 —el CEO está sin heartbeat
+(CIF-405)—; la decisión de gasto (C) queda **elevada al board**, que es quien puede aprobarla.
+
+### Medición (2026-09-13 00:05Z, DevOps, CIF-530)
+
+- `main` = `5c0afcbf…` (squash del PR #94, CIF-525) y, trece minutos después, `7f92ff7` (PR #87):
+  **dos merges seguidos sin despliegue de producción**. Producción seguía sirviendo `a112a2d`.
+- Check `Vercel` de `5c0afcb` en `failure`: «Deployment rate limited — retry in 24 hours»
+  (`api-deployments-free-per-day`). Cuatro `POST /v13/deployments` (`gitSource` de `main`,
+  `target=production`) entre 23:52Z y 00:05Z: **cuatro `402 payment_required`**.
+- **87 despliegues** del proyecto contados con `GET /v6/deployments` en la ventana rodante; el límite
+  informa `{total: 100, remaining: 0, reset: 2026-09-13T23:56:31Z}`. Los 13 que faltan hasta 100 son
+  despliegues que `v6/deployments` ya no lista (borrados) o de otras fuentes: la medición directa
+  **subestima** el consumo y el margen real es menor que el medido.
+- `/api/health` respondió **200** (`status: ok`, `database: ok`) durante todo el incidente: era la
+  sonda del commit viejo.
+
+Con las mediciones anteriores (111/24 h en CIF-149; 113 en la vida del proyecto en CIF-153), el
+consumo de régimen se mueve **entre 87 y 111 despliegues al día contra un techo de 100**. No es un
+pico: es el techo estructural del ritmo de entrega actual (≈30 merges a `main` al día, un preview por
+push de rama).
+
+### Decisión (CTO, CIF-536)
+
+1. **(a) se mantiene.** A + B siguen siendo la postura: producción puede ir unas horas por detrás de
+   `main`, con el runbook §4.1 y la rutina de reintento (CIF-530) verificando el release. No se
+   despliega otra rama ni otro commit para «dar el release por bueno». El retraso **no acumula
+   contenido**: cuando la ventana libera, un solo despliegue del `main` vigente pone al día todo lo
+   pendiente, así que el coste de (a) es latencia de release, no divergencia.
+2. **(b) se amplía con números, no a ojo.** El ahorro de B es real pero moderado: recortar clases de
+   rama menores no baja de 100 los 87–111 despliegues/día. Antes de apagar el preview de una clase
+   nueva (`ci/**`, `test/**`, `devops/**`, `chore/**`) hacen falta las dos cosas que el punto 4 ya
+   exigió para `docs/**`: **medición por clase y por entorno** en la ventana rodante (DevOps,
+   CIF-537) y una **guardia de contenido** que falle si la rama toca código de la aplicación. La
+   lista de clases la decide el CTO con esos números, en ≤7 días.
+3. **(c) se eleva al board**, con la recomendación del CTO de **contratarla** si el board quiere
+   quitar el techo. El plan Pro lleva el límite a **6.000 despliegues/día** (_Deployments Created per
+   Day_ en la tabla oficial de límites de Vercel: Hobby 100 / Pro 6000) y cuesta una cuota mensual
+   por usuario, que hay que confirmar en el panel antes de contratar. No la contrata ningún agente:
+   requiere aprobación explícita de coste (punto 6). La tarjeta está abierta en CIF-536.
+4. **Lo que no se toca:** no se apaga el preview de `main` ni el de las ramas con código, y siguen
+   descartados `ignoreCommand` y los comodines globales (`"*": false`), por las razones de los
+   puntos 3 y 4 y de las alternativas de abajo.
+
+### El paso 4 del runbook se endurece: un `200` no prueba que el release aterrizó
+
+El incidente deja una lección que entra en `docs/despliegue.md` §4.1: producción sirvió `a112a2d` con
+`/api/health` en **200** mientras `main` era `5c0afcb`. **La sonda de salud no distingue un commit de
+otro**, así que por sí sola no cierra la verificación del release. La prueba es el **sha del commit
+del deployment de producción** (`meta.githubCommitSha`) igual al de `main`, **y** el `200` de salud.
+
+### Revisión
+
+- (a) y (b) se revisan en ≤7 días con la medición de CIF-537 (mismo patrón que el punto 7).
+- (c) queda a la espera de la respuesta del board en CIF-536. Si el consumo de régimen sigue por
+  encima de 100 en dos ventanas consecutivas de 24 h, la recomendación al board pasa a ser contratar
+  el plan de pago, con o sin ampliación de B.
+
 ## Consecuencias
 
 - Producción puede seguir quedándose unos minutos (u horas) por detrás de `main` cuando la cuota se
