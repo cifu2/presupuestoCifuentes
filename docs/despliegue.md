@@ -244,6 +244,22 @@ las 01:01Z ya había un hueco. La decisión de fondo está en
 5. **Anotar en la tarea de Paperclip** la hora, el commit, el resultado y si hubo que reintentar. Si el
    reintento vuelve a fallar, DevOps lo escala al CEO con el consumo medido (ADR-0019, punto 6).
 
+**Antes de reintentar, revalidar el objetivo** (lección de CIF-291). Un monitor de cuota no reintenta
+al despertar: lo primero es comprobar que **el objetivo sigue existiendo** —la rama está viva, el PR
+sigue abierto y el cambio no está ya en `main`—. Si el PR se fusionó mientras se esperaba el hueco, la
+tarea **caduca** (`cancelled`) en vez de reintentarse: gastar un hueco de preview en una rama ya
+fusionada es trabajo y cuota perdidos.
+
+Caso real: CIF-291 esperaba hueco para el preview de `feat/cif101-fase1-panel @ 5fa43dc`; el PR #55 se
+fusionó a las 11:08Z (CIF-277 cerró a las 11:22Z), la rama se borró y el fix de CIF-284 ya estaba en
+`main@3fe42c9a`, con producción `READY` y `/api/health` 200. El reintento no llegó a ejecutarse.
+
+**Medir la ventana, no el `reset`.** El `reset` que devuelve Vercel no es el vencimiento real —se mueve
+con cada sonda—, así que la hora útil sale de medir la ventana rodante: `GET /v7/deployments` con el
+`projectId` y el `teamId` del proyecto, paginando con `since`/`until` y contando por `createdAt` dentro
+del intervalo de 24 h que se quiera medir. La API de despliegues es de solo lectura para la
+cuota: el único valor autoritativo de `remaining`/`reset` sale del error del propio intento.
+
 **Reglas de consumo** ([ADR-0019](adr/0019-cuota-despliegues-vercel.md)): un push crea un preview, así
 que los cambios de una rama se agrupan y se empujan cuando están listos para revisión, no en cada
 iteración; no se relanza un despliegue si el del mismo commit ya está en cola o listo; y las ramas
