@@ -24,9 +24,15 @@ pnpm secret:scan                 # barrido de secretos (ADR-0014)
 pnpm secret:scan:test            # contrato de redacción del barrido
 ```
 
-Si tocas `scripts/`, el job `calidad` comprueba sintaxis (`bash -n`) y `shellcheck` sobre
-`scripts/*.sh`, y ejecuta el barrido de secretos (`scripts/secret-scan.sh`) con su test; pásalos
-también en local antes de abrir el PR.
+Si tocas cualquier script, el job `calidad` comprueba sintaxis (`bash -n`) y `shellcheck` sobre
+**todos los `*.sh` versionados** (`scripts/**`, `docs/runbooks/**` y cualquier script futuro), y
+ejecuta el barrido de secretos (`scripts/secret-scan.sh`) con su test; pásalos también en local
+antes de abrir el PR:
+
+```bash
+for script in $(git ls-files '*.sh'); do bash -n "$script"; done
+shellcheck $(git ls-files '*.sh')
+```
 
 ## Reglas que no se negocian
 

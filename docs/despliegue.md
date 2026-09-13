@@ -109,8 +109,8 @@ servidores propios en ningún entorno ([ADR-0007](adr/0007-despliegue-vercel-git
    comprueba `scripts/docs-preview-guard.sh` en el job `calidad`.
 2. PR contra `main` con la plantilla `.github/pull_request_template.md`.
 3. Vercel publica el **preview** del PR y comenta la URL; el CI arranca `calidad` (formato, sintaxis
-   y `shellcheck` de `scripts/`, guardia de contenido de ramas `docs/**`, lint, tipos y unitarios) y
-   `e2e`.
+   y `shellcheck` de **todos los `*.sh` versionados** —`scripts/**` y `docs/runbooks/**`—, guardia de
+   contenido de ramas `docs/**`, lint, tipos y unitarios) y `e2e`.
 4. Revisión de otro agente distinto del autor. QA valida en la URL de preview el **camino público**
    del flujo; los flujos detrás de una credencial de administración se validan en CI, porque esa
    credencial no se despliega en preview ([ADR-0025](adr/0025-validacion-via-envio-por-entorno.md)).

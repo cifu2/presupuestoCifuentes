@@ -60,6 +60,22 @@ describe('un fallo de formato no oculta el resto de la puerta (CIF-489)', () => 
   })
 })
 
+describe('la puerta de sintaxis y `shellcheck` cubre todos los `*.sh` versionados (CIF-601)', () => {
+  // H5 de CIF-591: la guarda de disco del host vive en `docs/runbooks/disco-guard.sh`, corre como
+  // root en el host y borra ficheros. Con la enumeración limitada a `scripts/*.sh`, una edición de
+  // ese script no pasaba por ninguna comprobación automática antes de instalarse. La enumeración es
+  // `git ls-files`, no un glob: un glob literal fallaría mientras el directorio no exista y no
+  // cubriría un runbook nuevo. Esta guarda impide que la puerta se vuelva a estrechar en silencio.
+  it('enumera el conjunto versionado de `*.sh`, no solo `scripts/*.sh`', () => {
+    expect(calidad).toMatch(/git ls-files -z '\*\.sh'/)
+    expect(calidad).not.toMatch(/scripts\/\*\.sh/)
+  })
+
+  it('los dos pasos de shell (sintaxis y `shellcheck`) usan esa enumeración', () => {
+    expect(calidad.match(/git ls-files -z '\*\.sh'/g)).toHaveLength(2)
+  })
+})
+
 describe('job `calidad` con base de datos de test', () => {
   it('arranca un servicio PostgreSQL 17 para los tests de integración', () => {
     // Sin base de datos, los tests de integración de los adaptadores Prisma se saltan
