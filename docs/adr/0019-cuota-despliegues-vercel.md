@@ -189,16 +189,17 @@ La revisión de (a) y (b) que anunciaba el apartado siguiente se hizo con la med
 | `devops/**` | preview    |             1,0 |
 | **total**   |            |        **87,0** |
 
-- **La cota inferior no cambia el signo de la decisión.** El contador del límite se agota con **86–88
-  listados** en su ventana rodante (`docs/operacion.md` §4.2): `GET /v6/deployments` no es un registro
-  de auditoría y no lista los despliegues borrados, así que el recuento es una **cota inferior de
-  valor desconocido** y el «87 vs 100» son **ventanas distintas**. Aun en el mejor caso para B —que el
-  contador coincidiera con el listado— el margen por rascar no baja de 100 el ritmo de entrega actual.
-- **Lo que B deja sobre la mesa.** Las clases apagables con guardia de contenido (`docs/**` 2/d +
-  `dependabot/**` + `ci/**` 4/d + `chore/**` + `devops/**` 1/d) suman **9,7/d**, de las que **2/d ya
-  están apagadas**; el margen pendiente es de **≈3,7–7,7/d (4–9 %)** y cada clase nueva exige su
-  guardia (punto 4 y `docs/operacion.md` §4.2). No compensa el riesgo de dejar sin preview un cambio
-  de código.
+- **La cota inferior no cambia el signo de la decisión.** El contador del límite se agota con **86–87
+  listados** (las dos ventanas rodantes medidas, `docs/operacion.md` §4.2): `GET /v6/deployments` no
+  es un registro de auditoría y no lista los despliegues borrados, así que el recuento es una **cota
+  inferior de valor desconocido** y el «87 vs 100» son **ventanas distintas**. Aun en el mejor caso
+  para B —que el contador coincidiera con el listado— el margen por rascar no baja de 100 el ritmo
+  de entrega actual.
+- **Lo que B deja sobre la mesa.** En esa misma ventana de 24 h, las clases que no llevan un cambio de
+  código de la aplicación suman **7/d**: `docs/**` 2/d, `ci/**` 4/d y `devops/**` 1/d (`dependabot/**`
+  y `chore/**` no registraron despliegues ahí). De ellas, **2/d ya están apagadas** (`docs/**`); el
+  margen pendiente es de **≈5/d (≈6 % de los 87,0/d medidos)** y cada clase nueva exige su guardia
+  (punto 4 y `docs/operacion.md` §4.2). No compensa el riesgo de dejar sin preview un cambio de código.
 - **Dónde está el consumo.** `main` + `feat/**` + `fix/**` = **86 %** (75/d) y no se apagan sin dejar a
   QA sin preview de un cambio de código (Definition of Done). `main`, con **37/d**, es el mayor cubo.
 - **La lista blanca de `vercel.json` no se toca:** `docs/**`, `dependabot/**` y `archive/**` siguen sin
