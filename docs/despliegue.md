@@ -160,10 +160,14 @@ un merge a `main` no se da por desplegado hasta que su deployment está `READY` 
   después. Verificado el 2026-09-12 en la base de preview de Neon (PostgreSQL 18.6, rol no
   superusuario): migración aplicada sin errores.
 - **Paso explícito de release**, con `scripts/release.sh` o a mano, justo después de fusionar a
-  `main` y antes de dar el release por bueno:
+  `main` y antes de dar el release por bueno. El valor **no** se escribe en la línea de comandos: se
+  carga desde el fichero no versionado (o llega del gestor de secretos como
+  `NEON_PRODUCTION_DATABASE_URL`) y el script lo mapea a `DATABASE_URL` sin imprimirlo nunca
+  ([ADR-0028](adr/0028-ejecucion-importador-catalogo-produccion.md) §3-§4):
 
   ```bash
-  PRODUCTION_DATABASE_URL='...' pnpm prisma migrate deploy
+  set -a; . ./.env.production.local; set +a   # el valor no queda en el historial ni en `ps`
+  scripts/release.sh
   ```
 
   La URL de producción se toma del gestor de secretos o de `.env.local` (no versionado); nunca se

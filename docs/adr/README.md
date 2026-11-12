@@ -33,6 +33,7 @@ que supersede al anterior y se marca el antiguo como `Superseded por ADR-XXXX`.
 | [0024](0024-autenticacion-panel-sesion-firmada.md)             | Autenticación del panel: sesión firmada con credencial de entorno                | Aceptado |
 | [0025](0025-validacion-via-envio-por-entorno.md)               | Validación de la entrega del presupuesto por entorno (preview sin credenciales)  | Aceptado |
 | [0026](0026-catalogo-de-produccion-y-validacion-desplegada.md) | Catálogo de producción y validación en entornos desplegados                      | Aceptado |
+| [0028](0028-ejecucion-importador-catalogo-produccion.md)       | Ejecución del importador contra producción: identidad y entrega del secreto      | Aceptado |
 
 ## Cuándo hace falta un ADR
 
